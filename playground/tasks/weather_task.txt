@@ -1,0 +1,10 @@
+Create a weather dashboard application that:
+
+1. Retrieves current weather data for a given city using a weather API
+2. Displays the temperature, conditions, humidity, and wind speed
+3. Allows the user to search for different cities
+4. Shows a 3-day forecast for the selected city
+5. Has a simple but clean UI
+6. Handles errors gracefully (e.g., city not found, API unavailable)
+
+The application should be easy to run and have clear documentation.

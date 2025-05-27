@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment variables
+.env
+.env.*
+!.env.example
+!sample.env
+
+# Logs
+logs/
+*.log
+
+# Demo and temporary files
+examples/mcp_example/demo_files/
+examples/mcp_example/demo_git_repo/
+examples/mcp_example/demo_memory/
+playground/tasks/*
+!playground/tasks/*.txt
+
+# Database files
+*.db
+*.sqlite3

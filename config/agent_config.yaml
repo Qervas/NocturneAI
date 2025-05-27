@@ -1,0 +1,163 @@
+###############################################
+# Agent System Configuration
+###############################################
+
+# Agent role definitions
+agent_roles:
+  COORDINATOR:
+    name: COORDINATOR
+    description: "Manages tasks and coordinates agent activities"
+    prompt_template: |
+      As a coordinator, your primary responsibility is to manage tasks, 
+      delegate work to appropriate agents, and ensure smooth collaboration.
+      You should maintain a high-level view of ongoing work and make decisions 
+      about resource allocation and prioritization.
+  
+  PLANNER:
+    name: PLANNER
+    description: "Creates strategic plans and breaks down problems"
+    prompt_template: |
+      As a planner, your primary responsibility is to create 
+      detailed plans and strategies for achieving goals. You should break down 
+      complex tasks into manageable steps and identify dependencies and risks.
+  
+  RESEARCHER:
+    name: RESEARCHER
+    description: "Gathers and analyzes information"
+    prompt_template: |
+      As a researcher, your primary responsibility is to 
+      gather and analyze information on various topics. You should evaluate 
+      sources, identify key insights, and synthesize information into useful knowledge.
+  
+  EXECUTOR:
+    name: EXECUTOR
+    description: "Implements solutions and executes tasks"
+    prompt_template: |
+      As an executor, your primary responsibility is to 
+      implement plans and perform specific tasks. You should focus on efficiency, 
+      accuracy, and delivering high-quality results.
+  
+  REVIEWER:
+    name: REVIEWER
+    description: "Evaluates work and provides critical feedback"
+    prompt_template: |
+      As a reviewer, your primary responsibility is to 
+      evaluate work and provide feedback. You should be critical but constructive, 
+      identifying both strengths and areas for improvement.
+  
+  ASSISTANT:
+    name: ASSISTANT
+    description: "Helps users and provides information"
+    prompt_template: |
+      As an assistant, your primary responsibility is to help users 
+      and provide information. You should be helpful, informative, and user-focused.
+
+# Thinking strategy definitions
+thinking_strategies:
+  REACTIVE:
+    name: REACTIVE
+    description: "Quick responses with minimal planning"
+    prompt_template: |
+      Focus on providing immediate responses based on the 
+      current request without extensive deliberation.
+    reasoning_mode: SEQUENTIAL
+  
+  PLANNING:
+    name: PLANNING
+    description: "Deliberate planning before action"
+    prompt_template: |
+      Approach problems by creating structured plans with 
+      clear steps toward defined goals.
+    reasoning_mode: TREE
+  
+  REFLECTIVE:
+    name: REFLECTIVE
+    description: "Reflection on past experiences"
+    prompt_template: |
+      Before responding, reflect on past experiences, relevant 
+      context, and potential implications of your response.
+    reasoning_mode: REFLECTIVE
+  
+  CREATIVE:
+    name: CREATIVE
+    description: "Focus on novel or innovative solutions"
+    prompt_template: |
+      Emphasize novel, innovative approaches and solutions, 
+      even if they are unconventional.
+    reasoning_mode: TREE
+  
+  CRITICAL:
+    name: CRITICAL
+    description: "Focus on evaluation and assessment"
+    prompt_template: |
+      Carefully evaluate information, identify assumptions, 
+      and consider alternative explanations and approaches.
+    reasoning_mode: SOCRATIC
+  
+  COLLABORATIVE:
+    name: COLLABORATIVE
+    description: "Focus on working with others"
+    prompt_template: |
+      Prioritize effective collaboration with other agents, 
+      sharing information and coordinating actions toward common goals.
+    reasoning_mode: SEQUENTIAL
+
+# Reasoning mode definitions
+reasoning_modes:
+  SEQUENTIAL:
+    name: SEQUENTIAL
+    description: "Step-by-step reasoning"
+    max_steps: 5
+  
+  TREE:
+    name: TREE
+    description: "Tree-based reasoning with multiple branches"
+    max_branches: 3
+    max_depth: 2
+  
+  REFLECTIVE:
+    name: REFLECTIVE
+    description: "Reflective reasoning with self-critique"
+    max_iterations: 3
+  
+  SOCRATIC:
+    name: SOCRATIC
+    description: "Question-based exploration"
+    max_questions: 5
+  
+  COT:
+    name: COT
+    description: "Chain-of-thought reasoning"
+    max_steps: 5
+  
+  DIALECTICAL:
+    name: DIALECTICAL
+    description: "Thesis-antithesis-synthesis reasoning"
+    max_iterations: 3
+
+# LLM provider configurations
+llm_providers:
+  openai:
+    name: openai
+    description: "OpenAI API for LLM access"
+    default_model: gpt-3.5-turbo
+    timeout: 30
+    max_tokens: 1000
+  
+  local:
+    name: local
+    description: "Local LLM via Ollama"
+    default_model: gemma3:latest
+    timeout: 60
+    max_tokens: 2000
+    options:
+      format: json
+      temperature: 0.7
+
+# System-wide settings
+system_settings:
+  log_level: INFO
+  memory_persistence: true
+  memory_dir: ./data/memory
+  default_expertise_level: 0.5
+  default_expertise_confidence: 0.5
