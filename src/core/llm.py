@@ -205,9 +205,6 @@ class LocalLLMProvider(BaseLLMProvider):
             power_grid_keywords = ["power outages", "electrical grid", "budget", "$10 million"]
             
             # First look for the power grid problem specifically
-            problem_statement = None
-            
-            # Look for power grid problem in the problem/task messages
             for msg in messages:
                 content = ""
                 if isinstance(msg, dict) and "content" in msg:
@@ -488,3 +485,17 @@ class LLMFactory:
             return LocalLLMProvider(**local_params)
         else:
             raise ValueError(f"Unknown LLM provider type: {provider_type}")
+
+# Utility function to get an LLM provider instance
+def get_llm_provider(provider_type: str, **kwargs) -> BaseLLMProvider:
+    """
+    Get an LLM provider instance based on the provider type.
+    
+    Args:
+        provider_type: Type of LLM provider to get ('openai', 'local', 'ollama', etc.)
+        **kwargs: Additional arguments to pass to the provider constructor
+        
+    Returns:
+        An instance of BaseLLMProvider
+    """
+    return LLMFactory.create_provider(provider_type, **kwargs)
