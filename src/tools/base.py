@@ -1,3 +1,10 @@
+"""
+Base classes for NocturneAI tools.
+
+This module defines the base classes and types for creating and managing
+tools that can be used by agents in the NocturneAI system.
+"""
+
 from typing import Any, Dict, List, Optional, Type, TypeVar, Generic, Callable, Awaitable
 from pydantic import BaseModel, Field
 from dataclasses import dataclass
@@ -6,6 +13,7 @@ import inspect
 import json
 
 class ToolResultStatus(str, Enum):
+    """Status of a tool execution result"""
     SUCCESS = "success"
     ERROR = "error"
     INVALID_INPUT = "invalid_input"
@@ -67,14 +75,24 @@ class Tool:
         params = []
         sig = inspect.signature(self.execute)
         
-        # Skip 'self' parameter
-        parameters = list(sig.parameters.values())[1:]  # Skip self
-        
-        for param in parameters:
+        # Get type hints
+        param_type_hints = {}
+        try:
+            param_type_hints = get_type_hints(self.execute)
+        except (NameError, TypeError):
+            # If type hints can't be resolved, we'll use the ones from the signature
+            pass
+            
+        # Examine each parameter
+        for param_name, param in sig.parameters.items():
+            # Skip self parameter
+            if param_name == 'self':
+                continue
+                
             # Get type hints
             param_type = param.annotation
             if param_type == inspect.Parameter.empty:
-                param_type = str  # Default to string if no type hint
+                param_type = param_type_hints.get(param_name, str)  # Default to string if no type hint
                 
             # Get description from docstring if available
             doc = inspect.getdoc(self.execute)
@@ -83,14 +101,14 @@ class Tool:
                 # Simple parsing of numpy-style docstring
                 for line in doc.split('\n'):
                     line = line.strip()
-                    if line.startswith(param.name + ' :'):
+                    if line.startswith(param_name + ' :'):
                         param_doc = line.split(':', 1)[1].strip()
                         break
             
             params.append(ToolParameter(
-                name=param.name,
+                name=param_name,
                 type=param_type,
-                description=param_doc or f"Parameter {param.name}",
+                description=param_doc or f"Parameter {param_name}",
                 required=param.default == inspect.Parameter.empty,
                 default=param.default if param.default != inspect.Parameter.empty else None
             ))
@@ -155,3 +173,11 @@ class ToolRegistry:
                 result=None,
                 error=str(e)
             )
+
+# Helper function to get type hints
+def get_type_hints(obj):
+    """Get type hints for a function or method"""
+    try:
+        return inspect.get_type_hints(obj)
+    except (NameError, TypeError):
+        return {}

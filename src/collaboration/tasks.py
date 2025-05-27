@@ -13,7 +13,9 @@ from datetime import datetime, timezone, timedelta
 import logging
 import asyncio
 import heapq
-from ..core.agent import AgentRole
+
+# Update to use the new modular agent system
+from ..agents.core.types import AgentRole
 
 logger = logging.getLogger(__name__)
 

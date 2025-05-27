@@ -5,7 +5,7 @@ A modular, composable agent architecture that supports dynamic capability integr
 and agent construction at runtime.
 """
 
-from .core.agent import Agent
+from .core.modular_agent import ModularAgent as Agent
 from .core.registry import AgentRegistry
 from .core.factory import AgentFactory
 from .core.types import AgentRole, AgentCapability, MessageType

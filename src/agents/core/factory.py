@@ -17,7 +17,7 @@ import json
 from .agent import Agent
 from .registry import AgentRegistry
 from .types import AgentRole, AgentCapability
-from ...core.llm import BaseLLMProvider, get_llm_provider
+from ...llm import BaseLLMProvider, get_llm_provider
 
 logger = logging.getLogger(__name__)
 

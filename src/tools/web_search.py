@@ -1,5 +1,5 @@
 from typing import Dict, Any, List, Optional
-from ..core.tools import Tool, ToolExecutionResult, ToolResultStatus
+from .base import Tool, ToolExecutionResult, ToolResultStatus
 import aiohttp
 import json
 

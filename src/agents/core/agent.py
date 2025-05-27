@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Optional, Union, Set, Type, Callable
 from datetime import datetime
 
 from .types import AgentRole, AgentCapability, Message, MessageType, ThoughtGraph, AgentState
-from ...core.llm import BaseLLMProvider
+from ...llm import BaseLLMProvider
 
 logger = logging.getLogger(__name__)
 

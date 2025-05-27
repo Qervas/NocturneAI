@@ -7,15 +7,379 @@ and execute structured plans to achieve goals.
 
 import asyncio
 import logging
+import os
+import re
 from typing import Dict, Any, List, Optional, Set, Union, Callable
 from datetime import datetime
 import json
 import uuid
 
 from ..core.types import AgentCapability, MessageType, Message
-from .base import PlanningCapability
+from .base import Capability
 
 logger = logging.getLogger(__name__)
+
+
+class PlanningCapability(Capability):
+    """
+    Base planning capability for agents.
+    
+    This capability enables agents to create and execute structured plans
+    to achieve goals. It serves as the foundation for more specialized planning
+    capabilities.
+    """
+    
+    # Specify capability type
+    CAPABILITY = AgentCapability.PLANNING
+    
+    def __init__(self, agent_id: Optional[str] = None, **config):
+        super().__init__(**config)
+        self.agent_id = agent_id
+        self.plans = {}
+        self.active_plan_id = None
+        self.executing_tasks = {}
+    
+    async def create_plan(self, goal: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Create a structured plan to achieve a goal.
+        
+        Args:
+            goal: The goal or objective to plan for
+            context: Additional context or constraints for the plan
+            
+        Returns:
+            A plan definition with steps and dependencies
+        """
+        if not self.agent or not self.agent.llm_provider:
+            raise ValueError("Agent or LLM provider not available for planning")
+        
+        # Generate a plan using the agent's LLM provider
+        plan_id = str(uuid.uuid4())
+        plan_name = f"Plan for: {goal[:50]}{'...' if len(goal) > 50 else ''}"
+        
+        # Create system prompt for planning
+        system_prompt = (
+            "You are an expert planning system. Your task is to create a detailed, structured plan " 
+            "to achieve the specified goal. Break the goal down into clear, actionable steps with dependencies. " 
+            "Each step should be specific enough to be executed independently.\n\n" 
+            "Format your plan as follows:\n" 
+            "1. First, [specific action]\n" 
+            "2. Next, [specific action]\n" 
+            "3. Then, [specific action that depends on steps 1 and 2]\n" 
+            "...and so on."
+        )
+        
+        # Create the planning prompt
+        user_prompt = f"Goal: {goal}\n\n"
+        if context:
+            user_prompt += "Context:\n"
+            for key, value in context.items():
+                user_prompt += f"- {key}: {value}\n"
+        user_prompt += "\nPlease create a detailed plan to achieve this goal."
+        
+        # Generate the plan
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        
+        response = await self.agent.llm_provider.generate(messages)
+        plan_text = response.content
+        
+        # Parse the plan
+        plan_data = self._parse_plan(plan_text)
+        
+        # Create a structured plan object
+        plan = {
+            "id": plan_id,
+            "name": plan_name,
+            "goal": goal,
+            "created_at": datetime.now().isoformat(),
+            "description": plan_data.get('description', 'Plan generated from goal'),
+            "steps": plan_data.get('steps', []),
+            "context": context or {},
+            "status": PlanState.NOT_STARTED
+        }
+        
+        # Store the plan
+        self.plans[plan_id] = plan
+        logger.info(f"Created plan {plan_id} with {len(plan['steps'])} steps")
+        
+        return plan
+    
+    async def execute_plan(self, plan_id: str) -> Dict[str, Any]:
+        """
+        Execute a plan to achieve its goal.
+        
+        Args:
+            plan_id: The ID of the plan to execute
+            
+        Returns:
+            The results of the plan execution
+        """
+        if plan_id not in self.plans:
+            raise ValueError(f"Plan {plan_id} not found")
+        
+        plan = self.plans[plan_id]
+        
+        # Mark plan as in progress
+        plan['status'] = PlanState.IN_PROGRESS
+        self.active_plan_id = plan_id
+        
+        # Create a task for execution
+        task = asyncio.create_task(self._execute_plan_steps(plan))
+        self.executing_tasks[plan_id] = task
+        
+        # Wait for the plan to complete or fail
+        try:
+            result = await task
+            plan['status'] = PlanState.COMPLETED
+            plan['completed_at'] = datetime.now().isoformat()
+            plan['result'] = result
+            logger.info(f"Plan {plan_id} completed successfully")
+        except Exception as e:
+            plan['status'] = PlanState.FAILED
+            plan['error'] = str(e)
+            logger.error(f"Plan {plan_id} failed: {str(e)}", exc_info=True)
+            raise
+        finally:
+            # Clean up
+            if plan_id in self.executing_tasks:
+                del self.executing_tasks[plan_id]
+            if self.active_plan_id == plan_id:
+                self.active_plan_id = None
+        
+        return plan
+    
+    async def _execute_plan_steps(self, plan: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute the steps of a plan in the proper order.
+        
+        Args:
+            plan: The plan to execute
+            
+        Returns:
+            The combined results from all plan steps
+        """
+        results = {}
+        all_steps = {step['id']: step for step in plan['steps']}
+        pending_steps = dict(all_steps)
+        completed_steps = set()
+        
+        while pending_steps:
+            # Find steps that can be executed (dependencies satisfied)
+            executable_steps = []
+            
+            for step_id, step in pending_steps.items():
+                dependencies_met = True
+                for dep_name in step.get('depends_on', []):
+                    # Find the step ID by name
+                    dep_ids = [s['id'] for s in plan['steps'] if s['name'] == dep_name]
+                    if not dep_ids or not all(dep_id in completed_steps for dep_id in dep_ids):
+                        dependencies_met = False
+                        break
+                
+                if dependencies_met:
+                    executable_steps.append(step)
+            
+            if not executable_steps:
+                # If no steps can be executed but there are still pending steps,
+                # we have a dependency cycle
+                raise ValueError(f"Dependency cycle detected in plan {plan['id']}")
+            
+            # Execute steps in parallel where possible
+            execution_tasks = []
+            
+            for step in executable_steps:
+                task = asyncio.create_task(self._execute_step(step, plan['context'], results))
+                execution_tasks.append((step['id'], task))
+            
+            # Wait for all tasks to complete
+            for step_id, task in execution_tasks:
+                try:
+                    step_result = await task
+                    results[step_id] = step_result
+                    completed_steps.add(step_id)
+                    del pending_steps[step_id]
+                    
+                    # Update step status
+                    for step in plan['steps']:
+                        if step['id'] == step_id:
+                            step['status'] = PlanState.COMPLETED
+                            step['completed_at'] = datetime.now().isoformat()
+                            break
+                except Exception as e:
+                    # Update step status
+                    for step in plan['steps']:
+                        if step['id'] == step_id:
+                            step['status'] = PlanState.FAILED
+                            step['error'] = str(e)
+                            break
+                    
+                    # Re-raise the exception to abort the plan
+                    raise
+        
+        return results
+    
+    async def _execute_step(self, step: Dict[str, Any], context: Dict[str, Any], previous_results: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute a plan step using the agent's LLM.
+        
+        Args:
+            step: The step to execute
+            context: The plan context
+            previous_results: Results from previously executed steps
+            
+        Returns:
+            The result of the step execution
+        """
+        if not self.agent or not self.agent.llm_provider:
+            raise ValueError("Agent or LLM provider not available for step execution")
+        
+        # Mark the step as in progress
+        step['status'] = PlanState.IN_PROGRESS
+        step['started_at'] = datetime.now().isoformat()
+        
+        # Create system prompt for step execution
+        system_prompt = (
+            "You are an expert task execution system. Your job is to execute the specific step " 
+            "described below as part of a larger plan. Use the provided context and previous results " 
+            "to complete this step effectively. Provide a detailed response that fully addresses the step.\n\n" 
+            "Format your response with clear sections:\n" 
+            "1. PROCESS - Describe your approach to completing this step\n" 
+            "2. RESULTS - Present the concrete results/outputs from executing this step\n" 
+            "3. NEXT - Briefly suggest what should happen next based on these results"
+        )
+        
+        # Create the step execution prompt
+        user_prompt = f"Step to execute: {step['name']}\n\nDescription: {step['description']}\n\n"
+        
+        # Add context
+        user_prompt += "Context:\n"
+        for key, value in context.items():
+            if key != 'previous_results':  # Skip previous results here
+                user_prompt += f"- {key}: {value}\n"
+        
+        # Add previous results if available
+        if previous_results:
+            user_prompt += "\nResults from previous steps:\n"
+            for step_id, result in previous_results.items():
+                # Just use the step ID as we don't have access to the plan here
+                user_prompt += f"- Step {step_id}: {str(result)[:100]}{'...' if len(str(result)) > 100 else ''}\n"
+        
+        user_prompt += "\nPlease execute this step now."
+        
+        # Generate the step execution
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        
+        response = await self.agent.llm_provider.generate(messages)
+        execution_text = response.content
+        
+        # Update step status
+        step['status'] = PlanState.COMPLETED
+        step['completed_at'] = datetime.now().isoformat()
+        
+        # Return the execution result
+        return {
+            "execution_text": execution_text,
+            "metadata": {
+                "executed_at": datetime.now().isoformat(),
+                "agent_id": self.agent_id
+            }
+        }
+    
+    def _parse_plan(self, plan_text: str) -> Dict[str, Any]:
+        """
+        Parse a plan from generated text.
+        
+        Args:
+            plan_text: The text to parse
+            
+        Returns:
+            Structured plan data
+        """
+        plan_data = {
+            'description': '',
+            'steps': []
+        }
+        
+        # Extract description (first paragraph)
+        lines = plan_text.strip().split('\n')
+        if lines:
+            plan_data['description'] = lines[0].strip()
+        
+        # Extract steps
+        current_step = None
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Check for numbered steps
+            if line[0].isdigit() and line[1:3] in ('. ', ') '):
+                # If we have a current step, add it before starting a new one
+                if current_step:
+                    plan_data['steps'].append(current_step)
+                
+                # Start a new step
+                step_text = line[3:].strip()
+                current_step = {
+                    'id': str(uuid.uuid4()),
+                    'name': f"Step {len(plan_data['steps']) + 1}",
+                    'description': step_text,
+                    'depends_on': [],
+                    'status': PlanState.NOT_STARTED
+                }
+                
+                # Check for dependencies in the description
+                for step in plan_data['steps']:
+                    if step['name'].lower() in step_text.lower():
+                        current_step['depends_on'].append(step['name'])
+                    
+            # Check for "Step X: Description" format
+            elif line.lower().startswith('step ') and ':' in line:
+                # If we have a current step, add it before starting a new one
+                if current_step:
+                    plan_data['steps'].append(current_step)
+                
+                # Split into step name and description
+                parts = line.split(':', 1)
+                step_name = parts[0].strip()
+                step_desc = parts[1].strip() if len(parts) > 1 else ""
+                
+                # Start a new step
+                current_step = {
+                    'id': str(uuid.uuid4()),
+                    'name': step_name,
+                    'description': step_desc,
+                    'depends_on': [],
+                    'status': PlanState.NOT_STARTED
+                }
+                
+                # Check for dependencies in the description
+                for step in plan_data['steps']:
+                    if step['name'].lower() in step_desc.lower():
+                        current_step['depends_on'].append(step['name'])
+            
+            # Additional lines for the current step description
+            elif current_step:
+                current_step['description'] += "\n" + line
+                
+                # Check for dependency keywords
+                dependency_keywords = ['after', 'following', 'once', 'when', 'depends on']
+                if any(keyword in line.lower() for keyword in dependency_keywords):
+                    for step in plan_data['steps']:
+                        if step['name'].lower() in line.lower():
+                            current_step['depends_on'].append(step['name'])
+        
+        # Add the last step
+        if current_step:
+            plan_data['steps'].append(current_step)
+        
+        return plan_data
 
 
 class PlanState:

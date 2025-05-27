@@ -13,9 +13,25 @@ from datetime import datetime, timedelta
 import uuid
 
 from ..core.types import AgentCapability, MessageType, Message, ThoughtGraph
-from .base import ReflectionCapability
+from .base import Capability
 
 logger = logging.getLogger(__name__)
+
+
+class ReflectionCapability(Capability):
+    """
+    Base reflection capability for agents.
+    
+    This capability enables agents to reflect on their actions and improve
+    their performance over time.
+    """
+    
+    # Specify capability type
+    CAPABILITY = AgentCapability.REFLECTION
+    
+    def __init__(self, agent_id: Optional[str] = None, **config):
+        super().__init__(**config)
+        self.agent_id = agent_id
 
 
 class SelfReflection(ReflectionCapability):

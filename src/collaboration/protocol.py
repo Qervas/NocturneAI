@@ -12,7 +12,9 @@ import uuid
 from datetime import datetime, timezone
 import asyncio
 import logging
-from ..core.agent import AgentRole
+
+# Update to use the new modular agent system
+from ..agents.core.types import AgentRole
 
 logger = logging.getLogger(__name__)
 
