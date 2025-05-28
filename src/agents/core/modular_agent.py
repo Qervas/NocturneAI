@@ -29,6 +29,11 @@ class ModularAgent:
     being hardcoded.
     """
     
+    @property
+    def id(self) -> str:
+        """Provide backward compatibility with code that expects 'id' instead of 'agent_id'"""
+        return self.agent_id
+    
     def __init__(
         self,
         agent_id: Optional[str] = None,

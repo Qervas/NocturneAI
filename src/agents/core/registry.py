@@ -10,7 +10,7 @@ import logging
 from typing import Dict, Any, List, Optional, Set, Type
 from datetime import datetime
 
-from .agent import Agent
+from .modular_agent import ModularAgent
 from .types import AgentRole, Message, MessageType
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class AgentRegistry:
         if getattr(self, '_initialized', False):
             return
         
-        self._agents: Dict[str, Agent] = {}
+        self._agents: Dict[str, ModularAgent] = {}
         self._agent_roles: Dict[AgentRole, List[str]] = {role: [] for role in AgentRole}
         self._message_queue: asyncio.Queue = asyncio.Queue()
         self._router_task = None
@@ -48,7 +48,7 @@ class AgentRegistry:
         self._initialized = True
         logger.info("Agent registry initialized")
     
-    def register_agent(self, agent: Agent) -> bool:
+    def register_agent(self, agent: ModularAgent) -> bool:
         """
         Register an agent with the registry.
         
@@ -95,7 +95,7 @@ class AgentRegistry:
         logger.info(f"Unregistered agent {agent.name} (ID: {agent_id})")
         return True
     
-    def get_agent(self, agent_id: str) -> Optional[Agent]:
+    def get_agent(self, agent_id: str) -> Optional[ModularAgent]:
         """
         Get an agent by ID.
         
@@ -107,7 +107,7 @@ class AgentRegistry:
         """
         return self._agents.get(agent_id)
     
-    def get_agents_by_role(self, role: AgentRole) -> List[Agent]:
+    def get_agents_by_role(self, role: AgentRole) -> List[ModularAgent]:
         """
         Get all agents with a specific role.
         
@@ -120,7 +120,7 @@ class AgentRegistry:
         agent_ids = self._agent_roles.get(role, [])
         return [self._agents[agent_id] for agent_id in agent_ids if agent_id in self._agents]
     
-    def get_all_agents(self) -> List[Agent]:
+    def get_all_agents(self) -> List[ModularAgent]:
         """
         Get all registered agents.
         

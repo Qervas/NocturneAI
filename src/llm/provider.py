@@ -310,13 +310,24 @@ class LocalLLMProvider(BaseLLMProvider):
                         error_text = await response.text()
                         raise ValueError(f"Error from LLM API: {error_text}")
                     
-                    data = await response.json()
+                    # Handle NDJSON format from Ollama
+                    response_text = await response.text()
+                    # Get the last line which should contain the final response
+                    lines = response_text.strip().split('\n')
+                    last_line = lines[-1] if lines else '{}'
                     
-                    content = data.get("message", {}).get("content", "")
-                    metadata = {
-                        "model": data.get("model", self.model_name),
-                        # Add any other metadata that might be available
-                    }
+                    import json
+                    try:
+                        data = json.loads(last_line)
+                        content = data.get("message", {}).get("content", "")
+                        metadata = {
+                            "model": data.get("model", self.model_name),
+                            # Add any other metadata that might be available
+                        }
+                    except json.JSONDecodeError:
+                        # If we can't parse the JSON, return the raw text
+                        content = response_text
+                        metadata = {"model": self.model_name}
                     
                     return LLMResponse(content=content, metadata=metadata)
         

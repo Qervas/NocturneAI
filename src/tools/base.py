@@ -178,6 +178,7 @@ class ToolRegistry:
 def get_type_hints(obj):
     """Get type hints for a function or method"""
     try:
-        return inspect.get_type_hints(obj)
+        from typing import get_type_hints as typing_get_type_hints
+        return typing_get_type_hints(obj)
     except (NameError, TypeError):
         return {}

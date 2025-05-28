@@ -77,7 +77,8 @@ class GraphThinking(ThinkingCapability):
         
         try:
             # Generate initial thoughts
-            response = await self.agent.llm_provider.generate(prompt)
+            message = [{"role": "user", "content": prompt}]
+            response = await self.agent.llm_provider.generate(message)
             
             # Parse response into thoughts
             thoughts = self._parse_thinking_response(response)
@@ -167,21 +168,23 @@ class GraphThinking(ThinkingCapability):
     
     async def _create_state_node(self) -> ThoughtNode:
         """Create a node representing the agent's state"""
+        import json
+        content_dict = {
+            'agent_id': self.agent.id,
+            'agent_name': self.agent.name,
+            'agent_role': self.agent.role.value,
+            'created_at': datetime.now().isoformat(),
+            'capabilities': [cap.value for cap in self.agent.capability_types] if hasattr(self.agent, 'capability_types') else list(self.agent.capabilities.keys())
+        }
         return await self._add_node(
             node_type='state',
-            content={
-                'agent_id': self.agent.id,
-                'agent_name': self.agent.name,
-                'agent_role': self.agent.role.value,
-                'created_at': datetime.now().isoformat(),
-                'capabilities': [cap.value for cap in self.agent.capabilities]
-            },
+            content=json.dumps(content_dict),
             metadata={'persistent': True}
         )
     
     async def _get_state_node(self) -> Optional[ThoughtNode]:
         """Get the agent's state node"""
-        for node in self.graph.nodes:
+        for node in self.graph.nodes.values():
             if node.node_type == 'state' and node.metadata.get('persistent', False):
                 return node
         return None
@@ -195,18 +198,17 @@ class GraphThinking(ThinkingCapability):
             metadata=metadata or {},
             created_at=datetime.now()
         )
-        self.graph.nodes.append(node)
+        self.graph.add_node(node)
         return node
     
     async def _add_edge(self, source: str, target: str, edge_type: str, metadata: Dict[str, Any] = None) -> ThoughtEdge:
         """Add an edge to the thought graph"""
         edge = ThoughtEdge(
             id=str(uuid.uuid4()),
-            source=source,
-            target=target,
+            source_id=source,
+            target_id=target,
             edge_type=edge_type,
-            metadata=metadata or {},
-            created_at=datetime.now()
+            metadata=metadata or {}
         )
         self.graph.edges.append(edge)
         return edge
@@ -237,12 +239,18 @@ Context:
 Thoughts:
 1."""
     
-    def _parse_thinking_response(self, response: str) -> List[str]:
+    def _parse_thinking_response(self, response) -> List[str]:
         """Parse the thinking response into individual thoughts"""
         thoughts = []
         
+        # Handle response as LLMResponse object
+        if hasattr(response, 'content'):
+            response_text = response.content
+        else:
+            response_text = str(response)
+            
         # Split by numbered lines
-        lines = response.split('\n')
+        lines = response_text.split('\n')
         current_thought = ""
         current_number = 1
         
@@ -280,7 +288,8 @@ Thought X connects to Thought Y: [brief explanation]"""
         
         try:
             # Generate connections
-            response = await self.agent.llm_provider.generate(prompt)
+            message = [{"role": "user", "content": prompt}]
+            response = await self.agent.llm_provider.generate(message)
             
             # Parse connections
             connections = self._parse_connections(response)
@@ -303,11 +312,17 @@ Thought X connects to Thought Y: [brief explanation]"""
         except Exception as e:
             logger.error(f"Error generating connections: {str(e)}", exc_info=True)
     
-    def _parse_connections(self, response: str) -> List[Tuple[int, int, str]]:
+    def _parse_connections(self, response) -> List[Tuple[int, int, str]]:
         """Parse connection response into source, target, and relation"""
         connections = []
         
-        lines = response.split('\n')
+        # Handle response as LLMResponse object
+        if hasattr(response, 'content'):
+            response_text = response.content
+        else:
+            response_text = str(response)
+            
+        lines = response_text.split('\n')
         for line in lines:
             line = line.strip()
             if not line:
@@ -356,8 +371,15 @@ Your conclusion should directly address the original context and provide a clear
         
         try:
             # Generate conclusion
-            conclusion_text = await self.agent.llm_provider.generate(prompt)
+            message = [{"role": "user", "content": prompt}]
+            conclusion_response = await self.agent.llm_provider.generate(message)
             
+            # Extract content from LLMResponse object
+            if hasattr(conclusion_response, 'content'):
+                conclusion_text = conclusion_response.content
+            else:
+                conclusion_text = str(conclusion_response)
+                
             # Create conclusion node
             conclusion_node = await self._add_node(
                 node_type='conclusion',
@@ -390,10 +412,10 @@ Your conclusion should directly address the original context and provide a clear
         """Get a subgraph for a specific thinking session"""
         subgraph = ThoughtGraph()
         
-        # Filter nodes
-        for node in self.graph.nodes:
+        # Filter nodes - iterate over dictionary values
+        for node_id, node in self.graph.nodes.items():
             if node.metadata.get('thinking_id') == thinking_id:
-                subgraph.nodes.append(node)
+                subgraph.add_node(node)
         
         # Filter edges
         for edge in self.graph.edges:
@@ -637,7 +659,8 @@ Thoughts:
 1."""
         
         # Generate thoughts
-        response = await self.agent.llm_provider.generate(prompt)
+        message = [{"role": "user", "content": prompt}]
+        response = await self.agent.llm_provider.generate(message)
         
         # Parse thoughts
         thoughts = []
@@ -683,7 +706,8 @@ Based on these thoughts, generate a concise conclusion that synthesizes the key 
 Your conclusion should directly address the original context and provide a clear resolution or next steps."""
         
         # Generate conclusion
-        conclusion = await self.agent.llm_provider.generate(prompt)
+        message = [{"role": "user", "content": prompt}]
+        conclusion = await self.agent.llm_provider.generate(message)
         return conclusion
     
     async def _reflect(self) -> None:
@@ -718,7 +742,8 @@ Provide specific insights and recommendations for improving your thinking proces
         
         try:
             # Generate reflection
-            reflection = await self.agent.llm_provider.generate(prompt)
+            message = [{"role": "user", "content": prompt}]
+            reflection = await self.agent.llm_provider.generate(message)
             
             # Store reflection
             self.reflection_history.append({

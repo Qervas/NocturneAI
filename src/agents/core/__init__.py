@@ -4,7 +4,7 @@ Core components for the NocturneAI agent system.
 This package contains the foundational classes and types for the agent system.
 """
 
-from .agent import Agent
+from .modular_agent import ModularAgent
 from .registry import AgentRegistry
 from .factory import AgentFactory
 from .types import (
@@ -19,7 +19,7 @@ from .types import (
 )
 
 __all__ = [
-    'Agent',
+    'ModularAgent',
     'AgentRegistry',
     'AgentFactory',
     'AgentRole',
