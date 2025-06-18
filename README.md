@@ -1,4 +1,4 @@
-# Personal Intelligence Empire
+# NoctruneAI - Personal Intelligence Empire
 
 > *Become the Übermensch through AI - Your path to transcendence*
 
@@ -27,6 +27,7 @@ The Intelligence Empire now features **intelligent routing** that automatically 
 ### Channel Categories & Their Functions
 
 #### 🏛️ **Channels** - Collaborative Intelligence
+
 - **#general**: Auto-assigned experts based on keywords and context
 - **#council**: Full council assembly with Master Intelligence synthesis
 - **#strategy**: High-level strategic planning (Sarah + Marcus)
@@ -36,6 +37,7 @@ The Intelligence Empire now features **intelligent routing** that automatically 
 - **#operations**: Implementation and technical planning (David)
 
 #### 💬 **Direct Messages** - Personal Intelligence
+
 - **Sarah Chen**: 1-on-1 product strategy conversations
 - **Marcus Rodriguez**: Direct business development discussions
 - **Elena Vasquez**: Personal UX design consultations
@@ -43,17 +45,18 @@ The Intelligence Empire now features **intelligent routing** that automatically 
 
 ### Interaction Modes & Their Capabilities
 
-| Mode | Icon | Response Style | Has Actions | Has Synthesis | Best For |
-|------|------|---------------|-------------|---------------|----------|
-| **Casual Chat** | 💬 | Conversational, brief | ❌ | ❌ | Quick questions, brainstorming |
-| **Strategic Brief** | 📋 | Structured analysis | ✅ | ✅ | Decision making, planning |
-| **Quick Consult** | ⚡ | Focused expertise | ✅ | ❌ | Specific problems, urgent advice |
-| **Brainstorm** | 🧠 | Creative ideation | ❌ | ✅ | Innovation, exploration |
-| **Formal Analysis** | 📊 | Comprehensive assessment | ✅ | ✅ | Complex projects, deep dives |
+| Mode                      | Icon | Response Style           | Has Actions | Has Synthesis | Best For                         |
+| ------------------------- | ---- | ------------------------ | ----------- | ------------- | -------------------------------- |
+| **Casual Chat**     | 💬   | Conversational, brief    | ❌          | ❌            | Quick questions, brainstorming   |
+| **Strategic Brief** | 📋   | Structured analysis      | ✅          | ✅            | Decision making, planning        |
+| **Quick Consult**   | ⚡   | Focused expertise        | ✅          | ❌            | Specific problems, urgent advice |
+| **Brainstorm**      | 🧠   | Creative ideation        | ❌          | ✅            | Innovation, exploration          |
+| **Formal Analysis** | 📊   | Comprehensive assessment | ✅          | ✅            | Complex projects, deep dives     |
 
 ### Response Patterns by Context
 
 #### Individual Conversations (DMs)
+
 - **Personal tone**: "Hey! Great to chat with you directly..."
 - **First-person perspective**: "I think...", "In my experience..."
 - **Conversational style**: Natural, authentic to personality
@@ -61,6 +64,7 @@ The Intelligence Empire now features **intelligent routing** that automatically 
 - **Direct actions**: Specific to their role and capabilities
 
 #### Council Discussions (Channels)
+
 - **Strategic synthesis**: Combined perspectives from multiple experts
 - **Comprehensive analysis**: Multi-faceted approach to problems
 - **Collaborative insights**: How different viewpoints align or complement
@@ -70,6 +74,7 @@ The Intelligence Empire now features **intelligent routing** that automatically 
 ### Technical Implementation
 
 #### Backend Intelligence Routing
+
 ```python
 # Automatic routing between Individual and Council Intelligence
 if query.channel_type == "dm" and len(query.requested_members) == 1:
@@ -81,12 +86,13 @@ else:
 ```
 
 #### Frontend Channel Management
+
 ```typescript
 // Context-aware message routing
 const targetChannelKey = response.channel_id ? 
     `${response.channel_type}-${response.channel_id}` :
     `${activeView.type}-${activeView.id}`;
-    
+  
 addCouncilResponseToChannel(response, targetChannelKey);
 ```
 
@@ -95,44 +101,44 @@ addCouncilResponseToChannel(response, targetChannelKey);
 ```mermaid
 graph TD
     A["👑 YOU - The Übermensch"] --> B["🧠 Master Intelligence<br/>(Your Extended Mind)"]
-    
+  
     B --> C["💬 Chat Interface<br/>(Primary)"]
     B --> D["📊 Intelligence Dashboard<br/>(Overview)"]
     B --> E["🎯 Mission Control<br/>(Strategic)"]
-    
+  
     B --> F["Intelligence Router"]
     F --> G["👤 Individual Intelligence<br/>(DM Conversations)"]
     F --> H["🏛️ Council Intelligence<br/>(Channel Discussions)"]
-    
+  
     G --> G1["Personal Sarah"]
     G --> G2["Personal Marcus"]
     G --> G3["Personal Elena"]
     G --> G4["Personal David"]
-    
+  
     H --> H1["🔍 Market Intelligence Network"]
     H --> H2["⚡ Technical Analysis Network"] 
     H --> H3["🎨 Creative Strategy Network"]
     H --> H4["📈 Investment Research Network"]
     H --> H5["🌐 Opportunity Scout Network"]
-    
+  
     B --> I["🏛️ Personal Sovereignty Database"]
     I --> I1["Identity & Goals"]
     I --> I2["Decision History"]
     I --> I3["Knowledge Domains"]
     I --> I4["Relationship Network"]
     I --> I5["Competitive Intelligence"]
-    
+  
     B --> J["🛡️ Autonomy Controller"]
     J --> J1["Safe Zone: Full Autonomy"]
     J --> J2["Restricted Zone: Ask Permission"]
-    
+  
     B --> K["🎭 Interaction Mode Engine"]
     K --> K1["Casual Chat Mode"]
     K --> K2["Strategic Brief Mode"]
     K --> K3["Quick Consult Mode"]
     K --> K4["Brainstorm Mode"]
     K --> K5["Formal Analysis Mode"]
-    
+  
     style A fill:#FFD700,stroke:#FF6B35,stroke-width:4px
     style B fill:#4ECDC4,stroke:#45B7B8,stroke-width:3px
     style F fill:#A8E6CF,stroke:#88D8A3,stroke-width:2px
@@ -154,7 +160,7 @@ graph TD
         F1 --> G1["💬 Individual Intelligence"]
         F1 --> H1["🏛️ Council Intelligence"]
     end
-    
+  
     subgraph "Phase 2: Enhanced (6-12 months)"
         A2["⚡ React + WASM Components"] --> B2["🐍 Python + 🦀 Rust Services"]
         B2 --> C2["🏠 Local LLMs (Ollama)"]
@@ -163,7 +169,7 @@ graph TD
         A2 --> F2["🎙️ Voice Interface"]
         A2 --> G2["🔍 Context-Aware Routing"]
     end
-    
+  
     subgraph "Phase 3: Advanced (1-2 years)"
         A3["🧠 AI-Native Frontend"] --> B3["🕸️ Distributed Intelligence Backend"]
         B3 --> C3["🏠 Personal AI Mesh Network"]
@@ -172,12 +178,12 @@ graph TD
         A3 --> F3["🥽 AR/VR Intelligence Interface"]
         A3 --> G3["🤖 Autonomous Agent Spawning"]
     end
-    
+  
     A1 --> A2
     B1 --> B2
     A2 --> A3
     B2 --> B3
-    
+  
     style A1 fill:#61DAFB,stroke:#21759B,stroke-width:2px
     style B1 fill:#3776AB,stroke:#FFD43B,stroke-width:2px
     style A2 fill:#FF6B35,stroke:#4ECDC4,stroke-width:2px
@@ -189,24 +195,28 @@ graph TD
 ## Core Components
 
 ### 1. Master Intelligence
+
 - **Personal Model**: Deep understanding of your goals, values, and preferences
 - **Intelligent Routing**: Automatically routes between individual and council intelligence
 - **Context Awareness**: Remembers conversation history and adapts responses
 - **Mode Adaptation**: Adjusts response style based on interaction mode
 
 ### 2. Individual Intelligence System
+
 - **Personal Conversations**: 1-on-1 dialogue with specific council members
 - **Authentic Personalities**: Each member responds as themselves, not as council
 - **Domain Expertise**: Deep, focused knowledge in their specialization
 - **Casual to Formal**: Adapts from friendly chat to professional analysis
 
 ### 3. Council Intelligence System
+
 - **Collaborative Analysis**: Multiple experts working together
 - **Strategic Synthesis**: Master Intelligence combines perspectives
 - **Consensus Building**: Identifies agreements and resolves conflicts
 - **Action Prioritization**: Creates unified next steps from diverse input
 
 ### 4. Interaction Mode Engine
+
 - **Context Switching**: Seamlessly changes response patterns
 - **Feature Control**: Enables/disables actions and synthesis based on mode
 - **User Intent Recognition**: Automatically detects appropriate mode
@@ -215,12 +225,14 @@ graph TD
 ## Interface Design
 
 ### Primary: Discord-Style Chat Interface
+
 - **Channel Navigation**: Easy switching between contexts
 - **DM System**: Private conversations with individual experts
 - **Mode Selection**: Choose interaction style per conversation
 - **Real-time Updates**: Live feedback from autonomous AI agents
 
 ### Secondary: Strategic Dashboards
+
 - **Mission Control**: High-level overview of your intelligence empire
 - **Agent Networks**: Visualize active AI agent networks
 - **Opportunity Tracking**: Monitor potential investments and projects
@@ -229,6 +241,7 @@ graph TD
 ## Getting Started
 
 ### Quick Start
+
 ```bash
 # Clone and setup
 git clone <repo-url>
@@ -254,14 +267,17 @@ cd frontend && npm install
 ## Advanced Usage Patterns
 
 ### For Product Development
+
 - **DM Elena** for UX feedback → **#product** for full strategy → **#operations** for implementation
 - Use **Brainstorm mode** for ideation → **Strategic Brief** for decisions
 
-### For Business Strategy  
+### For Business Strategy
+
 - **DM Marcus** for market insights → **#strategy** for full analysis → **Formal Analysis** for deep dives
 - **#council** for major decisions requiring all perspectives
 
 ### For Daily Operations
+
 - **Casual Chat** in DMs for quick questions
 - **Quick Consult** for urgent decisions
 - **#operations** for implementation planning
@@ -285,4 +301,4 @@ The new intelligent routing and response patterns ensure that every conversation
 
 *"Man is something that shall be overcome. What have you done to overcome him?"* - Friedrich Nietzsche
 
-**This is your path to transcendence.** Enhanced with intelligent, context-aware AI that adapts to your every need. 
+**This is your path to transcendence.** Enhanced with intelligent, context-aware AI that adapts to your every need.
