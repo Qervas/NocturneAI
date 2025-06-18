@@ -1,0 +1,140 @@
+/* Custom Scrollbars for Intelligence Empire */
+
+/* Enhanced custom scrollbar class for chat areas */
+.custom-scrollbar {
+  scrollbar-width: auto;
+  scrollbar-color: #64748b #334155;
+}
+
+/* Webkit browsers - Enhanced scrollbars for better visibility */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 12px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #334155;
+  border-radius: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #64748b;
+  border-radius: 6px;
+  border: 2px solid #334155;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:active {
+  background: #cbd5e1;
+}
+
+/* Sidebar scrollbar - thinner for navigation */
+.sidebar-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 #1e293b;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-track {
+  background: #1e293b;
+  border-radius: 4px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+  border: 1px solid #334155;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Global fallback for other scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 #1e293b;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1e293b;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 4px;
+  border: 1px solid #334155;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+::-webkit-scrollbar-corner {
+  background: #1e293b;
+}
+
+/* Channel-specific message patterns */
+.channel-message {
+  @apply hover:bg-slate-800/20 transition-colors duration-150;
+}
+
+.dm-message {
+  @apply hover:bg-slate-800/30 rounded-lg transition-all duration-200;
+}
+
+.channel-message .message-content {
+  @apply text-slate-200 leading-relaxed;
+}
+
+.dm-message .message-content {
+  @apply text-slate-100 leading-relaxed font-medium;
+}
+
+/* Channel indicators */
+.channel-indicator {
+  @apply inline-flex items-center space-x-1 text-xs font-medium px-2 py-1 rounded-full;
+}
+
+.channel-indicator.general {
+  @apply bg-purple-500/20 text-purple-300 border border-purple-500/30;
+}
+
+.channel-indicator.council {
+  @apply bg-yellow-500/20 text-yellow-300 border border-yellow-500/30;
+}
+
+.channel-indicator.product {
+  @apply bg-green-500/20 text-green-300 border border-green-500/30;
+}
+
+.channel-indicator.strategy {
+  @apply bg-blue-500/20 text-blue-300 border border-blue-500/30;
+}
+
+.channel-indicator.design {
+  @apply bg-pink-500/20 text-pink-300 border border-pink-500/30;
+}
+
+.channel-indicator.operations {
+  @apply bg-cyan-500/20 text-cyan-300 border border-cyan-500/30;
+}
+
+.channel-indicator.market-intel {
+  @apply bg-orange-500/20 text-orange-300 border border-orange-500/30;
+}
+
+.dm-indicator {
+  @apply bg-slate-600/30 text-slate-300 border border-slate-500/30;
+} 

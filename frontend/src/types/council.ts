@@ -34,6 +34,9 @@ export interface IntelligenceResponse {
   confidence_score: number;
   processing_time: number;
   timestamp: string;
+  response_type?: string;  // "council" or "individual"
+  channel_id?: string;
+  channel_type?: string;   // "channel" or "dm"
 }
 
 export interface CouncilQueryRequest {
@@ -77,6 +80,20 @@ export interface ChatMessage {
   timestamp: string;
   council_response?: IntelligenceResponse;
   sender?: string; // For individual council member messages
+  reply_to?: {
+    message_id: string;
+    content: string;
+    sender: string;
+    timestamp: string;
+  };
+  forwarded_from?: {
+    channel_id: string;
+    channel_type: string;
+    channel_name: string;
+    original_sender: string;
+    original_timestamp: string;
+  };
+  is_deleted?: boolean;
 }
 
 export interface ConnectionState {

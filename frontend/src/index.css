@@ -38,6 +38,27 @@
     background: rgb(100 116 139);
   }
   
+  /* Scrollbar visibility utilities */
+  .scrollbar-always-visible {
+    overflow-y: scroll !important;
+  }
+  
+  .scrollbar-auto {
+    overflow-y: auto;
+  }
+  
+  /* Chat area specific styles */
+  .chat-container {
+    height: calc(100vh - 80px - 12px); /* Header height + border */
+    overflow-y: auto;
+  }
+  
+  .chat-messages {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  
   /* Text clamping utility */
   .line-clamp-2 {
     display: -webkit-box;

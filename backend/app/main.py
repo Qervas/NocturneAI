@@ -1,13 +1,14 @@
 """
 Intelligence Empire Backend - FastAPI Application
 Your Personal AI Council API
+Enhanced with Message Persistence & History
 """
 
 import os
 import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -15,6 +16,10 @@ from dotenv import load_dotenv
 from app.core.intelligence.master_intelligence import MasterIntelligence, IntelligenceQuery
 from app.core.agents.council_members import CouncilRole
 from app.services.ollama_service import ollama_service
+from app.services.conversation_service import ConversationService
+from app.models.database import get_db, AsyncSession, AsyncSessionLocal
+from app.core.database_init import init_database
+from app.api.routes import messages
 
 # Load environment variables
 load_dotenv()
@@ -37,8 +42,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Master Intelligence
+# Initialize Master Intelligence and Conversation Service
 master_intelligence = MasterIntelligence()
+conversation_service = ConversationService()
+
+# Include API routes
+app.include_router(messages.router, prefix="/api/v1", tags=["messages"])
 
 # WebSocket connection manager
 class ConnectionManager:
@@ -56,8 +65,9 @@ class ConnectionManager:
         await websocket.send_text(message)
     
     async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            await connection.send_text(message)
+        # Temporarily disabled to avoid connection issues
+        print(f"Broadcast message: {message}")
+        return
 
 manager = ConnectionManager()
 
@@ -66,6 +76,7 @@ class CouncilQueryRequest(BaseModel):
     message: str
     requested_members: Optional[List[str]] = None
     context: Optional[Dict] = None
+    interaction_mode: Optional[str] = 'casual_chat'
 
 class CouncilQueryResponse(BaseModel):
     success: bool
@@ -125,22 +136,101 @@ async def get_council_member(member_name: str):
     }
 
 @app.post("/api/v1/council/query", response_model=CouncilQueryResponse)
-async def query_council(request: CouncilQueryRequest):
-    """Send a query to your AI Council"""
+async def query_council(request: dict, db: AsyncSession = Depends(get_db)):
+    """Send a query to your AI Council with message persistence"""
     try:
-        # Create intelligence query
-        query = IntelligenceQuery(
-            user_input=request.message,
-            requested_members=request.requested_members,
-            context=request.context or {}
+        # Extract channel context from request
+        channel_id = request.get("channel_id", "general")
+        channel_type = "dm" if channel_id.startswith("dm-") else "channel"
+        
+        print(f"🔍 API Request: channel_id={channel_id}, channel_type={channel_type}")
+        print(f"🔍 Requested members: {request.get('requested_members')}")
+        
+        # Get or create conversation
+        conversation = await conversation_service.get_or_create_conversation(
+            db, channel_id, channel_type
         )
+        
+        # Get recent conversation context for AI
+        recent_context = await conversation_service.get_recent_context(
+            db, channel_id, channel_type, hours=24, max_messages=5
+        )
+        
+        # Save user message to database
+        user_message = await conversation_service.save_user_message(
+            db, conversation, request.get("message", ""),
+            interaction_mode=request.get("interaction_mode", "casual_chat"),
+            metadata=request.get("context", {})
+        )
+        
+        # Build enhanced context including reply information
+        enhanced_context = {
+            **request.get("context", {}),
+            "recent_messages": recent_context,
+            "conversation_id": conversation.id
+        }
+        
+        # Add reply context if this is a reply to another message
+        if request.get("reply_context"):
+            reply_ctx = request.get("reply_context")
+            enhanced_context["reply_to"] = reply_ctx
+            enhanced_context["is_reply"] = True
+            print(f"🔄 REST API processing reply to message from {reply_ctx.get('original_sender')}: {reply_ctx.get('original_content')[:50]}...")
+        
+        # Create intelligence query with enhanced context
+        query = IntelligenceQuery(
+            user_input=request.get("message", ""),
+            requested_members=request.get("requested_members"),
+            context=enhanced_context,
+            interaction_mode=request.get("interaction_mode", "casual_chat"),
+            channel_id=channel_id,
+            channel_type=channel_type
+        )
+        
+        print(f"Processing query in {channel_type} '{channel_id}' with {len(recent_context)} context messages")
         
         # Process query through Master Intelligence
         response = await master_intelligence.process_query(query)
         
-        # Convert response to JSON-serializable format
+        print(f"🔍 Response type: {response.response_type}")
+        print(f"🔍 Council responses: {len(response.council_responses)}")
+        
+        # Save council response to database
+        council_message = await conversation_service.save_council_response(
+            db, conversation, {
+                "council_responses": [
+                    {
+                        "member_name": cr.member_name,
+                        "role": cr.role.value,
+                        "message": cr.message,
+                        "confidence_level": cr.confidence_level,
+                        "reasoning": cr.reasoning,
+                        "suggested_actions": cr.suggested_actions,
+                        "timestamp": cr.timestamp
+                    }
+                    for cr in response.council_responses
+                ],
+                "synthesis": response.synthesis,
+                "recommended_actions": response.recommended_actions,
+                "confidence_score": response.confidence_score,
+                "processing_time": response.processing_time,
+                "response_type": response.response_type,
+                "requested_members": request.get("requested_members", [])
+            }, 
+            user_message, 
+            response.synthesis
+        )
+        
+        # Commit the transaction
+        await db.commit()
+        
+        print(f"🔍 Response saved to database for {channel_type} '{channel_id}'")
+        
+        # Convert response to JSON-serializable format with database IDs
         response_data = {
-            "query": request.message,
+            "query": request.get("message", ""),
+            "user_message_id": user_message.id,  # Include user message database ID
+            "council_message_id": council_message.id,  # Include council message database ID
             "council_responses": [
                 {
                     "member_name": cr.member_name,
@@ -157,19 +247,78 @@ async def query_council(request: CouncilQueryRequest):
             "recommended_actions": response.recommended_actions,
             "confidence_score": response.confidence_score,
             "processing_time": response.processing_time,
-            "timestamp": response.timestamp
+            "timestamp": response.timestamp,
+            "response_type": response.response_type,
+            "channel_id": channel_id,
+            "channel_type": channel_type
         }
-        
-        # Broadcast to WebSocket clients
-        await manager.broadcast(f"Council query processed: {request.message}")
         
         return CouncilQueryResponse(success=True, response=response_data)
         
     except Exception as e:
+        print(f"❌ Error in query_council: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        await db.rollback()
         return CouncilQueryResponse(
             success=False,
             error=f"Error processing council query: {str(e)}"
         )
+
+# Message Persistence & History API Endpoints
+
+@app.get("/api/v1/conversations/{channel_type}/{channel_id}/history")
+async def get_channel_history(
+    channel_type: str,
+    channel_id: str,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get conversation history for a specific channel or DM"""
+    try:
+        history = await conversation_service.get_conversation_history(
+            db, channel_id, channel_type, limit, offset
+        )
+        
+        return {
+            "success": True,
+            "channel_id": channel_id,
+            "channel_type": channel_type,
+            "messages": history,
+            "total_messages": len(history),
+            "limit": limit,
+            "offset": offset
+        }
+        
+    except Exception as e:
+        print(f"❌ Error getting conversation history: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving history: {str(e)}")
+
+@app.get("/api/v1/conversations/search")
+async def search_conversations(
+    q: str,
+    channel_id: Optional[str] = None,
+    channel_type: Optional[str] = None,
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db)
+):
+    """Search through conversation history"""
+    try:
+        results = await conversation_service.search_conversations(
+            db, q, channel_id, channel_type, limit
+        )
+        
+        return {
+            "success": True,
+            "query": q,
+            "results": results,
+            "total_results": len(results)
+        }
+        
+    except Exception as e:
+        print(f"❌ Error searching conversations: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error searching: {str(e)}")
 
 @app.get("/api/v1/council/history")
 async def get_conversation_history(limit: int = 10):
@@ -193,7 +342,7 @@ async def get_conversation_history(limit: int = 10):
 # WebSocket endpoint for real-time communication
 @app.websocket("/ws/council")
 async def websocket_council(websocket: WebSocket):
-    """WebSocket endpoint for real-time council communication"""
+    """WebSocket endpoint for real-time council communication with message persistence"""
     await manager.connect(websocket)
     
     # Send welcome message
@@ -209,47 +358,149 @@ async def websocket_council(websocket: WebSocket):
             data = await websocket.receive_json()
             
             if data.get("type") == "query":
-                # Process council query
-                query = IntelligenceQuery(
-                    user_input=data.get("message", ""),
-                    requested_members=data.get("requested_members"),
-                    context=data.get("context", {})
-                )
+                # Extract channel context from WebSocket message
+                channel_id = data.get("channel", "general")
+                channel_type = "dm" if channel_id.startswith("dm-") else "channel"
                 
-                # Send processing status
-                await websocket.send_json({
-                    "type": "processing",
-                    "message": "Your council is analyzing your query...",
-                    "timestamp": datetime.now().isoformat()
-                })
+                print(f"🔍 WebSocket Query: channel_id={channel_id}, channel_type={channel_type}")
                 
-                # Process query
-                response = await master_intelligence.process_query(query)
-                
-                # Send response
-                await websocket.send_json({
-                    "type": "response",
-                    "data": {
-                        "query": data.get("message"),
-                        "council_responses": [
-                            {
-                                "member_name": cr.member_name,
-                                "role": cr.role.value,
-                                "message": cr.message,
-                                "confidence_level": cr.confidence_level,
-                                "reasoning": cr.reasoning,
-                                "suggested_actions": cr.suggested_actions,
-                                "timestamp": cr.timestamp
+                # Create database session for message persistence
+                async with AsyncSessionLocal() as db:
+                    try:
+                        # Get or create conversation
+                        conversation = await conversation_service.get_or_create_conversation(
+                            db, channel_id, channel_type
+                        )
+                        
+                        # Get recent conversation context for AI
+                        recent_context = await conversation_service.get_recent_context(
+                            db, channel_id, channel_type, hours=24, max_messages=5
+                        )
+                        
+                        # Save user message to database
+                        user_message = await conversation_service.save_user_message(
+                            db, conversation, data.get("message", ""),
+                            interaction_mode=data.get("interaction_mode", "casual_chat"),
+                            metadata=data.get("context", {})
+                        )
+                        
+                        # Build enhanced context including reply information
+                        enhanced_context = {
+                            **data.get("context", {}),
+                            "recent_messages": recent_context,
+                            "conversation_id": conversation.id
+                        }
+                        
+                        # Add reply context if this is a reply to another message
+                        if data.get("reply_context"):
+                            reply_ctx = data.get("reply_context")
+                            enhanced_context["reply_to"] = reply_ctx
+                            enhanced_context["is_reply"] = True
+                            print(f"🔄 Processing reply to message from {reply_ctx.get('original_sender')}: {reply_ctx.get('original_content')[:50]}...")
+                        
+                        # Create intelligence query with enhanced context
+                        query = IntelligenceQuery(
+                            user_input=data.get("message", ""),
+                            requested_members=data.get("requested_members"),
+                            context=enhanced_context,
+                            interaction_mode=data.get("interaction_mode", "casual_chat"),
+                            channel_id=channel_id,
+                            channel_type=channel_type
+                        )
+                        
+                        # Send processing status
+                        await websocket.send_json({
+                            "type": "processing",
+                            "message": "Your council is analyzing your query...",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        
+                        # Process query
+                        response = await master_intelligence.process_query(query)
+                        
+                        # Convert response to format for database storage
+                        response_data = {
+                            "query": data.get("message", ""),
+                            "council_responses": [
+                                {
+                                    "member_name": cr.member_name,
+                                    "role": cr.role.value,
+                                    "message": cr.message,
+                                    "confidence_level": cr.confidence_level,
+                                    "reasoning": cr.reasoning,
+                                    "suggested_actions": cr.suggested_actions,
+                                    "timestamp": cr.timestamp
+                                }
+                                for cr in response.council_responses
+                            ],
+                            "synthesis": response.synthesis,
+                            "recommended_actions": response.recommended_actions,
+                            "confidence_score": response.confidence_score,
+                            "processing_time": response.processing_time,
+                            "response_type": response.response_type,
+                            "requested_members": data.get("requested_members", [])
+                        }
+                        
+                        # Save council response to database
+                        council_message = await conversation_service.save_council_response(
+                            db, conversation, response_data, user_message, response.synthesis
+                        )
+                        
+                        print(f"✅ WebSocket: Saved message and response to database for {channel_id}")
+                        
+                        # Send response with database IDs
+                        await websocket.send_json({
+                            "type": "response",
+                            "data": {
+                                **response_data,
+                                "user_message_id": user_message.id,  # Include user message database ID
+                                "council_message_id": council_message.id,  # Include council message database ID
+                                "channel_id": channel_id,
+                                "channel_type": channel_type,
+                                "timestamp": response.timestamp
                             }
-                            for cr in response.council_responses
-                        ],
-                        "synthesis": response.synthesis,
-                        "recommended_actions": response.recommended_actions,
-                        "confidence_score": response.confidence_score,
-                        "processing_time": response.processing_time,
-                        "timestamp": response.timestamp
-                    }
-                })
+                        })
+                        
+                    except Exception as db_error:
+                        print(f"❌ WebSocket database error: {str(db_error)}")
+                        await db.rollback()
+                        # Still send response even if database save fails
+                        query = IntelligenceQuery(
+                            user_input=data.get("message", ""),
+                            requested_members=data.get("requested_members"),
+                            context=data.get("context", {}),
+                            interaction_mode=data.get("interaction_mode", "casual_chat"),
+                            channel_id=channel_id,
+                            channel_type=channel_type
+                        )
+                        response = await master_intelligence.process_query(query)
+                        
+                        await websocket.send_json({
+                            "type": "response",
+                            "data": {
+                                "query": data.get("message"),
+                                "council_responses": [
+                                    {
+                                        "member_name": cr.member_name,
+                                        "role": cr.role.value,
+                                        "message": cr.message,
+                                        "confidence_level": cr.confidence_level,
+                                        "reasoning": cr.reasoning,
+                                        "suggested_actions": cr.suggested_actions,
+                                        "timestamp": cr.timestamp
+                                    }
+                                    for cr in response.council_responses
+                                ],
+                                "synthesis": response.synthesis,
+                                "recommended_actions": response.recommended_actions,
+                                "confidence_score": response.confidence_score,
+                                "processing_time": response.processing_time,
+                                "timestamp": response.timestamp,
+                                "response_type": response.response_type,
+                                "channel_id": channel_id,
+                                "channel_type": channel_type
+                            }
+                        })
             
             elif data.get("type") == "ping":
                 # Respond to ping
@@ -261,11 +512,17 @@ async def websocket_council(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
-        await websocket.send_json({
-            "type": "error",
-            "message": f"WebSocket error: {str(e)}",
-            "timestamp": datetime.now().isoformat()
-        })
+        try:
+            await websocket.send_json({
+                "type": "error", 
+                "message": f"WebSocket error: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            })
+        except:
+            # WebSocket is already closed, ignore send error
+            print(f"WebSocket connection closed, couldn't send error: {str(e)}")
+        finally:
+            manager.disconnect(websocket)
 
 # Health check endpoint
 @app.get("/api/v1/health")
@@ -306,6 +563,14 @@ async def get_ollama_models():
 async def startup_event():
     """Initialize services on startup"""
     print("🚀 Intelligence Empire API starting up...")
+    
+    # Initialize database
+    try:
+        await init_database()
+        print("💾 Database initialized successfully")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+    
     print("🧠 Master Intelligence initialized")
     
     # Check Ollama status
@@ -327,6 +592,7 @@ async def startup_event():
         print(f"   • {member['name']} - {member['role'].replace('_', ' ').title()}")
     
     print("🌐 WebSocket connections ready")
+    print("📚 Message persistence system online")
     print("✅ Intelligence Empire API is ready to serve!")
 
 if __name__ == "__main__":
