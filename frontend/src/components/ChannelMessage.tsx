@@ -63,8 +63,9 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
     return text.trim();
   };
 
-  if (message.type === 'user') {
+  if (message.type === 'user' || message.type === 'forwarded') {
     const messageClass = channelType === 'dm' ? 'dm-message' : 'channel-message';
+    const isForwarded = message.type === 'forwarded';
     
     return (
       <div className={`group hover:bg-slate-800/30 transition-colors ${messageClass}`}>
@@ -90,31 +91,32 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
               <div className="flex items-center space-x-1 text-xs text-blue-400 mb-1">
                 <Forward className="w-3 h-3" />
                 <span>Forwarded from {message.forwarded_from.channel_name}</span>
+                <span className="text-xs text-gray-500 ml-2">• No AI response</span>
               </div>
             </div>
           </div>
         )}
 
         <div className="flex items-start space-x-3 p-3">
-          <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center">
-            <User className="h-4 w-4 text-white" />
-          </div>
-          <div className="flex-1">
-            <div className="flex items-center space-x-2 mb-1">
+          <div className={`w-8 h-8 ${isForwarded ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-gradient-to-r from-purple-500 to-blue-500'} rounded-full flex items-center justify-center`}>
+            {isForwarded ? <Forward className="h-4 w-4 text-white" /> : <User className="h-4 w-4 text-white" />}
+        </div>
+        <div className="flex-1">
+          <div className="flex items-center space-x-2 mb-1">
               <span className="font-medium text-white">
-                You
+                {isForwarded ? `${message.forwarded_from?.original_sender} (forwarded)` : 'You'}
               </span>
-              <span className={`channel-indicator ${channelId}`}>
-                {channelType === 'channel' ? `#${channelId}` : 'DM'}
-              </span>
-              <span className="text-xs text-slate-400">{formatTimestamp(message.timestamp)}</span>
-            </div>
+            <span className={`channel-indicator ${channelId}`}>
+              {channelType === 'channel' ? `#${channelId}` : 'DM'}
+            </span>
+            <span className="text-xs text-slate-400">{formatTimestamp(message.timestamp)}</span>
+          </div>
             <p className={`message-content ${channelType === 'dm' 
                 ? 'text-slate-100 font-medium' 
                 : 'text-slate-200'
-            } text-sm leading-relaxed`}>
-              {message.content}
-            </p>
+            } text-sm leading-relaxed ${isForwarded ? 'italic' : ''}`}>
+            {message.content}
+          </p>
           </div>
           
           {/* Message Actions */}
@@ -126,7 +128,7 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
                 onForward={onForward || (() => {})}
                 onDelete={onDelete || (() => {})}
                 onCopy={onCopy || (() => {})}
-                isOwnMessage={true}
+                isOwnMessage={!isForwarded} // Forwarded messages are not "own" messages
               />
             </div>
           )}
@@ -277,28 +279,28 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
           </div>
         )}
 
-        <div className="space-y-4 p-4 bg-slate-800/20 rounded-lg">
-          {/* Response Header */}
-          <div className="flex items-center justify-between">
+      <div className="space-y-4 p-4 bg-slate-800/20 rounded-lg">
+        {/* Response Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            {channelType === 'channel' ? (
+              <Hash className="h-4 w-4 text-slate-400" />
+            ) : (
+              <MessageCircle className="h-4 w-4 text-slate-400" />
+            )}
+            <span className="text-sm font-medium text-slate-300">
+              {isDM ? 'Direct Response' : 'Channel Discussion'}
+            </span>
+            <span className="text-xs text-slate-500">
+              {formatTimestamp(message.timestamp)}
+            </span>
+          </div>
+          
             <div className="flex items-center space-x-2">
-              {channelType === 'channel' ? (
-                <Hash className="h-4 w-4 text-slate-400" />
-              ) : (
-                <MessageCircle className="h-4 w-4 text-slate-400" />
-              )}
-              <span className="text-sm font-medium text-slate-300">
-                {isDM ? 'Direct Response' : 'Channel Discussion'}
-              </span>
-              <span className="text-xs text-slate-500">
-                {formatTimestamp(message.timestamp)}
-              </span>
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              {/* Interaction Mode Indicator */}
-              <div className="flex items-center space-x-1 px-2 py-1 bg-slate-700/50 rounded-full">
-                <span className="text-xs">{mode.icon}</span>
-                <span className="text-xs text-slate-400">{mode.name}</span>
+          {/* Interaction Mode Indicator */}
+          <div className="flex items-center space-x-1 px-2 py-1 bg-slate-700/50 rounded-full">
+            <span className="text-xs">{mode.icon}</span>
+            <span className="text-xs text-slate-400">{mode.name}</span>
               </div>
 
               {/* Message Actions */}
@@ -312,8 +314,8 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
                   isOwnMessage={false}
                 />
               )}
-            </div>
           </div>
+        </div>
 
         {/* Council Member Responses */}
         {response.council_responses.map((councilResponse, index) => (

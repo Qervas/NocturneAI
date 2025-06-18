@@ -75,7 +75,7 @@ export interface ConversationHistory {
 // UI State Types
 export interface ChatMessage {
   id: string;
-  type: 'user' | 'council' | 'system';
+  type: 'user' | 'council' | 'system' | 'forwarded';
   content: string;
   timestamp: string;
   council_response?: IntelligenceResponse;

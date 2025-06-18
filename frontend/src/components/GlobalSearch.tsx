@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, X, MessageSquare, Calendar, User, Hash } from 'lucide-react';
-import { ChatMessage } from '../types/council';
+import { Search, X, MessageSquare, Calendar, User } from 'lucide-react';
 
 interface SearchResult {
   id: string;
@@ -54,27 +53,47 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onNavigate
   // Perform search
   const performSearch = async (searchQuery: string) => {
     if (!searchQuery.trim()) {
+      console.log('🔍 GlobalSearch: Empty query, clearing results');
       setResults([]);
       return;
     }
 
+    console.log(`🔍 GlobalSearch: Starting search for "${searchQuery}"`);
     setIsSearching(true);
     
     try {
-      const response = await fetch(
-        `/api/v1/conversations/search?q=${encodeURIComponent(searchQuery)}&limit=20`
-      );
+      const params = new URLSearchParams({
+        q: searchQuery,
+        limit: '20'
+      });
+      
+      const searchUrl = `/api/v1/conversations/search?${params}`;
+      console.log(`🔍 GlobalSearch: Calling API: ${searchUrl}`);
+      
+      const response = await fetch(searchUrl);
+      console.log(`🔍 GlobalSearch: API response: ${response.status} ${response.statusText}`);
       
       if (response.ok) {
         const data = await response.json();
+        console.log('🔍 GlobalSearch: Search response data:', data);
+        console.log(`🔍 GlobalSearch: Found ${data.results?.length || 0} results`);
+        
+        if (data.results && data.results.length > 0) {
+          console.log('🔍 GlobalSearch: First result:', data.results[0]);
+        }
+        
         setResults(data.results || []);
         saveRecentSearch(searchQuery);
+        
+        console.log(`✅ GlobalSearch: Search completed successfully - ${data.results?.length || 0} results`);
       } else {
-        console.error('Search failed:', response.statusText);
+        console.error('❌ GlobalSearch: Search failed:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('❌ GlobalSearch: Error details:', errorText);
         setResults([]);
       }
     } catch (error) {
-      console.error('Search error:', error);
+      console.error('🚨 GlobalSearch: Search error:', error);
       setResults([]);
     } finally {
       setIsSearching(false);
@@ -86,6 +105,21 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onNavigate
     e.preventDefault();
     performSearch(query);
   };
+
+  // Search as you type with debouncing
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      console.log(`🔍 GlobalSearch: Auto-searching after typing: "${query}"`);
+      performSearch(query);
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [query]);
 
   // Handle result click
   const handleResultClick = (result: SearchResult) => {

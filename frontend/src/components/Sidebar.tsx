@@ -1,16 +1,16 @@
 import React from 'react';
-import { Hash, MessageCircle, Users, Settings, Crown, Circle } from 'lucide-react';
-import { CHANNELS, DIRECT_MESSAGES, ActiveView } from '../types/channels';
-import { COUNCIL_MEMBERS, CouncilMemberKey } from '../types/council';
+import { Hash, MessageCircle, Users, Settings, Crown } from 'lucide-react';
+import { ActiveView, CHANNELS, DIRECT_MESSAGES } from '../types/channels';
+import { ChatMessage, COUNCIL_MEMBERS, CouncilMemberKey } from '../types/council';
 
 interface SidebarProps {
   activeView: ActiveView;
   onViewChange: (view: ActiveView) => void;
   connectionStatus: string;
-  channelMessages?: Record<string, any[]>; // For unread counts
+  channelMessages?: Record<string, ChatMessage[]>;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, connectionStatus, channelMessages = {} }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, connectionStatus }) => {
   const handleChannelClick = (channelId: string, channelName: string) => {
     onViewChange({
       type: 'channel',

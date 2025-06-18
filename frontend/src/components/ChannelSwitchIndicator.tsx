@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Hash, MessageCircle, Users, Zap, ArrowRight } from 'lucide-react';
-import { ActiveView, CHANNELS, DIRECT_MESSAGES } from '../types/channels';
+import { ActiveView, CHANNELS } from '../types/channels';
 
 interface ChannelSwitchIndicatorProps {
   activeView: ActiveView;

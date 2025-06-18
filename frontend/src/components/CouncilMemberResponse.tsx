@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, TrendingUp, Quote } from 'lucide-react';
+import { ChevronDown, ChevronUp, TrendingUp } from 'lucide-react';
 import { CouncilResponse } from '../types/council';
 import { COUNCIL_MEMBERS, CouncilMemberKey } from '../types/council';
 

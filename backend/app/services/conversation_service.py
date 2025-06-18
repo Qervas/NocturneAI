@@ -1,22 +1,21 @@
 """
-Conversation Service - Handles message persistence and history management
+Clean Conversation Service - Unified Database Operations
 """
 
-from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
-from sqlalchemy import desc, and_, or_
+from typing import Dict, List, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_, desc, func
 from sqlalchemy.orm import selectinload
-from sqlalchemy.future import select
 
-from app.models.database import AsyncSession
 from app.models.conversation import Conversation, Message, CouncilResponse, IntelligenceSession
 
 class ConversationService:
-    """Service class for managing conversations and message persistence"""
-    
+    """Clean conversation service with unified database operations"""
+
     def __init__(self):
         pass
-    
+
     async def get_or_create_conversation(
         self, 
         db: AsyncSession, 
@@ -37,16 +36,27 @@ class ConversationService:
         conversation = result.scalar_one_or_none()
         
         if not conversation:
+            # Create conversation with proper context
+            conversation_title = title
+            if not conversation_title:
+                if channel_type == "dm":
+                    # For DMs, create friendly title
+                    member_name = channel_id.replace("dm-", "").replace("-", " ").title()
+                    conversation_title = f"DM with {member_name}"
+                else:
+                    conversation_title = f"# {channel_id}"
+            
             conversation = Conversation(
                 channel_id=channel_id,
                 channel_type=channel_type,
-                title=title or f"{channel_type.title()} - {channel_id}"
+                title=conversation_title,
+                context={}  # Initialize with empty dict, not None
             )
             db.add(conversation)
             await db.flush()  # Flush to get ID
         
         return conversation
-    
+
     async def save_user_message(
         self,
         db: AsyncSession,
@@ -56,24 +66,31 @@ class ConversationService:
         metadata: Optional[Dict] = None
     ) -> Message:
         """Save a user message to the database"""
+        # Ensure metadata is properly serializable
+        safe_metadata = {}
+        if metadata:
+            safe_metadata = dict(metadata)  # Make a copy to avoid mutation
+        
         message = Message(
             conversation_id=conversation.id,
             content=content,
             message_type="user",
-            interaction_mode=interaction_mode,
-            message_metadata=metadata or {}
+            sender="You",
+            interaction_mode=interaction_mode or "casual",
+            message_metadata=safe_metadata,
+            is_deleted=False
         )
         
         db.add(message)
         await db.flush()
         return message
-    
+
     async def save_council_response(
         self,
         db: AsyncSession,
         conversation: Conversation,
         council_response_data: Dict,
-        user_message: Message,
+        user_message: Optional[Message],
         synthesis: Optional[str] = None
     ) -> Message:
         """Save a council response with all member responses"""
@@ -83,12 +100,13 @@ class ConversationService:
             conversation_id=conversation.id,
             content=synthesis or "Council Response",
             message_type="council",
-            interaction_mode=user_message.interaction_mode,
+            interaction_mode=user_message.interaction_mode if user_message else "casual",
             message_metadata={
-                "response_type": council_response_data.get("response_type"),
+                "response_type": council_response_data.get("response_type", "council"),
                 "confidence_score": council_response_data.get("confidence_score"),
                 "processing_time": council_response_data.get("processing_time")
-            }
+            },
+            is_deleted=False
         )
         
         db.add(council_message)
@@ -108,23 +126,24 @@ class ConversationService:
             )
             db.add(council_resp)
         
-        # Save intelligence session
-        session = IntelligenceSession(
-            conversation_id=conversation.id,
-            user_query=user_message.content,
-            synthesis=synthesis,
-            recommended_actions=council_response_data.get("recommended_actions", []),
-            response_type=council_response_data.get("response_type", "council"),
-            processing_time=council_response_data.get("processing_time"),
-            confidence_score=council_response_data.get("confidence_score"),
-            interaction_mode=user_message.interaction_mode,
-            requested_members=council_response_data.get("requested_members", [])
-        )
-        db.add(session)
+        # Save intelligence session for analytics
+        if user_message:
+            session = IntelligenceSession(
+                conversation_id=conversation.id,
+                user_query=user_message.content,
+                synthesis=synthesis,
+                recommended_actions=council_response_data.get("recommended_actions", []),
+                response_type=council_response_data.get("response_type", "council"),
+                processing_time=council_response_data.get("processing_time"),
+                confidence_score=council_response_data.get("confidence_score"),
+                interaction_mode=user_message.interaction_mode,
+                requested_members=council_response_data.get("requested_members", [])
+            )
+            db.add(session)
         
         await db.flush()
         return council_message
-    
+
     async def get_conversation_history(
         self,
         db: AsyncSession,
@@ -133,7 +152,7 @@ class ConversationService:
         limit: int = 50,
         offset: int = 0
     ) -> List[Dict]:
-        """Get conversation history for a specific channel/DM"""
+        """Get conversation history for a channel/DM"""
         
         # Get conversation
         conv_result = await db.execute(
@@ -153,7 +172,12 @@ class ConversationService:
         result = await db.execute(
             select(Message)
             .options(selectinload(Message.council_responses))
-            .where(Message.conversation_id == conversation.id)
+            .where(
+                and_(
+                    Message.conversation_id == conversation.id,
+                    Message.is_deleted == False  # Only non-deleted messages
+                )
+            )
             .order_by(desc(Message.created_at))
             .limit(limit)
             .offset(offset)
@@ -163,7 +187,7 @@ class ConversationService:
         
         # Convert to response format
         history = []
-        for message in reversed(messages):  # Reverse to get chronological order
+        for message in reversed(messages):  # Reverse for chronological order
             msg_data = {
                 "id": message.id,
                 "type": message.message_type,
@@ -195,7 +219,7 @@ class ConversationService:
             history.append(msg_data)
         
         return history
-    
+
     async def get_recent_context(
         self,
         db: AsyncSession,
@@ -229,7 +253,8 @@ class ConversationService:
             .where(
                 and_(
                     Message.conversation_id == conversation.id,
-                    Message.created_at >= cutoff_time
+                    Message.created_at >= cutoff_time,
+                    Message.is_deleted == False  # Only non-deleted messages
                 )
             )
             .order_by(desc(Message.created_at))
@@ -238,7 +263,7 @@ class ConversationService:
         
         messages = result.scalars().all()
         
-        # Convert to context format
+        # Convert to context format for AI
         context = []
         for message in reversed(messages):
             if message.message_type == "user":
@@ -257,7 +282,7 @@ class ConversationService:
                 })
         
         return context
-    
+
     async def search_conversations(
         self,
         db: AsyncSession,
@@ -266,13 +291,16 @@ class ConversationService:
         channel_type: Optional[str] = None,
         limit: int = 20
     ) -> List[Dict]:
-        """Search through conversation history"""
+        """Search through conversation history globally"""
         
-        # Build search conditions
-        conditions = [Message.content.contains(query)]
+        # Build search conditions (case-insensitive LIKE for SQLite)
+        conditions = [
+            func.lower(Message.content).like(f"%{query.lower()}%"),
+            Message.is_deleted == False  # Only search non-deleted messages
+        ]
         
+        # Optional channel filter
         if channel_id and channel_type:
-            # Add conversation filter
             conv_result = await db.execute(
                 select(Conversation.id).where(
                     and_(
@@ -296,41 +324,34 @@ class ConversationService:
         
         messages = result.scalars().all()
         
-        # Format results with all fields expected by frontend
+        # Format search results
         results = []
         for message in messages:
-            # Create snippet by truncating content
+            # Create snippet with highlighting
             content = message.content or ""
             snippet = content[:150] + "..." if len(content) > 150 else content
             
-            # Highlight search term in snippet (simple approach)
+            # Highlight search term (simple approach)
             if query.lower() in snippet.lower():
                 query_start = snippet.lower().find(query.lower())
                 query_end = query_start + len(query)
-                highlighted_snippet = (
+                snippet = (
                     snippet[:query_start] + 
                     f"**{snippet[query_start:query_end]}**" + 
                     snippet[query_end:]
                 )
-                snippet = highlighted_snippet
             
-            # Determine sender based on message type
-            sender = ""
-            if message.message_type == "user":
-                sender = "You"
-            elif message.message_type == "council":
-                sender = "Council"
-            elif message.sender:
+            # Determine sender
+            sender = "You" if message.message_type == "user" else "Council"
+            if message.sender:
                 sender = message.sender
             
-            # Get channel name
+            # Create channel name
             channel_name = message.conversation.channel_id
             if message.conversation.channel_type == "dm":
-                # For DMs, extract member name from channel_id like "dm-sarah" -> "Sarah"
                 member_key = message.conversation.channel_id.replace("dm-", "")
-                channel_name = member_key.title()  # Simple capitalization
+                channel_name = member_key.title()
             else:
-                # For channels, use the channel_id as name
                 channel_name = f"# {message.conversation.channel_id}"
             
             results.append({
@@ -346,16 +367,23 @@ class ConversationService:
             })
         
         return results
-    
-    def _parse_confidence_score(self, confidence_level: Optional[str]) -> Optional[float]:
+
+    def _parse_confidence_score(self, confidence_level) -> Optional[float]:
         """Convert confidence level string to numeric score"""
         if not confidence_level:
             return None
         
-        confidence_map = {
-            "high": 0.8,
-            "medium": 0.6,
-            "low": 0.4
-        }
+        # If it's already a number, return it
+        if isinstance(confidence_level, (int, float)):
+            return float(confidence_level)
         
-        return confidence_map.get(confidence_level.lower(), 0.5) 
+        # If it's a string, map to numeric value
+        if isinstance(confidence_level, str):
+            confidence_map = {
+                "high": 0.8,
+                "medium": 0.6,
+                "low": 0.4
+            }
+            return confidence_map.get(confidence_level.lower(), 0.5)
+        
+        return 0.5 

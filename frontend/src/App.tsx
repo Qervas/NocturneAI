@@ -1,15 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Crown, Brain, Users, Zap, Hash, MessageCircle, Clock, Search, Terminal } from 'lucide-react';
+import { Send, Crown, Users, Zap, Hash, MessageCircle, Search, Terminal } from 'lucide-react';
 import { 
   ChatMessage, 
   IntelligenceResponse, 
-  WebSocketMessage, 
-  ConnectionState,
-  COUNCIL_MEMBERS,
-  CouncilMemberKey 
+  ConnectionState
 } from './types/council';
 import { CHANNELS, DIRECT_MESSAGES, ActiveView } from './types/channels';
-import { INTERACTION_MODES } from './types/interaction';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import ChannelSwitchIndicator from './components/ChannelSwitchIndicator';
@@ -39,7 +35,7 @@ const App: React.FC = () => {
   const [inputMessage, setInputMessage] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [connectionState, setConnectionState] = useState<ConnectionState>({
-    status: 'disconnected',
+    status: 'connecting',
     reconnectAttempts: 0
   });
   const [activeView, setActiveView] = useState<ActiveView>(() => {
@@ -54,9 +50,9 @@ const App: React.FC = () => {
     }
     // Default to general channel
     return {
-      type: 'channel',
-      id: 'general',
-      name: '# general'
+    type: 'channel',
+    id: 'general',
+    name: '# general'
     };
   });
   const [previousView, setPreviousView] = useState<ActiveView | undefined>(undefined);
@@ -73,8 +69,49 @@ const App: React.FC = () => {
   const [messageToDelete, setMessageToDelete] = useState<ChatMessage | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   
-  const wsRef = useRef<WebSocket | null>(null);
+  // WebSocket removed - using REST API only
   
+  // Add draft auto-save functionality
+  const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
+
+  // Load saved drafts from localStorage on app start
+  useEffect(() => {
+    const savedDrafts = localStorage.getItem('messageDrafts');
+    if (savedDrafts) {
+      try {
+        setMessageDrafts(JSON.parse(savedDrafts));
+      } catch (error) {
+        console.error('Failed to load saved drafts:', error);
+      }
+    }
+  }, []);
+
+  // Save draft when input changes
+  useEffect(() => {
+    const currentChannelKey = getChannelKey(activeView.type, activeView.id);
+    if (inputMessage.trim()) {
+      const newDrafts = { ...messageDrafts, [currentChannelKey]: inputMessage };
+      setMessageDrafts(newDrafts);
+      localStorage.setItem('messageDrafts', JSON.stringify(newDrafts));
+    } else if (messageDrafts[currentChannelKey]) {
+      const newDrafts = { ...messageDrafts };
+      delete newDrafts[currentChannelKey];
+      setMessageDrafts(newDrafts);
+      localStorage.setItem('messageDrafts', JSON.stringify(newDrafts));
+    }
+  }, [inputMessage, activeView, messageDrafts]);
+
+  // Restore draft when switching channels
+  useEffect(() => {
+    const currentChannelKey = getChannelKey(activeView.type, activeView.id);
+    const savedDraft = messageDrafts[currentChannelKey];
+    if (savedDraft && savedDraft !== inputMessage) {
+      setInputMessage(savedDraft);
+    } else if (!savedDraft && inputMessage) {
+      setInputMessage('');
+    }
+  }, [activeView]);
+
   // Debug logging functions
   const addDebugLog = (level: DebugLogEntry['level'], source: string, message: string) => {
     const logEntry: DebugLogEntry = {
@@ -141,9 +178,12 @@ const App: React.FC = () => {
       // Only load if we don't have messages for this channel
       if (!channelMessages[channelKey] || channelMessages[channelKey].length === 0) {
         try {
-          const response = await fetch(
-            `/api/v1/conversations/${activeView.type}/${activeView.id}/history?limit=20`
-          );
+          addDebugLog('info', 'History', `📚 LOADING HISTORY for ${channelKey}`);
+          
+          // Use unified chat API endpoint
+          const response = await fetch(`/api/v1/channels/${activeView.type}/${activeView.id}/messages?limit=20`);
+          
+          addDebugLog('info', 'History', `📡 History API response: ${response.status} ${response.statusText}`);
           
           if (response.ok) {
             const data = await response.json();
@@ -163,29 +203,33 @@ const App: React.FC = () => {
                 [channelKey]: historyMessages
               }));
               
-              console.log(`Auto-loaded ${historyMessages.length} messages for ${channelKey}`);
+              addDebugLog('info', 'History', `✅ LOADED ${historyMessages.length} messages for ${channelKey}`);
+              const messageIds = historyMessages.map(m => m.id.substring(0, 8)).join(', ');
+              addDebugLog('debug', 'History', `📋 Message IDs: ${messageIds}`);
+            } else {
+              addDebugLog('info', 'History', `📭 No messages found for ${channelKey}`);
             }
+          } else {
+            addDebugLog('error', 'History', `❌ Failed to load history: ${response.status} ${response.statusText}`);
           }
         } catch (error) {
-          console.error('Failed to auto-load conversation history:', error);
+          addDebugLog('error', 'History', `🚨 History loading error: ${error}`);
         }
+      } else {
+        addDebugLog('debug', 'History', `💾 Using cached messages for ${channelKey} (${channelMessages[channelKey].length} messages)`);
       }
     };
 
     loadChannelHistory();
   }, [activeView]);
 
-  // Initialize WebSocket connection and load all conversations on startup
+        // Initialize app and load all conversations on startup
   useEffect(() => {
     cleanupOldSystemMessages();
-    connectWebSocket();
     loadAllConversationsOnStartup();
+    checkBackendHealth(); // Check if backend is available
     
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
+    // No WebSocket cleanup needed
   }, []);
 
   // Clean up old system messages from localStorage
@@ -281,104 +325,31 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showSearch]);
 
-  const connectWebSocket = () => {
-    setConnectionState(prev => ({ ...prev, status: 'connecting' }));
-    
-    const wsUrl = (import.meta as any).env?.VITE_WS_URL || 'ws://localhost:8000/ws/council';
-    wsRef.current = new WebSocket(wsUrl);
-
-    wsRef.current.onopen = () => {
-      setConnectionState({
-        status: 'connected',
-        lastConnected: new Date().toISOString(),
-        reconnectAttempts: 0
-      });
-      
-      addDebugLog('info', 'WebSocket', 'Connected to Intelligence Empire Council');
-    };
-
-    wsRef.current.onmessage = (event) => {
-      try {
-        const message: WebSocketMessage = JSON.parse(event.data);
-        handleWebSocketMessage(message);
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
+  // WebSocket removed - using REST API only
+  const checkBackendHealth = async () => {
+    try {
+      const response = await fetch('/api/v1/health');
+      if (response.ok) {
+        setConnectionState({
+          status: 'connected',
+          lastConnected: new Date().toISOString(),
+          reconnectAttempts: 0
+        });
+        addDebugLog('info', 'Health', 'Backend API is healthy');
+      } else {
+        throw new Error(`Health check failed: ${response.status}`);
       }
-    };
-
-    wsRef.current.onclose = () => {
+    } catch (error) {
       setConnectionState(prev => ({ 
         ...prev, 
-        status: 'disconnected',
+        status: 'error',
         reconnectAttempts: prev.reconnectAttempts + 1
       }));
-      
-      addDebugLog('warning', 'WebSocket', 'Disconnected from Intelligence Empire Council');
-      
-      // Attempt to reconnect after 3 seconds
-      setTimeout(() => {
-        if (connectionState.reconnectAttempts < 5) {
-          addDebugLog('info', 'WebSocket', 'Attempting to reconnect...');
-          connectWebSocket();
-        } else {
-          addDebugLog('error', 'WebSocket', 'Max reconnection attempts reached');
-        }
-      }, 3000);
-    };
-
-    wsRef.current.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setConnectionState(prev => ({ ...prev, status: 'error' }));
-    };
-  };
-
-  const handleWebSocketMessage = (message: WebSocketMessage) => {
-    switch (message.type) {
-      case 'connection':
-        addDebugLog('info', 'WebSocket', message.message || 'Connected to council');
-        break;
-        
-      case 'processing':
-        setIsProcessing(true);
-        addDebugLog('debug', 'AI', 'Council is analyzing query...');
-        break;
-        
-      case 'response':
-        setIsProcessing(false);
-        if (message.data) {
-          // Update the user message with the database ID if available
-          if ((message.data as any).user_message_id) {
-            const targetChannelKey = getTargetChannelKey(message.data);
-            setChannelMessages(prev => {
-              const updated = { ...prev };
-              // Find the most recent user message in the target channel and update its ID
-              if (updated[targetChannelKey]) {
-                const messages = updated[targetChannelKey];
-                for (let i = messages.length - 1; i >= 0; i--) {
-                  if (messages[i].type === 'user' && messages[i].content === (message.data as any).query) {
-                    messages[i] = { ...messages[i], id: (message.data as any).user_message_id };
-                    break;
-                  }
-                }
-              }
-              return updated;
-            });
-            addDebugLog('info', 'Messages', `WebSocket: Updated user message ID to database ID: ${(message.data as any).user_message_id}`);
-          }
-          
-          // Route response to correct channel
-          const targetChannelKey = getTargetChannelKey(message.data);
-          addDebugLog('debug', 'Routing', `Response routed to: ${targetChannelKey}`);
-          addCouncilResponseToChannel(message.data, targetChannelKey);
-        }
-        break;
-        
-      case 'error':
-        setIsProcessing(false);
-        addDebugLog('error', 'WebSocket', message.message || 'Unknown error');
-        break;
+      addDebugLog('error', 'Health', `Backend health check failed: ${error}`);
     }
   };
+
+  // WebSocket message handling removed - using direct REST API calls
 
   // Get target channel key from response data
   const getTargetChannelKey = (response: IntelligenceResponse): string => {
@@ -391,155 +362,6 @@ const App: React.FC = () => {
   };
 
   // System messages now go to debug console instead of chat
-
-  const addCouncilResponse = (response: IntelligenceResponse) => {
-    const councilMessage: ChatMessage = {
-      id: Date.now().toString(),
-      type: 'council',
-      content: response.synthesis,
-      timestamp: response.timestamp,
-      council_response: response
-    };
-    addMessageToChannel(councilMessage);
-  };
-
-  const sendMessage = async () => {
-    if (!inputMessage.trim() || isProcessing) return;
-
-    // Add user message to current channel (with temporary ID that will be updated)
-    const tempMessageId = Date.now().toString();
-    const userMessage: ChatMessage = {
-      id: tempMessageId,
-      type: 'user',
-      content: inputMessage,
-      timestamp: new Date().toISOString(),
-      reply_to: replyingTo ? {
-        message_id: replyingTo.id,
-        content: replyingTo.content,
-        sender: replyingTo.type === 'user' ? 'You' : replyingTo.sender || 'Council',
-        timestamp: replyingTo.timestamp
-      } : undefined
-    };
-    addMessageToChannel(userMessage);
-    addDebugLog('debug', 'Messages', `Added user message with temporary ID: ${tempMessageId}`);
-    
-    addDebugLog('debug', 'Chat', `Sending ${replyingTo ? 'reply' : 'message'} to ${activeView.type}/${activeView.id}`);
-    
-    // Clear reply state
-    if (replyingTo) {
-      setReplyingTo(null);
-    }
-
-    // Determine target members based on active view
-    let requestedMembers: string[] | undefined;
-    
-    if (activeView.type === 'channel') {
-      const channel = CHANNELS[activeView.id];
-      if (channel) {
-        requestedMembers = channel.primaryMembers;
-      }
-    } else if (activeView.type === 'dm') {
-      // For DMs, extract member key from DM id
-      const memberKey = activeView.id.replace('dm-', '');
-      requestedMembers = [memberKey];
-    }
-
-    // Send via WebSocket if connected
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const wsMessage: any = {
-        type: 'query',
-        message: inputMessage,
-        requested_members: requestedMembers,
-        channel: activeView.id,
-        interaction_mode: interactionMode,
-        timestamp: new Date().toISOString()
-      };
-      
-      // Include reply context if replying to a message
-      if (replyingTo) {
-        wsMessage.reply_context = {
-          original_message_id: replyingTo.id,
-          original_content: replyingTo.content,
-          original_sender: replyingTo.type === 'user' ? 'User' : replyingTo.sender || 'Council',
-          original_timestamp: replyingTo.timestamp
-        };
-        addDebugLog('debug', 'Chat', `Including reply context for message ${replyingTo.id}`);
-      }
-      
-      wsRef.current.send(JSON.stringify(wsMessage));
-    } else {
-      // Fallback to REST API
-      await sendRestQuery(inputMessage, requestedMembers);
-    }
-
-    setInputMessage('');
-    setIsProcessing(true);
-  };
-
-  const sendRestQuery = async (message: string, requestedMembers?: string[]) => {
-    try {
-      const requestBody: any = { 
-        message,
-        interaction_mode: interactionMode,
-        channel_id: activeView.id,  // Include channel context
-        requested_members: requestedMembers
-      };
-      
-      // Include reply context if replying to a message
-      if (replyingTo) {
-        requestBody.reply_context = {
-          original_message_id: replyingTo.id,
-          original_content: replyingTo.content,
-          original_sender: replyingTo.type === 'user' ? 'User' : replyingTo.sender || 'Council',
-          original_timestamp: replyingTo.timestamp
-        };
-        addDebugLog('debug', 'Chat', `REST API including reply context for message ${replyingTo.id}`);
-      }
-
-      const response = await fetch('/api/v1/council/query', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      const data = await response.json();
-      
-      if (data.success && data.response) {
-        // Update the user message with the database ID
-        if (data.response.user_message_id) {
-          const currentChannelKey = getChannelKey(activeView.type, activeView.id);
-          setChannelMessages(prev => {
-            const updated = { ...prev };
-            // Find the most recent user message in the current channel and update its ID
-            if (updated[currentChannelKey]) {
-              const messages = updated[currentChannelKey];
-              for (let i = messages.length - 1; i >= 0; i--) {
-                if (messages[i].type === 'user' && messages[i].content === message) {
-                  messages[i] = { ...messages[i], id: data.response.user_message_id };
-                  break;
-                }
-              }
-            }
-            return updated;
-          });
-          addDebugLog('info', 'Messages', `Updated user message ID to database ID: ${data.response.user_message_id}`);
-        }
-        
-        // Route response to correct channel with database ID
-        const targetChannelKey = getTargetChannelKey(data.response);
-        console.log(`REST response routing to: ${targetChannelKey}`);
-        addCouncilResponseToChannel(data.response, targetChannelKey);
-      } else {
-        addDebugLog('error', 'API', data.error || 'Unknown error');
-      }
-    } catch (error) {
-      addDebugLog('error', 'Network', `API request failed: ${error}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   const addCouncilResponseToChannel = (response: IntelligenceResponse, channelKey?: string) => {
     const councilMessage: ChatMessage = {
@@ -554,6 +376,134 @@ const App: React.FC = () => {
     const targetKey = channelKey || getChannelKey(activeView.type, activeView.id);
     console.log(`Adding council response to: ${targetKey}`);
     addMessageToChannel(councilMessage, targetKey);
+  };
+
+  const sendMessage = async () => {
+    if (!inputMessage.trim() || isProcessing) return;
+
+    const messageContent = inputMessage;
+    
+    // Clear input immediately (modern chat style)
+    setInputMessage('');
+    setReplyingTo(null);
+    
+    // Clear draft
+    const currentChannelKey = getChannelKey(activeView.type, activeView.id);
+    const newDrafts = { ...messageDrafts };
+    delete newDrafts[currentChannelKey];
+    setMessageDrafts(newDrafts);
+    localStorage.setItem('messageDrafts', JSON.stringify(newDrafts));
+
+    addDebugLog('info', 'Messages', `📤 SENDING MESSAGE: "${messageContent}" to ${activeView.type}:${activeView.id}`);
+    
+    try {
+      // Create message using unified chat API
+      const response = await fetch(`/api/v1/messages/${activeView.type}/${activeView.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: messageContent,
+          message_type: 'user',
+          interaction_mode: interactionMode,
+          metadata: replyingTo ? {
+            reply_to: {
+              message_id: replyingTo.id,
+              content: replyingTo.content,
+              sender: replyingTo.type === 'user' ? 'You' : replyingTo.sender || 'Council',
+              timestamp: replyingTo.timestamp
+            }
+          } : {}
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success && data.message) {
+        // Add message to UI with real database ID
+        const userMessage: ChatMessage = {
+          id: data.message.id,
+          type: 'user',
+          content: data.message.content,
+          timestamp: data.message.timestamp,
+          reply_to: replyingTo ? {
+            message_id: replyingTo.id,
+            content: replyingTo.content,
+            sender: replyingTo.type === 'user' ? 'You' : replyingTo.sender || 'Council',
+            timestamp: replyingTo.timestamp
+          } : undefined
+        };
+        
+        addMessageToChannel(userMessage);
+        addDebugLog('info', 'Messages', `✅ MESSAGE SAVED: ${data.message.id} - "${messageContent}"`);
+        
+        // Trigger AI response if needed
+        if (activeView.type === 'dm' || (activeView.type === 'channel' && activeView.id !== 'general')) {
+          setIsProcessing(true);
+          await triggerAIResponse(messageContent, data.message.id);
+        }
+        
+      } else {
+        addDebugLog('error', 'Messages', `❌ MESSAGE SAVE FAILED: ${data.error || 'Unknown error'}`);
+        throw new Error(data.error || 'Failed to save message');
+      }
+      
+    } catch (error) {
+      addDebugLog('error', 'Messages', `🚨 MESSAGE SEND ERROR: ${error}`);
+      // Restore input on error
+      setInputMessage(messageContent);
+    }
+  };
+
+  // Clean AI response trigger function
+  const triggerAIResponse = async (messageContent: string, messageId: string) => {
+    try {
+      // Determine target members based on active view
+      let requestedMembers: string[] | undefined;
+      
+      if (activeView.type === 'channel') {
+        const channel = CHANNELS[activeView.id];
+        if (channel) {
+          requestedMembers = channel.primaryMembers;
+        }
+      } else if (activeView.type === 'dm') {
+        // For DMs, extract member key from DM id
+        const memberKey = activeView.id.replace('dm-', '');
+        requestedMembers = [memberKey];
+      }
+
+      addDebugLog('info', 'AI', `🤖 TRIGGERING AI RESPONSE for message ${messageId}`);
+
+      const queryData = {
+        message: messageContent,
+        requested_members: requestedMembers,
+        interaction_mode: interactionMode,
+        channel_id: activeView.id,
+        channel_type: activeView.type,
+        user_message_id: messageId
+      };
+
+      const response = await fetch('/api/v1/council/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(queryData),
+      });
+
+      const data = await response.json();
+      
+      if (data.success && data.response) {
+        addDebugLog('info', 'AI', `✅ AI RESPONSE RECEIVED: ${data.response.council_responses?.length || 0} members responded`);
+        
+        // Add council response to channel
+        const targetChannelKey = getTargetChannelKey(data.response);
+        addCouncilResponseToChannel(data.response, targetChannelKey);
+      } else {
+        addDebugLog('error', 'AI', `❌ AI RESPONSE FAILED: ${data.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      addDebugLog('error', 'AI', `🚨 AI TRIGGER ERROR: ${error}`);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Handle loading history from ConversationHistory component
@@ -584,6 +534,11 @@ const App: React.FC = () => {
     
     handleViewChange(newView);
     
+    // After switching channels, verify the message still exists (not deleted)
+    // The channel history will automatically load and filter out deleted messages
+    // If the message was deleted, it won't appear in the loaded history
+    addDebugLog('info', 'Navigation', `Navigated to ${channelType}/${channelId} for message ${messageId}`);
+    
     // TODO: Scroll to specific message when message highlighting is implemented
     // For now, just switching to the channel is sufficient
   };
@@ -612,7 +567,7 @@ const App: React.FC = () => {
     setIsDeleting(true);
     
     try {
-      // Remove message from UI immediately (Discord-style deletion)
+      // Remove message from UI immediately (modern chat style deletion)
       setChannelMessages(prev => {
         const updated = { ...prev };
         Object.keys(updated).forEach(channelKey => {
@@ -624,6 +579,8 @@ const App: React.FC = () => {
       addDebugLog('info', 'Messages', `Message ${messageToDelete.id} removed from UI`);
       
       // Call backend API to delete message
+      addDebugLog('info', 'Messages', `🗑️ CALLING DELETE API for message ${messageToDelete.id}`);
+      
       const response = await fetch(`/api/v1/messages/${messageToDelete.id}`, { 
         method: 'DELETE',
         headers: {
@@ -631,17 +588,22 @@ const App: React.FC = () => {
         }
       });
       
+      addDebugLog('info', 'Messages', `📡 DELETE API response: ${response.status} ${response.statusText}`);
+      
       if (!response.ok) {
         if (response.status === 404) {
           // Message not found in database - likely a temporary message that wasn't saved yet
           // Just keep the UI deletion and log a warning
-          addDebugLog('warning', 'Messages', `Message ${messageToDelete.id} not found in database - treating as temporary message`);
+          addDebugLog('warning', 'Messages', `⚠️ Message ${messageToDelete.id} not found in database - treating as temporary message`);
         } else {
+          const errorText = await response.text();
+          addDebugLog('error', 'Messages', `❌ DELETE API failed: ${response.status} ${response.statusText} - ${errorText}`);
           throw new Error(`Failed to delete message: ${response.statusText}`);
         }
       } else {
         const result = await response.json();
-        addDebugLog('info', 'Messages', `Message deleted successfully: ${result.message}`);
+        addDebugLog('info', 'Messages', `✅ DELETE API succeeded: ${result.message}`);
+        addDebugLog('info', 'Messages', `🔄 Message ${messageToDelete.id} marked as deleted in database`);
       }
       
       // Close modal and reset state (whether backend deletion succeeded or message was temporary)
@@ -650,6 +612,9 @@ const App: React.FC = () => {
       
     } catch (error) {
       // Restore message to UI if backend deletion failed
+      addDebugLog('error', 'Messages', `🚨 DELETE OPERATION FAILED: ${error}`);
+      addDebugLog('warning', 'Messages', `🔄 Restoring message ${messageToDelete.id} to UI since deletion failed`);
+      
       setChannelMessages(prev => {
         const updated = { ...prev };
         Object.keys(updated).forEach(channelKey => {
@@ -665,7 +630,7 @@ const App: React.FC = () => {
         return updated;
       });
       
-      addDebugLog('error', 'Messages', `Failed to delete message, restored to UI: ${error}`);
+      addDebugLog('info', 'Messages', `✅ Message ${messageToDelete.id} restored to UI after failed deletion`);
     } finally {
       setIsDeleting(false);
     }
@@ -688,10 +653,10 @@ const App: React.FC = () => {
   const handleForwardToChannel = (targetChannelType: string, targetChannelId: string, message: ChatMessage) => {
     if (!message) return;
     
-    // Create forwarded message
+    // Create forwarded message with 'forwarded' type to prevent AI responses
     const forwardedMessage: ChatMessage = {
       id: Date.now().toString() + '_forwarded',
-      type: 'user',
+      type: 'forwarded', // Changed from 'user' to 'forwarded' to prevent AI responses
       content: message.content,
       timestamp: new Date().toISOString(),
       forwarded_from: {
@@ -802,7 +767,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Discord/Slack Style Layout */}
+      {/* Modern Chat Layout */}
       <div className="flex h-[calc(100vh-80px)]">
         {/* Sidebar */}
                  <Sidebar 
@@ -836,15 +801,7 @@ const App: React.FC = () => {
             </div>
             
             <div className="ml-auto flex items-center space-x-4">
-              {/* History Toggle Button */}
-              <button
-                onClick={() => setShowHistory(!showHistory)}
-                className="flex items-center space-x-2 px-3 py-1 bg-slate-700/50 hover:bg-slate-600 rounded-lg transition-colors"
-                title="Toggle Conversation History"
-              >
-                <Clock className="h-4 w-4 text-slate-300" />
-                <span className="text-xs text-slate-300">History</span>
-              </button>
+              {/* Removed redundant History Toggle Button - user can use main search instead */}
               
               <div className={`flex items-center space-x-2 ${getConnectionStatusColor()}`}>
                 <Zap className="h-3 w-3" />
@@ -856,11 +813,11 @@ const App: React.FC = () => {
           </div>
 
           {/* Chat Messages */}
-          <ChatInterface
-            messages={getCurrentMessages()}
-            isProcessing={isProcessing}
-            activeView={activeView}
-            interactionMode={interactionMode}
+                        <ChatInterface
+              messages={getCurrentMessages()}
+              isProcessing={isProcessing}
+              activeView={activeView}
+              interactionMode={interactionMode}
             onReply={handleReplyToMessage}
             onForward={handleForwardMessage}
             onDelete={handleDeleteMessage}

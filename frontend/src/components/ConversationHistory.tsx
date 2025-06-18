@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Clock, MessageCircle, Hash, Users, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Clock, MessageCircle, Hash, ChevronUp } from 'lucide-react';
 import { ChatMessage } from '../types/council';
 import { ActiveView } from '../types/channels';
 
@@ -43,20 +43,32 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
   const [searchLoading, setSearchLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [totalMessages, setTotalMessages] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Load conversation history when view changes
   useEffect(() => {
     if (isVisible) {
-      loadConversationHistory();
+      // Reset pagination when switching channels
+      setCurrentPage(0);
+      setHasMore(true);
+      setHistoryMessages([]);
+      loadConversationHistory(0, true);
     }
   }, [activeView, isVisible]);
 
-  const loadConversationHistory = async (page = 0) => {
-    if (loading) return;
+  const loadConversationHistory = async (page = 0, isReset = false) => {
+    if (loading || (!hasMore && page > 0)) return;
     
-    setLoading(true);
+    // Set appropriate loading state
+    if (page === 0 || isReset) {
+      setLoading(true);
+    } else {
+      setIsLoadingMore(true);
+    }
+    
     try {
-      const limit = 20;
+      const limit = 25; // Increased for better UX
       const offset = page * limit;
       
       const response = await fetch(
@@ -65,22 +77,27 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
       
       if (response.ok) {
         const data = await response.json();
+        const newMessages = data.messages || [];
         
-        if (page === 0) {
-          setHistoryMessages(data.messages || []);
+        if (isReset || page === 0) {
+          setHistoryMessages(newMessages);
         } else {
-          setHistoryMessages(prev => [...prev, ...(data.messages || [])]);
+          setHistoryMessages(prev => [...prev, ...newMessages]);
         }
         
-        setHasMore(data.messages?.length === limit);
+        setHasMore(newMessages.length === limit);
         setCurrentPage(page);
+        setTotalMessages(data.total_messages || historyMessages.length + newMessages.length);
+        
+        console.log(`📜 Loaded ${newMessages.length} messages (page ${page}) for ${activeView.type}:${activeView.id}`);
       } else {
-        console.error('Failed to load conversation history');
+        console.error('Failed to load conversation history:', response.status);
       }
     } catch (error) {
       console.error('Error loading conversation history:', error);
     } finally {
       setLoading(false);
+      setIsLoadingMore(false);
     }
   };
 
@@ -96,19 +113,22 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
         q: searchQuery,
         channel_id: activeView.id,
         channel_type: activeView.type,
-        limit: '10'
+        limit: '20'
       });
 
       const response = await fetch(`/api/v1/conversations/search?${params}`);
       
       if (response.ok) {
         const data = await response.json();
+        console.log('Search response:', data); // Debug log
         setSearchResults(data.results || []);
       } else {
-        console.error('Failed to search conversations');
+        console.error('Failed to search conversations:', response.status, response.statusText);
+        setSearchResults([]);
       }
     } catch (error) {
       console.error('Error searching conversations:', error);
+      setSearchResults([]);
     } finally {
       setSearchLoading(false);
     }
@@ -132,49 +152,63 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
   };
 
   const loadMoreHistory = () => {
-    if (!loading && hasMore) {
-      loadConversationHistory(currentPage + 1);
+    if (!isLoadingMore && hasMore) {
+      loadConversationHistory(currentPage + 1, false);
     }
   };
 
-  const convertToMessageFormat = (historyMsg: HistoryMessage): ChatMessage => {
-    const baseMessage: ChatMessage = {
-      id: historyMsg.id,
-      type: historyMsg.type,
-      content: historyMsg.content,
-      timestamp: historyMsg.timestamp,
-      sender: historyMsg.sender
-    };
-
-    if (historyMsg.council_response) {
-      baseMessage.council_response = {
-        query: historyMsg.content,
-        council_responses: historyMsg.council_response.council_responses.map(cr => ({
-          member_name: cr.member_name,
-          role: cr.role,
-          message: cr.message,
-          confidence_level: parseFloat(cr.confidence_level) || 0.8,
-          reasoning: cr.reasoning,
-          suggested_actions: cr.suggested_actions,
-          timestamp: cr.timestamp
-        })),
-        synthesis: '', // Will be filled from the response
-        recommended_actions: [],
-        confidence_score: 0.8,
-        processing_time: 0,
-        timestamp: historyMsg.timestamp,
-        response_type: activeView.type === 'dm' ? 'individual' : 'council',
-        channel_id: activeView.id,
-        channel_type: activeView.type
-      };
+  // Auto-load more when scrolling near bottom
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    
+    if (isNearBottom && hasMore && !isLoadingMore && !loading) {
+      loadMoreHistory();
     }
-
-    return baseMessage;
   };
 
   const loadHistoryIntoChat = () => {
-    const chatMessages = historyMessages.map(convertToMessageFormat);
-    onLoadHistory(chatMessages);
+    if (historyMessages.length > 0) {
+      // Convert to ChatMessage format with proper IntelligenceResponse structure
+      const chatMessages: ChatMessage[] = historyMessages.map(msg => {
+        const baseMessage: ChatMessage = {
+          id: msg.id,
+          type: msg.type as 'user' | 'council' | 'system' | 'forwarded',
+          content: msg.content,
+          timestamp: msg.timestamp,
+          sender: msg.sender
+        };
+
+        // Convert council_response if it exists
+        if (msg.council_response && msg.council_response.council_responses) {
+          baseMessage.council_response = {
+            query: msg.content,
+            council_responses: msg.council_response.council_responses.map(cr => ({
+              member_name: cr.member_name,
+              role: { value: cr.role } as any, // Convert string to enum-like object
+              message: cr.message,
+              confidence_level: parseFloat(cr.confidence_level) || 0.8,
+              reasoning: cr.reasoning,
+              suggested_actions: cr.suggested_actions,
+              timestamp: cr.timestamp
+            })),
+            synthesis: msg.content, // Use message content as synthesis for history
+            recommended_actions: [],
+            confidence_score: 0.8,
+            processing_time: 0,
+            timestamp: msg.timestamp,
+            response_type: activeView.type === 'dm' ? 'individual' : 'council',
+            channel_id: activeView.id,
+            channel_type: activeView.type
+          };
+        }
+
+        return baseMessage;
+      });
+      
+      onLoadHistory(chatMessages);
+      console.log(`🔄 Loaded ${chatMessages.length} messages into active chat`);
+    }
   };
 
   if (!isVisible) {
@@ -229,7 +263,7 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
+      <div className="flex-1 overflow-y-auto custom-scrollbar" onScroll={handleScroll}>
         {/* Search Results */}
         {searchQuery && searchResults.length > 0 && (
           <div className="p-3 border-b border-slate-600">
@@ -251,7 +285,8 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
         <div className="p-3">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-medium text-slate-300">
-              Recent Messages ({historyMessages.length})
+              Recent Messages ({historyMessages.length}
+              {totalMessages > historyMessages.length && ` of ${totalMessages}`})
             </h4>
             {historyMessages.length > 0 && (
               <button
@@ -266,60 +301,64 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
           {loading && currentPage === 0 ? (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-400"></div>
+              <span className="ml-2 text-sm text-slate-400">Loading messages...</span>
             </div>
-          ) : historyMessages.length === 0 ? (
-            <div className="text-center py-8 text-slate-400">
-              <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No messages found</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
+          ) : historyMessages.length > 0 ? (
+            <div className="space-y-2">
               {historyMessages.map((message) => (
-                <div key={message.id} className="bg-slate-700/30 rounded-lg p-3">
-                  <div className="flex items-start justify-between mb-1">
-                    <span className="text-sm font-medium text-white">
-                      {message.type === 'user' ? 'You' : 
-                       message.type === 'council' ? 'Council' : 'System'}
+                <div
+                  key={message.id}
+                  className="bg-slate-700/50 rounded-lg p-3 hover:bg-slate-700/70 transition-colors"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-slate-300">
+                      {message.type === 'user' ? 'You' : message.sender || 'Council'}
                     </span>
-                    <span className="text-xs text-slate-400">
+                    <span className="text-xs text-slate-500">
                       {formatTimestamp(message.timestamp)}
                     </span>
                   </div>
-                  
-                  <p className="text-sm text-slate-200 line-clamp-3">
-                    {message.content}
-                  </p>
-                  
-                  {message.council_response && (
-                    <div className="mt-2 pt-2 border-t border-slate-600">
-                      <div className="flex items-center space-x-1">
-                        <Users className="h-3 w-3 text-purple-400" />
-                        <span className="text-xs text-purple-400">
-                          {message.council_response.council_responses.length} members responded
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  
+                  <p className="text-sm text-slate-200 line-clamp-3">{message.content}</p>
                   {message.interaction_mode && (
-                    <div className="mt-1">
-                      <span className="inline-block text-xs bg-slate-600 text-slate-300 px-2 py-1 rounded">
-                        {message.interaction_mode.replace('_', ' ')}
-                      </span>
-                    </div>
+                    <span className="inline-block text-xs bg-slate-600 text-slate-300 px-1.5 py-0.5 rounded mt-1">
+                      {message.interaction_mode.replace('_', ' ')}
+                    </span>
                   )}
                 </div>
               ))}
 
+              {/* Load More Button / Loading Indicator */}
               {hasMore && (
-                <button
-                  onClick={loadMoreHistory}
-                  disabled={loading}
-                  className="w-full py-2 text-sm text-purple-400 hover:text-purple-300 disabled:opacity-50 transition-colors"
-                >
-                  {loading ? 'Loading...' : 'Load More'}
-                </button>
+                <div className="flex justify-center pt-2">
+                  {isLoadingMore ? (
+                    <div className="flex items-center py-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-400"></div>
+                      <span className="ml-2 text-xs text-slate-400">Loading more...</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={loadMoreHistory}
+                      className="w-full py-2 text-sm text-purple-400 hover:text-purple-300 hover:bg-slate-700/30 rounded transition-colors"
+                    >
+                      Load More Messages
+                    </button>
+                  )}
+                </div>
               )}
+
+              {!hasMore && historyMessages.length > 0 && (
+                <div className="text-center py-2">
+                  <span className="text-xs text-slate-500">
+                    📜 All messages loaded ({historyMessages.length} total)
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-slate-500">
+              <MessageCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No conversation history yet</p>
+              <p className="text-xs">Start chatting to build your history!</p>
             </div>
           )}
         </div>

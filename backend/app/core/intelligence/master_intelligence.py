@@ -148,38 +148,289 @@ Remember: This is a personal conversation between colleagues, not a formal prese
             original_content = reply_info.get("original_content", "")[:100]  # Truncate for brevity
             reply_context = f" (replying to {original_sender}: '{original_content}...')"
         
-        # Individual response patterns by member and mode
-        reply_greeting = "I see what you mean about that!" if is_reply else "Great to chat with you directly."
-        reply_followup = "That's a great point to build on!" if is_reply else "I've been thinking about similar challenges lately."
-        
+        # Enhanced individual response patterns by member and mode with DISTINCTIVE formatting
         individual_responses = {
             'Sarah': {
-                'casual_chat': f"Hey! 👋 {reply_greeting} About {user_input}{reply_context} - this really resonates with me from a product perspective. {reply_followup} What's driving this question for you right now?",
-                'strategic_brief': f"Thanks for bringing this to me directly! Looking at {user_input} through my product lens, I see some key strategic considerations we should explore. Let me break down my thinking...",
-                'quick_consult': f"Perfect timing to ask me about this! For {user_input}, my quick take is this needs a user-first approach. Here's what I'd prioritize...",
-                'brainstorm': f"Ooh, I love brainstorming about {user_input}! Let me think out loud here... What if we approached this completely differently?",
-                'formal_analysis': f"I'm glad you came to me for a deep dive on {user_input}. Let me give you my full product strategy analysis..."
+                'casual_chat': f"Hey! 👋 Great to chat with you directly. About {user_input}{reply_context} - this really resonates with me from a product perspective. What's driving this question for you right now?",
+                
+                'strategic_brief': f"""**Strategic Product Analysis** 📋
+
+Thanks for bringing this to me directly! Looking at **{user_input}** through my product lens:
+
+**Strategic Considerations:**
+• Market positioning and competitive advantage
+• User value proposition alignment  
+• Technical feasibility vs. business impact
+• Resource allocation and timeline priorities
+
+**My Take:** This needs a user-first approach with data-driven validation. Let me break down the key strategic elements we should explore...""",
+
+                'quick_consult': f"""⚡ **Quick Product Consult**
+
+**Question:** {user_input}
+
+**My immediate take:** This needs a user-first approach. Here's what I'd prioritize:
+
+1. **User research** - Validate the core need
+2. **MVP scoping** - Define minimum viable features  
+3. **Success metrics** - How do we measure impact?
+
+**Bottom line:** Focus on user value first, features second.""",
+
+                'brainstorm': f"""🧠 **Product Brainstorm Session**
+
+Ooh, I love brainstorming about **{user_input}**! Let me think out loud here...
+
+**Wild Ideas:**
+• What if we approached this completely differently?
+• Could we solve this with 80% less complexity?
+• What would the "Tesla approach" look like here?
+
+**Creative Angles:**
+- User experience that feels magical
+- Business model that scales effortlessly
+- Technology that enables new possibilities
+
+What's your favorite crazy idea so far?""",
+
+                'formal_analysis': f"""📊 **Comprehensive Product Strategy Analysis**
+
+**Subject:** {user_input}
+
+**Executive Summary:**
+I'm glad you came to me for a deep dive on this. Here's my comprehensive product strategy analysis...
+
+**1. Market Analysis**
+- Current landscape assessment
+- Competitive positioning opportunities
+- User segment identification
+
+**2. Product Strategy**
+- Value proposition framework
+- Feature prioritization matrix
+- Go-to-market considerations
+
+**3. Implementation Roadmap**
+- Phase 1: Foundation and validation
+- Phase 2: Core feature development
+- Phase 3: Scale and optimization
+
+**4. Risk Assessment & Mitigation**
+- Technical risks and solutions
+- Market risks and contingencies
+- Resource risks and alternatives
+
+**Recommendation:** [Detailed strategic guidance follows...]"""
             },
             'Marcus': {
                 'casual_chat': f"Hey there! 😊 Always excited to talk business with you. {user_input} has me thinking about some serious market opportunities. What's your take on the competitive landscape here?",
-                'strategic_brief': f"Great question to bring to me! {user_input} from a business development angle shows some really interesting potential. Let me outline what I'm seeing...",
-                'quick_consult': f"Love that you're thinking about this! For {user_input}, my gut says there's money to be made here. Quick thoughts...",
-                'brainstorm': f"This is exciting! {user_input} could be huge if we play it right. Let me throw some wild ideas at you...",
-                'formal_analysis': f"You've come to the right person for market analysis on {user_input}. Here's my comprehensive assessment..."
+                
+                'strategic_brief': f"""**Business Development Strategy** 💼
+
+Great question to bring to me! **{user_input}** from a business development angle shows some really interesting potential.
+
+**Market Opportunity Assessment:**
+• Total addressable market (TAM) analysis
+• Competitive landscape mapping
+• Revenue model optimization
+• Partnership and channel strategies
+
+**Business Insights:** I see significant monetization potential here if we position this correctly in the market...""",
+
+                'quick_consult': f"""💼 **Business Quick-Hit**
+
+**Opportunity:** {user_input}
+
+**My gut says:** There's money to be made here! Quick thoughts:
+
+• **Revenue potential:** High/Medium/Low and why
+• **Time to market:** Critical success factor
+• **Competitive moat:** How we defend our position
+
+**Action:** Let's validate the business case and move fast on market entry.""",
+
+                'brainstorm': f"""🚀 **Business Ideation**
+
+This is exciting! **{user_input}** could be huge if we play it right.
+
+**Crazy Business Ideas:**
+- What if we made this a platform instead of a product?
+- Could we create a marketplace around this?
+- What about a subscription model with network effects?
+
+**Market Disruption Angles:**
+- Undercut incumbents by 10x cost reduction
+- Create entirely new value chain
+- Turn competitors into customers
+
+Let me throw some wild revenue models at you...""",
+
+                'formal_analysis': f"""📈 **Comprehensive Business Analysis**
+
+**Business Case:** {user_input}
+
+**I. Market Assessment**
+- Industry analysis and growth projections
+- Competitive landscape and positioning
+- Customer segments and buying behaviors
+
+**II. Revenue Model Analysis**
+- Multiple revenue stream evaluation
+- Pricing strategy and optimization
+- Customer lifetime value projections
+
+**III. Go-to-Market Strategy**
+- Channel partner identification
+- Sales and marketing approach
+- Customer acquisition cost analysis
+
+**IV. Financial Projections**
+- 3-year revenue and growth model
+- Investment requirements and ROI
+- Break-even analysis and milestones
+
+**V. Strategic Recommendations**
+[Comprehensive business strategy follows...]"""
             },
             'Elena': {
                 'casual_chat': f"Hi! 🎨 So good to have some focused time to chat. {user_input} immediately makes me think about the user experience. How do you envision people actually interacting with this?",
-                'strategic_brief': f"I love that you brought this UX question directly to me! {user_input} needs a design-first approach. Let me share my perspective...",
-                'quick_consult': f"Perfect design question! For {user_input}, my immediate instinct is we need to prioritize user delight. Here's how I'd approach it...",
-                'brainstorm': f"This is so inspiring! {user_input} could be an amazing user experience. Let me sketch out some concepts in words...",
-                'formal_analysis': f"Excellent UX challenge to analyze! {user_input} requires careful design consideration. My detailed assessment..."
+                
+                'strategic_brief': f"""**User Experience Strategy** 🎨
+
+I love that you brought this UX question directly to me! **{user_input}** needs a design-first approach.
+
+**UX Strategic Framework:**
+• User journey mapping and pain point analysis
+• Interface design principles and accessibility
+• Interaction patterns and usability testing
+• Visual hierarchy and information architecture
+
+**Design Vision:** We need to prioritize user delight and intuitive interactions that feel effortless...""",
+
+                'quick_consult': f"""🎨 **UX Quick Consult**
+
+**Design Challenge:** {user_input}
+
+**My immediate instinct:** We need to prioritize user delight. Here's how I'd approach it:
+
+• **User research:** Who are we designing for?
+• **Core interactions:** What's the main user flow?
+• **Accessibility:** How do we make this inclusive?
+
+**Design principle:** Simple is sophisticated. Less is more.""",
+
+                'brainstorm': f"""✨ **Design Ideation Session**
+
+This is so inspiring! **{user_input}** could be an amazing user experience.
+
+**Creative UX Concepts:**
+- What if the interface adapted to user behavior?
+- Could we make this feel like a conversation?
+- What about gestural or voice interactions?
+
+**Design Innovation Ideas:**
+- Micro-animations that guide users
+- Progressive disclosure of complexity
+- Personalization that feels magical
+
+Let me sketch out some concepts in words...""",
+
+                'formal_analysis': f"""🎯 **Comprehensive UX Analysis**
+
+**Design Challenge:** {user_input}
+
+**I. User Research & Analysis**
+- User persona development and journey mapping
+- Usability testing and behavioral insights
+- Accessibility requirements and compliance
+
+**II. Design Strategy**
+- Information architecture and navigation
+- Visual design system and brand alignment
+- Interaction design patterns and micro-interactions
+
+**III. Implementation Framework**
+- Design system documentation
+- Component library and style guides
+- Responsive design and cross-platform considerations
+
+**IV. Validation & Iteration**
+- User testing methodology and metrics
+- A/B testing framework for optimization
+- Continuous improvement and feedback loops
+
+**V. Design Recommendations**
+[Detailed UX strategy and implementation plan follows...]"""
             },
             'David': {
                 'casual_chat': f"Hey! 👨‍💻 Good to have some direct time to discuss this. {user_input} sounds like it needs some solid operational thinking. What's your current timeline looking like?",
-                'strategic_brief': f"Smart to loop me in on the operations side! {user_input} will need careful implementation planning. Let me outline my approach...",
-                'quick_consult': f"Right up my alley! For {user_input}, we need to think about execution from day one. My quick operational take...",
-                'brainstorm': f"Interesting challenge! {user_input} could be implemented in several ways. Let me explore some options...",
-                'formal_analysis': f"Excellent operational question! {user_input} requires thorough implementation analysis. Here's my assessment..."
+                
+                'strategic_brief': f"""**Operations & Implementation Strategy** ⚙️
+
+Smart to loop me in on the operations side! **{user_input}** will need careful implementation planning.
+
+**Operational Framework:**
+• Technical architecture and infrastructure requirements
+• Project timeline and milestone planning
+• Resource allocation and team coordination
+• Risk management and contingency planning
+
+**Implementation Approach:** I recommend a phased rollout with careful monitoring and iterative improvements...""",
+
+                'quick_consult': f"""⚙️ **Operations Quick Assessment**
+
+**Implementation Challenge:** {user_input}
+
+**My quick operational take:**
+
+• **Timeline:** Realistic vs. aggressive scheduling
+• **Resources:** Team capacity and skill requirements
+• **Dependencies:** What needs to happen first?
+
+**Execution priority:** Focus on deliverable milestones and risk mitigation.""",
+
+                'brainstorm': f"""🔧 **Implementation Brainstorm**
+
+Interesting challenge! **{user_input}** could be implemented in several ways.
+
+**Creative Implementation Ideas:**
+- What if we automated 80% of this process?
+- Could we use existing infrastructure cleverly?
+- What about a microservices approach?
+
+**Operational Innovation:**
+- Continuous deployment and monitoring
+- Self-healing and auto-scaling systems
+- Zero-downtime updates and rollbacks
+
+Let me explore some technical options...""",
+
+                'formal_analysis': f"""🏗️ **Comprehensive Operations Analysis**
+
+**Implementation Project:** {user_input}
+
+**I. Technical Architecture**
+- System design and infrastructure requirements
+- Scalability and performance considerations
+- Security and compliance frameworks
+
+**II. Project Management**
+- Work breakdown structure and timeline
+- Resource planning and team coordination
+- Risk assessment and mitigation strategies
+
+**III. Quality Assurance**
+- Testing frameworks and automation
+- Monitoring and alerting systems
+- Performance metrics and optimization
+
+**IV. Deployment Strategy**
+- Environment management and CI/CD
+- Rollout phases and rollback procedures
+- Post-deployment monitoring and support
+
+**V. Operational Recommendations**
+[Detailed implementation plan and technical specifications follow...]"""
             }
         }
         
@@ -188,39 +439,90 @@ Remember: This is a personal conversation between colleagues, not a formal prese
             f"[{member.name}] Thanks for the direct question about {user_input}. Let me think about this from my perspective..."
         )
         
-        # Generate member-specific actions for non-casual modes
+        # Generate member-specific actions for non-casual modes with distinctive formatting
         suggested_actions = []
-        if interaction_mode != 'casual_chat':
+        if interaction_mode == 'strategic_brief':
             if member.name == 'Sarah':
                 suggested_actions = [
-                    "Define user personas and use cases",
-                    "Create product requirements document",
-                    "Plan user research and validation"
+                    "📊 Define user personas and use cases",
+                    "📋 Create product requirements document", 
+                    "🔍 Plan user research and validation study"
                 ]
             elif member.name == 'Marcus':
                 suggested_actions = [
-                    "Conduct competitive analysis",
-                    "Identify market entry strategy",
-                    "Explore partnership opportunities"
+                    "📈 Conduct comprehensive competitive analysis",
+                    "🎯 Identify optimal market entry strategy",
+                    "🤝 Explore strategic partnership opportunities"
                 ]
             elif member.name == 'Elena':
                 suggested_actions = [
-                    "Create user journey maps",
-                    "Design initial wireframes",
-                    "Plan usability testing"
+                    "🗺️ Create detailed user journey maps",
+                    "🎨 Design initial wireframes and prototypes",
+                    "🧪 Plan comprehensive usability testing"
                 ]
             elif member.name == 'David':
                 suggested_actions = [
-                    "Define technical requirements",
-                    "Create implementation timeline",
-                    "Assess resource requirements"
+                    "🏗️ Define detailed technical requirements",
+                    "📅 Create comprehensive implementation timeline",
+                    "⚖️ Assess resource and infrastructure requirements"
                 ]
+        elif interaction_mode == 'quick_consult':
+            if member.name == 'Sarah':
+                suggested_actions = [
+                    "✅ Quick user validation survey",
+                    "🎯 Define MVP scope and features"
+                ]
+            elif member.name == 'Marcus':
+                suggested_actions = [
+                    "💰 Validate revenue opportunity",
+                    "⚡ Fast-track market entry"
+                ]
+            elif member.name == 'Elena':
+                suggested_actions = [
+                    "✏️ Sketch core user flows",
+                    "🧪 Rapid prototype testing"
+                ]
+            elif member.name == 'David':
+                suggested_actions = [
+                    "⏱️ Create sprint planning",
+                    "🔧 Set up development environment"
+                ]
+        elif interaction_mode == 'formal_analysis':
+            if member.name == 'Sarah':
+                suggested_actions = [
+                    "📊 Complete comprehensive market research",
+                    "📖 Develop full product strategy document",
+                    "🔄 Establish product feedback loops",
+                    "📈 Define success metrics and KPIs"
+                ]
+            elif member.name == 'Marcus':
+                suggested_actions = [
+                    "💼 Develop complete business plan",
+                    "🤝 Establish key partnership agreements",
+                    "💰 Secure funding and investment",
+                    "📊 Create financial projections and models"
+                ]
+            elif member.name == 'Elena':
+                suggested_actions = [
+                    "🎨 Create comprehensive design system",
+                    "🧪 Conduct extensive user research",
+                    "📱 Design multi-platform experiences",
+                    "♿ Ensure accessibility compliance"
+                ]
+            elif member.name == 'David':
+                suggested_actions = [
+                    "🏗️ Architect scalable technical solution",
+                    "📋 Create detailed project roadmap",
+                    "🛠️ Establish development and deployment pipeline",
+                    "📊 Implement monitoring and analytics"
+                ]
+        # brainstorm mode gets no formal actions - it's for creativity
         
         return CouncilResponse(
             member_name=member.name,
             role=member.role,
             message=response_text,
-            confidence_level=0.8,
+            confidence_level=0.8 if interaction_mode in ['strategic_brief', 'formal_analysis'] else 0.7,
             reasoning=f"Personal {interaction_mode} response based on {member.role.value} expertise",
             suggested_actions=suggested_actions,
             timestamp=datetime.now().isoformat()

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Reply, Forward, Trash2, MoreHorizontal, Copy, Edit3 } from 'lucide-react';
+import { Reply, Forward, Trash2, MoreHorizontal, Copy } from 'lucide-react';
 import { ChatMessage } from '../types/council';
 
 interface MessageActionsProps {
@@ -16,8 +16,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({
   onReply,
   onForward,
   onDelete,
-  onCopy,
-  isOwnMessage = false
+  onCopy
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
