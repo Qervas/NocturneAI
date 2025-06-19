@@ -10,9 +10,11 @@ from typing import Dict, List, Optional, Union
 import openai
 import anthropic
 from dataclasses import dataclass
+import uuid
 
 from app.core.agents.council_members import AICouncil, CouncilMember, CouncilResponse
 from app.services.ollama_service import ollama_service
+# IntelligenceQuery is defined in this file, no need to import
 
 
 @dataclass
@@ -39,553 +41,272 @@ class IntelligenceResponse:
     response_type: str = "council"  # "council" or "individual"
 
 
+# New message types for agent responses
+class AgentMessage:
+    def __init__(self, agent_name: str, agent_role: str, content: str, workflow_step: str = 'response'):
+        self.id = str(uuid.uuid4())
+        self.type = 'agent' if workflow_step == 'response' else workflow_step  # 'agent', 'synthesis', or 'actions'
+        self.agent_name = agent_name
+        self.agent_role = agent_role
+        self.content = content
+        self.workflow_step = workflow_step
+        self.timestamp = datetime.now().isoformat()
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'type': self.type,
+            'content': self.content,
+            'agent_name': self.agent_name,
+            'agent_role': self.agent_role,
+            'workflow_step': self.workflow_step,
+            'timestamp': self.timestamp
+        }
+
+
 class IndividualIntelligence:
     """
     Handles 1-on-1 conversations with individual council members.
-    Different from council discussions - more personal, direct, and focused.
+    Used for Direct Messages (DMs) where user talks to specific council member.
     """
     
-    def __init__(self, council: AICouncil):
-        self.council = council
-    
-    async def get_individual_response(self, member_key: str, query: IntelligenceQuery) -> CouncilResponse:
-        """Get personal response from specific council member"""
-        member = self.council.get_member(member_key)
+    def __init__(self):
+        self.council = AICouncil()
+        self.council_members = self.council.get_all_members()
+
+    async def get_individual_response(self, member_name: str, query: IntelligenceQuery) -> List[AgentMessage]:
+        """
+        Get response from a specific council member for 1-on-1 conversation.
+        Returns list of AgentMessage objects that will render as user-like messages.
+        """
+        member = self.council_members.get(member_name.lower())
         if not member:
-            raise ValueError(f"Council member '{member_key}' not found")
-        
-        # Create personalized system prompt for individual conversation
-        individual_prompt = self._create_individual_prompt(member, query)
-        
-        # Build user input with reply context if available
-        user_input = query.user_input
-        if query.context and query.context.get("is_reply") and query.context.get("reply_to"):
-            reply_info = query.context["reply_to"]
-            original_sender = reply_info.get("original_sender", "Unknown")
-            original_content = reply_info.get("original_content", "")
-            
-            user_input = f"""REPLY CONTEXT:
-You are responding to a message. The user is replying to this previous message:
+            return [AgentMessage(
+                agent_name="System",
+                agent_role="Assistant",
+                content=f"Council member '{member_name}' not found.",
+                workflow_step='response'
+            )]
 
-From: {original_sender}
-Message: "{original_content}"
+        # Generate individual response based on interaction mode
+        return await self._generate_mode_based_response(member, query)
 
-USER'S REPLY: {query.user_input}
-
-Please acknowledge the context and respond appropriately to their reply, taking into account what they're responding to."""
-        
-        try:
-            # Try to use AI provider for authentic individual response
-            response_text = await self._call_ai_provider_for_member(individual_prompt, user_input)
-            
-            # Generate member-specific actions for non-casual modes
-            suggested_actions = []
-            if query.interaction_mode != 'casual_chat':
-                suggested_actions = self._generate_member_actions(member, query)
-            
-            return CouncilResponse(
-                member_name=member.name,
-                role=member.role,
-                message=response_text,
-                confidence_level=0.85,
-                reasoning=f"AI-generated {query.interaction_mode} response based on {member.role.value} expertise",
-                suggested_actions=suggested_actions,
-                timestamp=datetime.now().isoformat()
-            )
-            
-        except Exception as e:
-            print(f"Error getting AI response from {member.name}: {e}, using simulated response")
-            return await self._get_individual_simulated_response(member, query)
-    
-    def _create_individual_prompt(self, member: CouncilMember, query: IntelligenceQuery) -> str:
-        """Create specialized prompt for 1-on-1 conversation"""
-        interaction_mode = query.interaction_mode
-        
-        base_prompt = f"""You are {member.name}, having a direct 1-on-1 conversation with your strategic partner.
-
-PERSONALITY & ROLE:
-{member.get_system_prompt()}
-
-CONVERSATION CONTEXT:
-- This is a private DM conversation, not a council meeting
-- Respond as yourself personally, not as part of a formal council
-- Be conversational, direct, and authentic to your personality
-- Share your genuine perspective and expertise
-- Use first person ("I think...", "In my experience...")
-
-INTERACTION MODE: {interaction_mode}
-- casual_chat: Be natural, friendly, conversational
-- strategic_brief: Provide structured analysis but keep it personal  
-- quick_consult: Give focused, actionable advice
-- brainstorm: Be creative and exploratory
-- formal_analysis: Provide detailed professional analysis
-
-RESPONSE GUIDELINES:
-1. Respond as YOU personally, not representing the council
-2. Use your natural speaking style and vocabulary
-3. Share personal insights and experiences
-4. Be helpful but maintain your distinct personality
-5. Ask clarifying questions if needed
-6. Keep responses focused and relevant to your expertise
-
-Remember: This is a personal conversation between colleagues, not a formal presentation."""
-
-        return base_prompt
-    
-    async def _get_individual_simulated_response(self, member: CouncilMember, query: IntelligenceQuery) -> CouncilResponse:
-        """Generate enhanced individual response based on personality and context"""
-        
-        interaction_mode = query.interaction_mode
+    async def _generate_mode_based_response(self, member: CouncilMember, query: IntelligenceQuery) -> List[AgentMessage]:
+        """Generate response based on interaction mode"""
+        mode = query.interaction_mode
         user_input = query.user_input
         
-        # Check if this is a reply to another message
-        is_reply = False
-        reply_context = ""
-        if query.context and query.context.get("is_reply") and query.context.get("reply_to"):
-            is_reply = True
-            reply_info = query.context["reply_to"]
-            original_sender = reply_info.get("original_sender", "Unknown")
-            original_content = reply_info.get("original_content", "")[:100]  # Truncate for brevity
-            reply_context = f" (replying to {original_sender}: '{original_content}...')"
-        
-        # Enhanced individual response patterns by member and mode with DISTINCTIVE formatting
-        individual_responses = {
-            'Sarah': {
-                'casual_chat': f"Hey! 👋 Great to chat with you directly. About {user_input}{reply_context} - this really resonates with me from a product perspective. What's driving this question for you right now?",
-                
-                'strategic_brief': f"""**Strategic Product Analysis** 📋
-
-Thanks for bringing this to me directly! Looking at **{user_input}** through my product lens:
-
-**Strategic Considerations:**
-• Market positioning and competitive advantage
-• User value proposition alignment  
-• Technical feasibility vs. business impact
-• Resource allocation and timeline priorities
-
-**My Take:** This needs a user-first approach with data-driven validation. Let me break down the key strategic elements we should explore...""",
-
-                'quick_consult': f"""⚡ **Quick Product Consult**
-
-**Question:** {user_input}
-
-**My immediate take:** This needs a user-first approach. Here's what I'd prioritize:
-
-1. **User research** - Validate the core need
-2. **MVP scoping** - Define minimum viable features  
-3. **Success metrics** - How do we measure impact?
-
-**Bottom line:** Focus on user value first, features second.""",
-
-                'brainstorm': f"""🧠 **Product Brainstorm Session**
-
-Ooh, I love brainstorming about **{user_input}**! Let me think out loud here...
-
-**Wild Ideas:**
-• What if we approached this completely differently?
-• Could we solve this with 80% less complexity?
-• What would the "Tesla approach" look like here?
-
-**Creative Angles:**
-- User experience that feels magical
-- Business model that scales effortlessly
-- Technology that enables new possibilities
-
-What's your favorite crazy idea so far?""",
-
-                'formal_analysis': f"""📊 **Comprehensive Product Strategy Analysis**
-
-**Subject:** {user_input}
-
-**Executive Summary:**
-I'm glad you came to me for a deep dive on this. Here's my comprehensive product strategy analysis...
-
-**1. Market Analysis**
-- Current landscape assessment
-- Competitive positioning opportunities
-- User segment identification
-
-**2. Product Strategy**
-- Value proposition framework
-- Feature prioritization matrix
-- Go-to-market considerations
-
-**3. Implementation Roadmap**
-- Phase 1: Foundation and validation
-- Phase 2: Core feature development
-- Phase 3: Scale and optimization
-
-**4. Risk Assessment & Mitigation**
-- Technical risks and solutions
-- Market risks and contingencies
-- Resource risks and alternatives
-
-**Recommendation:** [Detailed strategic guidance follows...]"""
-            },
-            'Marcus': {
-                'casual_chat': f"Hey there! 😊 Always excited to talk business with you. {user_input} has me thinking about some serious market opportunities. What's your take on the competitive landscape here?",
-                
-                'strategic_brief': f"""**Business Development Strategy** 💼
-
-Great question to bring to me! **{user_input}** from a business development angle shows some really interesting potential.
-
-**Market Opportunity Assessment:**
-• Total addressable market (TAM) analysis
-• Competitive landscape mapping
-• Revenue model optimization
-• Partnership and channel strategies
-
-**Business Insights:** I see significant monetization potential here if we position this correctly in the market...""",
-
-                'quick_consult': f"""💼 **Business Quick-Hit**
-
-**Opportunity:** {user_input}
-
-**My gut says:** There's money to be made here! Quick thoughts:
-
-• **Revenue potential:** High/Medium/Low and why
-• **Time to market:** Critical success factor
-• **Competitive moat:** How we defend our position
-
-**Action:** Let's validate the business case and move fast on market entry.""",
-
-                'brainstorm': f"""🚀 **Business Ideation**
-
-This is exciting! **{user_input}** could be huge if we play it right.
-
-**Crazy Business Ideas:**
-- What if we made this a platform instead of a product?
-- Could we create a marketplace around this?
-- What about a subscription model with network effects?
-
-**Market Disruption Angles:**
-- Undercut incumbents by 10x cost reduction
-- Create entirely new value chain
-- Turn competitors into customers
-
-Let me throw some wild revenue models at you...""",
-
-                'formal_analysis': f"""📈 **Comprehensive Business Analysis**
-
-**Business Case:** {user_input}
-
-**I. Market Assessment**
-- Industry analysis and growth projections
-- Competitive landscape and positioning
-- Customer segments and buying behaviors
-
-**II. Revenue Model Analysis**
-- Multiple revenue stream evaluation
-- Pricing strategy and optimization
-- Customer lifetime value projections
-
-**III. Go-to-Market Strategy**
-- Channel partner identification
-- Sales and marketing approach
-- Customer acquisition cost analysis
-
-**IV. Financial Projections**
-- 3-year revenue and growth model
-- Investment requirements and ROI
-- Break-even analysis and milestones
-
-**V. Strategic Recommendations**
-[Comprehensive business strategy follows...]"""
-            },
-            'Elena': {
-                'casual_chat': f"Hi! 🎨 So good to have some focused time to chat. {user_input} immediately makes me think about the user experience. How do you envision people actually interacting with this?",
-                
-                'strategic_brief': f"""**User Experience Strategy** 🎨
-
-I love that you brought this UX question directly to me! **{user_input}** needs a design-first approach.
-
-**UX Strategic Framework:**
-• User journey mapping and pain point analysis
-• Interface design principles and accessibility
-• Interaction patterns and usability testing
-• Visual hierarchy and information architecture
-
-**Design Vision:** We need to prioritize user delight and intuitive interactions that feel effortless...""",
-
-                'quick_consult': f"""🎨 **UX Quick Consult**
-
-**Design Challenge:** {user_input}
-
-**My immediate instinct:** We need to prioritize user delight. Here's how I'd approach it:
-
-• **User research:** Who are we designing for?
-• **Core interactions:** What's the main user flow?
-• **Accessibility:** How do we make this inclusive?
-
-**Design principle:** Simple is sophisticated. Less is more.""",
-
-                'brainstorm': f"""✨ **Design Ideation Session**
-
-This is so inspiring! **{user_input}** could be an amazing user experience.
-
-**Creative UX Concepts:**
-- What if the interface adapted to user behavior?
-- Could we make this feel like a conversation?
-- What about gestural or voice interactions?
-
-**Design Innovation Ideas:**
-- Micro-animations that guide users
-- Progressive disclosure of complexity
-- Personalization that feels magical
-
-Let me sketch out some concepts in words...""",
-
-                'formal_analysis': f"""🎯 **Comprehensive UX Analysis**
-
-**Design Challenge:** {user_input}
-
-**I. User Research & Analysis**
-- User persona development and journey mapping
-- Usability testing and behavioral insights
-- Accessibility requirements and compliance
-
-**II. Design Strategy**
-- Information architecture and navigation
-- Visual design system and brand alignment
-- Interaction design patterns and micro-interactions
-
-**III. Implementation Framework**
-- Design system documentation
-- Component library and style guides
-- Responsive design and cross-platform considerations
-
-**IV. Validation & Iteration**
-- User testing methodology and metrics
-- A/B testing framework for optimization
-- Continuous improvement and feedback loops
-
-**V. Design Recommendations**
-[Detailed UX strategy and implementation plan follows...]"""
-            },
-            'David': {
-                'casual_chat': f"Hey! 👨‍💻 Good to have some direct time to discuss this. {user_input} sounds like it needs some solid operational thinking. What's your current timeline looking like?",
-                
-                'strategic_brief': f"""**Operations & Implementation Strategy** ⚙️
-
-Smart to loop me in on the operations side! **{user_input}** will need careful implementation planning.
-
-**Operational Framework:**
-• Technical architecture and infrastructure requirements
-• Project timeline and milestone planning
-• Resource allocation and team coordination
-• Risk management and contingency planning
-
-**Implementation Approach:** I recommend a phased rollout with careful monitoring and iterative improvements...""",
-
-                'quick_consult': f"""⚙️ **Operations Quick Assessment**
-
-**Implementation Challenge:** {user_input}
-
-**My quick operational take:**
-
-• **Timeline:** Realistic vs. aggressive scheduling
-• **Resources:** Team capacity and skill requirements
-• **Dependencies:** What needs to happen first?
-
-**Execution priority:** Focus on deliverable milestones and risk mitigation.""",
-
-                'brainstorm': f"""🔧 **Implementation Brainstorm**
-
-Interesting challenge! **{user_input}** could be implemented in several ways.
-
-**Creative Implementation Ideas:**
-- What if we automated 80% of this process?
-- Could we use existing infrastructure cleverly?
-- What about a microservices approach?
-
-**Operational Innovation:**
-- Continuous deployment and monitoring
-- Self-healing and auto-scaling systems
-- Zero-downtime updates and rollbacks
-
-Let me explore some technical options...""",
-
-                'formal_analysis': f"""🏗️ **Comprehensive Operations Analysis**
-
-**Implementation Project:** {user_input}
-
-**I. Technical Architecture**
-- System design and infrastructure requirements
-- Scalability and performance considerations
-- Security and compliance frameworks
-
-**II. Project Management**
-- Work breakdown structure and timeline
-- Resource planning and team coordination
-- Risk assessment and mitigation strategies
-
-**III. Quality Assurance**
-- Testing frameworks and automation
-- Monitoring and alerting systems
-- Performance metrics and optimization
-
-**IV. Deployment Strategy**
-- Environment management and CI/CD
-- Rollout phases and rollback procedures
-- Post-deployment monitoring and support
-
-**V. Operational Recommendations**
-[Detailed implementation plan and technical specifications follow...]"""
-            }
+        if mode == 'casual_chat':
+            return await self._generate_casual_response(member, user_input)
+        elif mode == 'quick_consult':
+            return await self._generate_quick_consult_response(member, user_input)
+        elif mode == 'strategic_brief':
+            return await self._generate_strategic_brief_response(member, user_input)
+        elif mode == 'brainstorm':
+            return await self._generate_brainstorm_response(member, user_input)
+        elif mode == 'formal_analysis':
+            return await self._generate_formal_analysis_response(member, user_input)
+        else:
+            return await self._generate_casual_response(member, user_input)
+
+    async def _generate_casual_response(self, member: CouncilMember, user_input: str) -> List[AgentMessage]:
+        """Generate casual, conversational response"""
+        responses = {
+            'Sarah Chen': f"Hey! 👋 Nice to hear from you! {user_input} sounds interesting. From a product perspective, I think there's definitely potential here. What specific aspects are you curious about?",
+            'Marcus Rodriguez': f"Hi there! 😊 Great question about {user_input}. I see some solid market opportunities here. Want to dive into the business side of things?",
+            'Elena Vasquez': f"Hello! 🎨 Love chatting about {user_input}! From a design standpoint, I'm already picturing some cool user experiences. What's your vision for how people would interact with this?",
+            'David Kim': f"Hey! 👨‍💻 Thanks for reaching out about {user_input}. Operationally, this looks doable. What's your timeline looking like? Let's make it happen!"
         }
         
-        response_text = individual_responses.get(member.name, {}).get(
-            interaction_mode, 
-            f"[{member.name}] Thanks for the direct question about {user_input}. Let me think about this from my perspective..."
-        )
+        content = responses.get(member.name, f"Thanks for the question about {user_input}. Let me share my perspective...")
         
-        # Generate member-specific actions for non-casual modes with distinctive formatting
-        suggested_actions = []
-        if interaction_mode == 'strategic_brief':
-            if member.name == 'Sarah':
-                suggested_actions = [
-                    "📊 Define user personas and use cases",
-                    "📋 Create product requirements document", 
-                    "🔍 Plan user research and validation study"
-                ]
-            elif member.name == 'Marcus':
-                suggested_actions = [
-                    "📈 Conduct comprehensive competitive analysis",
-                    "🎯 Identify optimal market entry strategy",
-                    "🤝 Explore strategic partnership opportunities"
-                ]
-            elif member.name == 'Elena':
-                suggested_actions = [
-                    "🗺️ Create detailed user journey maps",
-                    "🎨 Design initial wireframes and prototypes",
-                    "🧪 Plan comprehensive usability testing"
-                ]
-            elif member.name == 'David':
-                suggested_actions = [
-                    "🏗️ Define detailed technical requirements",
-                    "📅 Create comprehensive implementation timeline",
-                    "⚖️ Assess resource and infrastructure requirements"
-                ]
-        elif interaction_mode == 'quick_consult':
-            if member.name == 'Sarah':
-                suggested_actions = [
-                    "✅ Quick user validation survey",
-                    "🎯 Define MVP scope and features"
-                ]
-            elif member.name == 'Marcus':
-                suggested_actions = [
-                    "💰 Validate revenue opportunity",
-                    "⚡ Fast-track market entry"
-                ]
-            elif member.name == 'Elena':
-                suggested_actions = [
-                    "✏️ Sketch core user flows",
-                    "🧪 Rapid prototype testing"
-                ]
-            elif member.name == 'David':
-                suggested_actions = [
-                    "⏱️ Create sprint planning",
-                    "🔧 Set up development environment"
-                ]
-        elif interaction_mode == 'formal_analysis':
-            if member.name == 'Sarah':
-                suggested_actions = [
-                    "📊 Complete comprehensive market research",
-                    "📖 Develop full product strategy document",
-                    "🔄 Establish product feedback loops",
-                    "📈 Define success metrics and KPIs"
-                ]
-            elif member.name == 'Marcus':
-                suggested_actions = [
-                    "💼 Develop complete business plan",
-                    "🤝 Establish key partnership agreements",
-                    "💰 Secure funding and investment",
-                    "📊 Create financial projections and models"
-                ]
-            elif member.name == 'Elena':
-                suggested_actions = [
-                    "🎨 Create comprehensive design system",
-                    "🧪 Conduct extensive user research",
-                    "📱 Design multi-platform experiences",
-                    "♿ Ensure accessibility compliance"
-                ]
-            elif member.name == 'David':
-                suggested_actions = [
-                    "🏗️ Architect scalable technical solution",
-                    "📋 Create detailed project roadmap",
-                    "🛠️ Establish development and deployment pipeline",
-                    "📊 Implement monitoring and analytics"
-                ]
-        # brainstorm mode gets no formal actions - it's for creativity
+        return [AgentMessage(
+            agent_name=member.name,
+            agent_role=member.role.value,
+            content=content,
+            workflow_step='response'
+        )]
+
+    async def _generate_quick_consult_response(self, member: CouncilMember, user_input: str) -> List[AgentMessage]:
+        """Generate quick, actionable advice"""
+        responses = {
+            'Sarah Chen': f"Quick take on {user_input}: Focus on user value first. I'd recommend starting with user interviews to validate assumptions, then build an MVP to test core functionality. Keep it simple initially.",
+            'Marcus Rodriguez': f"From a market perspective on {user_input}: Check competitor pricing and positioning first. There's likely a gap in the mid-market segment. Quick win would be to analyze top 3 competitors' customer reviews.",
+            'Elena Vasquez': f"UX perspective on {user_input}: User flow is everything. Start with wireframes, test with 5 users, iterate quickly. Don't get caught up in visual design until the interaction patterns work smoothly.",
+            'David Kim': f"Operational view on {user_input}: Break it into 2-week sprints. Set up proper tracking early. I'd estimate 6-8 weeks for initial implementation if we scope it right."
+        }
         
-        return CouncilResponse(
-            member_name=member.name,
-            role=member.role,
-            message=response_text,
-            confidence_level=0.8 if interaction_mode in ['strategic_brief', 'formal_analysis'] else 0.7,
-            reasoning=f"Personal {interaction_mode} response based on {member.role.value} expertise",
-            suggested_actions=suggested_actions,
-            timestamp=datetime.now().isoformat()
-        )
-    
-    async def _call_ai_provider_for_member(self, system_prompt: str, user_input: str) -> str:
-        """Call AI provider specifically for individual member responses"""
-        # Try Ollama first
-        try:
-            if await ollama_service.is_available():
-                messages = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_input}
-                ]
-                response = await ollama_service.chat_completion(
-                    messages=messages,
-                    max_tokens=300,
-                    temperature=0.8  # Slightly higher for more personality
+        content = responses.get(member.name, f"Here's my quick take on {user_input}...")
+        
+        return [AgentMessage(
+            agent_name=member.name,
+            agent_role=member.role.value,
+            content=content,
+            workflow_step='response'
+        )]
+
+    async def _generate_strategic_brief_response(self, member: CouncilMember, user_input: str) -> List[AgentMessage]:
+        """Generate structured analysis with synthesis and actions"""
+        # Main response
+        main_responses = {
+            'Sarah Chen': f"From a product strategy perspective, {user_input} requires careful analysis of user value and market fit. I see three key areas to focus on:\n\n1. **User Research**: We need to validate core assumptions about user needs\n2. **Feature Prioritization**: Focus on high-impact, low-effort features first\n3. **Success Metrics**: Define clear KPIs to measure product-market fit\n\nThe market timing seems right, but execution will be critical.",
+            'Marcus Rodriguez': f"This presents an interesting market opportunity. {user_input} could give us significant competitive advantages if we move quickly and strategically.\n\n**Market Analysis:**\n- Target segment shows 23% YoY growth\n- Competition is fragmented\n- Entry barriers are moderate\n\n**Revenue Potential:**\n- Conservative estimate: $500K ARR by year 2\n- Optimistic scenario: $2M ARR with proper execution",
+            'Elena Vasquez': f"From a UX standpoint, {user_input} needs to prioritize user experience and intuitive design. I'm envisioning interfaces that feel natural and engaging.\n\n**Design Strategy:**\n- User-centered design process\n- Accessibility-first approach\n- Mobile-responsive from day one\n\n**Key Considerations:**\n- User onboarding flow is critical\n- Visual hierarchy needs to guide users naturally\n- Performance optimization for smooth interactions",
+            'David Kim': f"Operationally speaking, {user_input} will require careful timeline planning and risk assessment. I estimate we need proper resource allocation for this initiative.\n\n**Implementation Plan:**\n- Phase 1: Foundation (4-6 weeks)\n- Phase 2: Core features (8-10 weeks) \n- Phase 3: Optimization (4-6 weeks)\n\n**Resource Requirements:**\n- 2-3 developers\n- 1 designer\n- QA support from week 6"
+        }
+        
+        messages = []
+        
+        # Main response
+        main_content = main_responses.get(member.name, f"Here's my strategic analysis of {user_input}...")
+        messages.append(AgentMessage(
+            agent_name=member.name,
+            agent_role=member.role.value,
+            content=main_content,
+            workflow_step='response'
+        ))
+        
+        # Add synthesis for strategic brief mode
+        synthesis_content = f"**Strategic Summary**: {user_input} shows strong potential with manageable risks. Key success factors: user validation, market timing, and execution quality. Recommend proceeding with structured approach."
+        messages.append(AgentMessage(
+            agent_name="Master Intelligence",
+            agent_role="Strategic Synthesis",
+            content=synthesis_content,
+            workflow_step='synthesis'
+        ))
+        
+        # Add action items
+        actions = [
+            "Conduct user interviews with 10-15 potential users",
+            "Create detailed project timeline with milestones",
+            "Define success metrics and tracking systems",
+            "Prepare competitive analysis report"
+        ]
+        action_content = "\n".join(actions)
+        messages.append(AgentMessage(
+            agent_name="Action Items",
+            agent_role="Next Steps",
+            content=action_content,
+            workflow_step='actions'
+        ))
+        
+        return messages
+
+    async def _generate_brainstorm_response(self, member: CouncilMember, user_input: str) -> List[AgentMessage]:
+        """Generate creative ideation response"""
+        responses = {
+            'Sarah Chen': f"Ooh, brainstorming {user_input}! 🎨 What about AI personality avatars that evolve based on conversation history? Or maybe gamification - users level up their AI council as they use it more? I'm also thinking collaborative whiteboards where AIs can sketch ideas visually!",
+            'Marcus Rodriguez': f"Love the creative energy around {user_input}! 🚀 Voice conversations could be huge - let users talk to their council while walking. Or what about AI-powered market simulation games? Users could test strategies in safe environments before real implementation.",
+            'Elena Vasquez': f"So many creative possibilities with {user_input}! ✨ Interactive data visualizations that users can manipulate in real-time. Or immersive AR experiences where users can 'walk through' their strategies. Maybe even AI-generated mood boards for visual thinkers!",
+            'David Kim': f"Thinking outside the box for {user_input}! 🔧 What about automated workflow generation? AI creates entire operational playbooks based on user goals. Or real-time collaboration spaces where human and AI team members work side by side on projects."
+        }
+        
+        content = responses.get(member.name, f"Brainstorming {user_input}... here are some creative ideas!")
+        
+        return [AgentMessage(
+            agent_name=member.name,
+            agent_role=member.role.value,
+            content=content,
+            workflow_step='response'
+        )]
+
+    async def _generate_formal_analysis_response(self, member: CouncilMember, user_input: str) -> List[AgentMessage]:
+        """Generate comprehensive formal analysis"""
+        # This mode generates multiple messages per expert for thorough analysis
+        messages = []
+        
+        if member.name == 'Sarah Chen':
+            # Product analysis - multiple messages
+            messages.extend([
+                AgentMessage(
+                    agent_name=member.name,
+                    agent_role=member.role.value,
+                    content=f"**Product Strategy Analysis: {user_input}**\n\n**Market Positioning Assessment:**\nOur analysis reveals three distinct market opportunities. The primary segment shows 34% annual growth with moderate competition density. Key differentiators include our council-based approach and enterprise-grade security.",
+                    workflow_step='response'
+                ),
+                AgentMessage(
+                    agent_name=member.name,
+                    agent_role=member.role.value,
+                    content="**Product-Market Fit Analysis:**\n\nUser research indicates strong demand in the enterprise segment (87% expressed interest). However, pricing sensitivity exists in the SMB market. Recommended approach: freemium model with premium enterprise features.\n\n**Feature Prioritization Matrix:**\n• High Impact, Low Effort: Core AI functionality\n• High Impact, High Effort: Advanced analytics\n• Low Impact, Low Effort: UI polish\n• Low Impact, High Effort: Complex integrations",
+                    workflow_step='response'
                 )
-                if response and len(response.strip()) > 10:
-                    return response
-        except Exception as e:
-            print(f"Ollama failed for individual response: {e}")
+            ])
+        elif member.name == 'Marcus Rodriguez':
+            messages.extend([
+                AgentMessage(
+                    agent_name=member.name,
+                    agent_role=member.role.value,
+                    content=f"**Market Intelligence Report: {user_input}**\n\n**Competitive Landscape:**\nAnalyzed 15 direct competitors and 23 adjacent solutions. Market fragmentation presents opportunity but also indicates execution challenges. Top 3 competitors control 45% market share.",
+                    workflow_step='response'
+                ),
+                AgentMessage(
+                    agent_name=member.name,
+                    agent_role=member.role.value,
+                    content="**Financial Projections:**\n\nConservative scenario: $1.2M ARR by year 2\nOptimistic scenario: $4.8M ARR with aggressive scaling\n\n**Investment Requirements:**\n• Initial: $750K (development + market entry)\n• Growth: $2.1M (scaling + customer acquisition)\n• Break-even projected: Month 18-24",
+                    workflow_step='response'
+                )
+            ])
+        elif member.name == 'Elena Vasquez':
+            messages.extend([
+                AgentMessage(
+                    agent_name=member.name,
+                    agent_role=member.role.value,
+                    content=f"**User Experience Analysis: {user_input}**\n\n**User Journey Mapping:**\nIdentified 7 critical touchpoints with 3 high-friction areas. Primary pain point: onboarding complexity (68% drop-off rate in current flow). Redesigned user journey reduces friction by 45%.",
+                    workflow_step='response'
+                ),
+                AgentMessage(
+                    agent_name=member.name,
+                    agent_role=member.role.value,
+                    content="**Design System Requirements:**\n\n• Accessibility compliance (WCAG 2.1 AA)\n• Multi-platform consistency (web, mobile, tablet)\n• Dark/light theme support\n• Internationalization ready\n\n**Usability Testing Results:**\n89% task completion rate with redesigned interface\n23% improvement in user satisfaction scores\n34% reduction in support tickets",
+                    workflow_step='response'
+                )
+            ])
+        elif member.name == 'David Kim':
+            messages.extend([
+                AgentMessage(
+                    agent_name=member.name,
+                    agent_role=member.role.value,
+                    content=f"**Operations Analysis: {user_input}**\n\n**Technical Architecture:**\nRecommend microservices architecture with Kubernetes orchestration. Estimated infrastructure costs: $12K/month at scale. 99.9% uptime target achievable with proper redundancy.",
+                    workflow_step='response'
+                ),
+                AgentMessage(
+                    agent_name=member.name,
+                    agent_role=member.role.value,
+                    content="**Implementation Timeline:**\n\n**Phase 1 (Months 1-3): Foundation**\n• Core platform development\n• Basic AI integration\n• Security implementation\n\n**Phase 2 (Months 4-6): Features**\n• Advanced AI capabilities\n• User management system\n• Analytics dashboard\n\n**Phase 3 (Months 7-9): Scale**\n• Performance optimization\n• Enterprise features\n• Advanced integrations",
+                    workflow_step='response'
+                )
+            ])
         
-        # Fallback to master intelligence AI provider
-        return await self._call_ai_provider(system_prompt, user_input)
-    
-    def _generate_member_actions(self, member: CouncilMember, query: IntelligenceQuery) -> List[str]:
-        """Generate member-specific actions based on their expertise"""
-        action_templates = {
-            'Sarah': [
-                "Define user personas and use cases",
-                "Create product requirements document", 
-                "Plan user research and validation",
-                "Analyze competitive product features"
-            ],
-            'Marcus': [
-                "Conduct competitive market analysis",
-                "Identify market entry strategy",
-                "Explore partnership opportunities",
-                "Assess market size and revenue potential"
-            ],
-            'Elena': [
-                "Create user journey maps",
-                "Design initial wireframes and mockups",
-                "Plan usability testing sessions",
-                "Develop design system components"
-            ],
-            'David': [
-                "Define technical requirements and architecture",
-                "Create implementation timeline and milestones",
-                "Assess resource and infrastructure requirements",
-                "Plan development sprints and deliverables"
-            ]
-        }
+        # Add comprehensive synthesis
+        synthesis_content = f"**COMPREHENSIVE ANALYSIS SYNTHESIS: {user_input}**\n\n**EXECUTIVE SUMMARY:**\nStrong market opportunity with manageable execution risks. Recommend proceeding with phased approach starting Q2 2024.\n\n**KEY FINDINGS:**\n• Market demand validated across segments\n• Technical feasibility confirmed\n• Financial projections show positive ROI\n• User experience challenges identified and addressable\n\n**RISK ASSESSMENT:** Medium (primarily execution and market timing risks)\n**INVESTMENT REQUIRED:** $750K initial, $180K/month operational\n**TIMELINE:** 9-month development, 3-month pilot\n**SUCCESS PROBABILITY:** 73% (based on comparable initiatives)"
         
-        member_actions = action_templates.get(member.name, [
-            "Analyze from domain expertise perspective",
-            "Research industry best practices",
-            "Develop strategic recommendations"
-        ])
+        messages.append(AgentMessage(
+            agent_name="Master Intelligence",
+            agent_role="Comprehensive Analysis",
+            content=synthesis_content,
+            workflow_step='synthesis'
+        ))
         
-        return member_actions[:3]  # Return top 3 actions
+        # Add detailed action plan
+        action_items = [
+            "Week 1-2: Engage legal and compliance consultants",
+            "Month 1: Complete technical architecture design",
+            "Month 1-2: Recruit core development team (3-4 engineers)",
+            "Month 2: Begin MVP development and user research",
+            "Month 3: Alpha testing with internal stakeholders", 
+            "Month 4-6: Beta program with 50-100 external users",
+            "Month 6: Go/no-go decision based on beta metrics",
+            "Month 7-9: Scale development and prepare for launch"
+        ]
+        
+        messages.append(AgentMessage(
+            agent_name="Action Plan",
+            agent_role="Implementation Steps",
+            content="\n".join(action_items),
+            workflow_step='actions'
+        ))
+        
+        return messages
 
 
 class MasterIntelligence:
@@ -597,7 +318,7 @@ class MasterIntelligence:
     
     def __init__(self):
         self.council = AICouncil()
-        self.individual_intelligence = IndividualIntelligence(self.council)
+        self.individual_intelligence = IndividualIntelligence()
         self.conversation_history = []
         self.user_preferences = {}
         self.context_memory = {}
@@ -647,27 +368,27 @@ class MasterIntelligence:
     async def _process_individual_query(self, query: IntelligenceQuery) -> IntelligenceResponse:
         """Process individual DM conversation"""
         start_time = datetime.now()
-        member_key = query.requested_members[0]
+        member_name = query.requested_members[0]
         
-        print(f"Processing individual query with {member_key}")
+        print(f"Processing individual query with {member_name}")
         
         # Get individual response
-        individual_response = await self.individual_intelligence.get_individual_response(member_key, query)
+        individual_responses = await self.individual_intelligence.get_individual_response(member_name, query)
         
         # For individual conversations, the synthesis IS the member's response
-        synthesis = individual_response.message
+        synthesis = individual_responses[0].content
         
         # Actions only if not casual chat
-        actions = individual_response.suggested_actions if query.interaction_mode != 'casual_chat' else []
+        actions = [response.content for response in individual_responses if response.type != 'response']
         
         processing_time = (datetime.now() - start_time).total_seconds()
         
         return IntelligenceResponse(
             query=query,
-            council_responses=[individual_response],
+            council_responses=[],
             synthesis=synthesis,
             recommended_actions=actions,
-            confidence_score=individual_response.confidence_level,
+            confidence_score=0.8,
             processing_time=processing_time,
             timestamp=datetime.now().isoformat(),
             response_type="individual"

@@ -75,23 +75,23 @@ export interface ConversationHistory {
 // UI State Types
 export interface ChatMessage {
   id: string;
-  type: 'user' | 'council' | 'system' | 'forwarded';
+  type: 'user' | 'council' | 'system' | 'forwarded' | 'agent' | 'synthesis' | 'actions';
   content: string;
   timestamp: string;
+  sender?: string;
+  agent_name?: string;  // For agent messages
+  agent_role?: string;  // For agent messages  
+  workflow_step?: 'response' | 'synthesis' | 'actions';  // For workflow tracking
   council_response?: IntelligenceResponse;
-  sender?: string; // For individual council member messages
   reply_to?: {
-    message_id: string;
-    content: string;
+    id: string;
     sender: string;
-    timestamp: string;
+    content: string;
   };
   forwarded_from?: {
     channel_id: string;
-    channel_type: string;
     channel_name: string;
     original_sender: string;
-    original_timestamp: string;
   };
   is_deleted?: boolean;
 }

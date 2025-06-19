@@ -63,9 +63,10 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
     return text.trim();
   };
 
-  if (message.type === 'user' || message.type === 'forwarded') {
+  if (message.type === 'user' || message.type === 'forwarded' || message.type === 'agent') {
     const messageClass = channelType === 'dm' ? 'dm-message' : 'channel-message';
     const isForwarded = message.type === 'forwarded';
+    const isAgent = message.type === 'agent';
     
     return (
       <div className={`group hover:bg-slate-800/30 transition-colors ${messageClass}`}>
@@ -98,14 +99,38 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
         )}
 
         <div className="flex items-start space-x-3 p-3">
-          <div className={`w-8 h-8 ${isForwarded ? 'bg-gradient-to-r from-blue-500 to-cyan-500' : 'bg-gradient-to-r from-purple-500 to-blue-500'} rounded-full flex items-center justify-center`}>
-            {isForwarded ? <Forward className="h-4 w-4 text-white" /> : <User className="h-4 w-4 text-white" />}
+          <div className={`w-8 h-8 ${
+            isForwarded 
+              ? 'bg-gradient-to-r from-blue-500 to-cyan-500' 
+              : isAgent
+                ? 'bg-gradient-to-r from-green-500 to-emerald-500'
+                : 'bg-gradient-to-r from-purple-500 to-blue-500'
+          } rounded-full flex items-center justify-center`}>
+            {isForwarded ? (
+              <Forward className="h-4 w-4 text-white" />
+            ) : isAgent ? (
+              <span className="text-white text-xs font-bold">
+                {message.agent_name?.charAt(0) || 'AI'}
+              </span>
+            ) : (
+              <User className="h-4 w-4 text-white" />
+            )}
         </div>
         <div className="flex-1">
           <div className="flex items-center space-x-2 mb-1">
               <span className="font-medium text-white">
-                {isForwarded ? `${message.forwarded_from?.original_sender} (forwarded)` : 'You'}
+                {isForwarded 
+                  ? `${message.forwarded_from?.original_sender} (forwarded)` 
+                  : isAgent
+                    ? message.agent_name
+                    : 'You'
+                }
               </span>
+              {isAgent && message.agent_role && (
+                <span className="text-xs text-emerald-400 bg-emerald-900/30 px-2 py-0.5 rounded">
+                  {message.agent_role}
+                </span>
+              )}
             <span className={`channel-indicator ${channelId}`}>
               {channelType === 'channel' ? `#${channelId}` : 'DM'}
             </span>
@@ -128,7 +153,71 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
                 onForward={onForward || (() => {})}
                 onDelete={onDelete || (() => {})}
                 onCopy={onCopy || (() => {})}
-                isOwnMessage={!isForwarded} // Forwarded messages are not "own" messages
+                isOwnMessage={!isForwarded && !isAgent} // Agent messages are not "own" messages
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Special handling for synthesis and action messages (workflow steps)
+  if (message.type === 'synthesis' || message.type === 'actions') {
+    const isSynthesis = message.type === 'synthesis';
+    
+    return (
+      <div className={`group hover:bg-slate-800/30 transition-colors`}>
+        <div className="flex items-start space-x-3 p-3">
+          <div className={`w-8 h-8 ${
+            isSynthesis 
+              ? 'bg-gradient-to-r from-purple-500 to-pink-500'
+              : 'bg-gradient-to-r from-orange-500 to-red-500'
+          } rounded-full flex items-center justify-center`}>
+            <span className="text-white text-xs">
+              {isSynthesis ? '🧠' : '🎯'}
+            </span>
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center space-x-2 mb-1">
+              <span className="font-medium text-white">
+                {isSynthesis ? '🧠 Master Intelligence' : '🎯 Action Items'}
+              </span>
+              <span className={`channel-indicator ${channelId}`}>
+                {channelType === 'channel' ? `#${channelId}` : 'DM'}
+              </span>
+              <span className="text-xs text-slate-400">{formatTimestamp(message.timestamp)}</span>
+            </div>
+            <div className={`message-content ${
+              isSynthesis 
+                ? 'bg-purple-900/20 border border-purple-500/30 rounded-lg p-3'
+                : 'bg-orange-900/20 border border-orange-500/30 rounded-lg p-3'
+            } text-sm leading-relaxed`}>
+              {isSynthesis ? (
+                <div className="text-slate-200">{message.content}</div>
+              ) : (
+                <div className="text-slate-200">
+                  {message.content.split('\n').map((action, idx) => (
+                    <div key={idx} className="flex items-start space-x-2 mb-1">
+                      <span className="text-orange-400">•</span>
+                      <span>{action}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Message Actions */}
+          {(onReply || onForward || onDelete || onCopy) && (
+            <div className="flex items-center space-x-1">
+              <MessageActions
+                message={message}
+                onReply={onReply || (() => {})}
+                onForward={onForward || (() => {})}
+                onDelete={onDelete || (() => {})}
+                onCopy={onCopy || (() => {})}
+                isOwnMessage={false}
               />
             </div>
           )}

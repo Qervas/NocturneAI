@@ -330,11 +330,11 @@ const App: React.FC = () => {
     try {
       const response = await fetch('/api/v1/health');
       if (response.ok) {
-        setConnectionState({
-          status: 'connected',
-          lastConnected: new Date().toISOString(),
-          reconnectAttempts: 0
-        });
+      setConnectionState({
+        status: 'connected',
+        lastConnected: new Date().toISOString(),
+        reconnectAttempts: 0
+      });
         addDebugLog('info', 'Health', 'Backend API is healthy');
       } else {
         throw new Error(`Health check failed: ${response.status}`);
@@ -359,6 +359,26 @@ const App: React.FC = () => {
     }
     // Fallback to current active view
     return getChannelKey(activeView.type, activeView.id);
+  };
+
+  // Process NEW agent message format (replaces addCouncilResponseToChannel)
+  const addAgentMessagesToChannel = (agentMessages: any[], channelKey?: string) => {
+    const targetKey = channelKey || getChannelKey(activeView.type, activeView.id);
+    
+    agentMessages.forEach(agentMsg => {
+      const chatMessage: ChatMessage = {
+        id: agentMsg.id,
+        type: agentMsg.type, // 'agent', 'synthesis', or 'actions'
+        content: agentMsg.content,
+        timestamp: agentMsg.timestamp,
+        agent_name: agentMsg.agent_name,
+        agent_role: agentMsg.agent_role,
+        workflow_step: agentMsg.workflow_step
+      };
+      
+      addMessageToChannel(chatMessage, targetKey);
+      addDebugLog('info', 'AI', `✅ Added ${agentMsg.type} message from ${agentMsg.agent_name}`);
+    });
   };
 
   // System messages now go to debug console instead of chat
@@ -407,10 +427,9 @@ const App: React.FC = () => {
           interaction_mode: interactionMode,
           metadata: replyingTo ? {
             reply_to: {
-              message_id: replyingTo.id,
+              id: replyingTo.id,
               content: replyingTo.content,
-              sender: replyingTo.type === 'user' ? 'You' : replyingTo.sender || 'Council',
-              timestamp: replyingTo.timestamp
+              sender: replyingTo.type === 'user' ? 'You' : replyingTo.sender || 'Council'
             }
           } : {}
         })
@@ -426,10 +445,9 @@ const App: React.FC = () => {
           content: data.message.content,
           timestamp: data.message.timestamp,
           reply_to: replyingTo ? {
-            message_id: replyingTo.id,
+            id: replyingTo.id,
             content: replyingTo.content,
-            sender: replyingTo.type === 'user' ? 'You' : replyingTo.sender || 'Council',
-            timestamp: replyingTo.timestamp
+            sender: replyingTo.type === 'user' ? 'You' : replyingTo.sender || 'Council'
           } : undefined
         };
         
@@ -440,8 +458,8 @@ const App: React.FC = () => {
         if (activeView.type === 'dm' || (activeView.type === 'channel' && activeView.id !== 'general')) {
           setIsProcessing(true);
           await triggerAIResponse(messageContent, data.message.id);
-        }
-        
+    }
+    
       } else {
         addDebugLog('error', 'Messages', `❌ MESSAGE SAVE FAILED: ${data.error || 'Unknown error'}`);
         throw new Error(data.error || 'Failed to save message');
@@ -457,30 +475,30 @@ const App: React.FC = () => {
   // Clean AI response trigger function
   const triggerAIResponse = async (messageContent: string, messageId: string) => {
     try {
-      // Determine target members based on active view
-      let requestedMembers: string[] | undefined;
-      
-      if (activeView.type === 'channel') {
-        const channel = CHANNELS[activeView.id];
-        if (channel) {
-          requestedMembers = channel.primaryMembers;
-        }
-      } else if (activeView.type === 'dm') {
-        // For DMs, extract member key from DM id
-        const memberKey = activeView.id.replace('dm-', '');
-        requestedMembers = [memberKey];
+    // Determine target members based on active view
+    let requestedMembers: string[] | undefined;
+    
+    if (activeView.type === 'channel') {
+      const channel = CHANNELS[activeView.id];
+      if (channel) {
+        requestedMembers = channel.primaryMembers;
       }
+    } else if (activeView.type === 'dm') {
+      // For DMs, extract member key from DM id
+      const memberKey = activeView.id.replace('dm-', '');
+      requestedMembers = [memberKey];
+    }
 
       addDebugLog('info', 'AI', `🤖 TRIGGERING AI RESPONSE for message ${messageId}`);
 
-      const queryData = {
-        message: messageContent,
-        requested_members: requestedMembers,
-        interaction_mode: interactionMode,
-        channel_id: activeView.id,
+    const queryData = {
+      message: messageContent,
+      requested_members: requestedMembers,
+      interaction_mode: interactionMode,
+      channel_id: activeView.id,
         channel_type: activeView.type,
         user_message_id: messageId
-      };
+    };
 
       const response = await fetch('/api/v1/council/query', {
         method: 'POST',
@@ -491,11 +509,16 @@ const App: React.FC = () => {
       const data = await response.json();
       
       if (data.success && data.response) {
-        addDebugLog('info', 'AI', `✅ AI RESPONSE RECEIVED: ${data.response.council_responses?.length || 0} members responded`);
-        
-        // Add council response to channel
+        // NEW: Handle agent messages format
+        if (data.response.type === 'agent_messages' && data.response.messages) {
+          addDebugLog('info', 'AI', `✅ AI RESPONSE RECEIVED: ${data.response.messages.length} agent messages`);
+          addAgentMessagesToChannel(data.response.messages);
+        } else if (data.response.council_responses) {
+          // LEGACY: Handle old council response format
+          addDebugLog('info', 'AI', `✅ AI RESPONSE RECEIVED: ${data.response.council_responses?.length || 0} members responded`);
         const targetChannelKey = getTargetChannelKey(data.response);
         addCouncilResponseToChannel(data.response, targetChannelKey);
+        }
       } else {
         addDebugLog('error', 'AI', `❌ AI RESPONSE FAILED: ${data.error || 'Unknown error'}`);
       }
@@ -661,10 +684,8 @@ const App: React.FC = () => {
       timestamp: new Date().toISOString(),
       forwarded_from: {
         channel_id: activeView.id,
-        channel_type: activeView.type,
         channel_name: activeView.name,
-        original_sender: message.type === 'user' ? 'You' : message.sender || 'Council',
-        original_timestamp: message.timestamp
+        original_sender: message.type === 'user' ? 'You' : message.sender || 'Council'
       }
     };
     
