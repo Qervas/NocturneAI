@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Send, Crown, Users, Zap, Hash, MessageCircle, Search, Terminal } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Send, Crown, Users, Zap, Hash, MessageCircle, Search, Terminal, CheckSquare } from 'lucide-react';
 import { 
   ChatMessage, 
   IntelligenceResponse, 
@@ -18,6 +18,9 @@ import ForwardMessageModal from './components/ForwardMessageModal';
 import ReplyIndicator from './components/ReplyIndicator';
 import { usePersistedMessages } from './hooks/usePersistedState';
 import DeleteMessageModal from './components/DeleteMessageModal';
+import BatchDeleteModal from './components/BatchDeleteModal';
+import BatchForwardModal from './components/BatchForwardModal';
+import BatchActionsToolbar from './components/BatchActionsToolbar';
 import './App.css';
 import './styles/scrollbar.css';
 
@@ -56,7 +59,8 @@ const App: React.FC = () => {
     };
   });
   const [previousView, setPreviousView] = useState<ActiveView | undefined>(undefined);
-  const [interactionMode, setInteractionMode] = useState<string>('casual_chat');
+  const [interactionProfile, setInteractionProfile] = useState<string>('auto_mode');
+  const [enabledAbilities, setEnabledAbilities] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -68,6 +72,12 @@ const App: React.FC = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [messageToDelete, setMessageToDelete] = useState<ChatMessage | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Multi-select functionality
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
+  const [showBatchForwardModal, setShowBatchForwardModal] = useState(false);
   
   // WebSocket removed - using REST API only
   
@@ -162,6 +172,10 @@ const App: React.FC = () => {
     setActiveView(newView);
     setIsProcessing(false); // Reset processing state when switching channels
     
+    // Clear multi-select state when switching channels
+    setSelectedMessages(new Set());
+    setIsMultiSelectMode(false);
+    
     // Save current channel to localStorage
     try {
       localStorage.setItem('ie-active-view', JSON.stringify(newView));
@@ -181,20 +195,24 @@ const App: React.FC = () => {
           addDebugLog('info', 'History', `📚 LOADING HISTORY for ${channelKey}`);
           
           // Use unified chat API endpoint
-          const response = await fetch(`/api/v1/channels/${activeView.type}/${activeView.id}/messages?limit=20`);
+          const response = await fetch(
+            `/api/v1/channels/${activeView.type}/${activeView.id}/messages?limit=100`
+          );
           
           addDebugLog('info', 'History', `📡 History API response: ${response.status} ${response.statusText}`);
           
           if (response.ok) {
             const data = await response.json();
-            if (data.messages && data.messages.length > 0) {
-              // Convert history messages to ChatMessage format
+            if (data.success && data.messages && data.messages.length > 0) {
               const historyMessages: ChatMessage[] = data.messages.map((msg: any) => ({
                 id: msg.id,
                 type: msg.type,
                 content: msg.content,
                 timestamp: msg.timestamp,
                 sender: msg.sender,
+                agent_name: msg.agent_name,
+                agent_role: msg.agent_role,
+                workflow_step: msg.workflow_step,
                 council_response: msg.council_response
               }));
               
@@ -268,18 +286,21 @@ const App: React.FC = () => {
 
         try {
           const response = await fetch(
-            `/api/v1/conversations/${channel.type}/${channel.id}/history?limit=100`
+            `/api/v1/channels/${channel.type}/${channel.id}/messages?limit=100`
           );
           
           if (response.ok) {
             const data = await response.json();
-            if (data.messages && data.messages.length > 0) {
+            if (data.success && data.messages && data.messages.length > 0) {
               const historyMessages: ChatMessage[] = data.messages.map((msg: any) => ({
                 id: msg.id,
                 type: msg.type,
                 content: msg.content,
                 timestamp: msg.timestamp,
                 sender: msg.sender,
+                agent_name: msg.agent_name,
+                agent_role: msg.agent_role,
+                workflow_step: msg.workflow_step,
                 council_response: msg.council_response
               }));
               
@@ -424,7 +445,7 @@ const App: React.FC = () => {
         body: JSON.stringify({
           content: messageContent,
           message_type: 'user',
-          interaction_mode: interactionMode,
+          interaction_mode: interactionProfile,
           metadata: replyingTo ? {
             reply_to: {
               id: replyingTo.id,
@@ -494,7 +515,8 @@ const App: React.FC = () => {
     const queryData = {
       message: messageContent,
       requested_members: requestedMembers,
-      interaction_mode: interactionMode,
+      interaction_mode: interactionProfile,
+      enabled_abilities: enabledAbilities,
       channel_id: activeView.id,
         channel_type: activeView.type,
         user_message_id: messageId
@@ -706,6 +728,153 @@ const App: React.FC = () => {
     addDebugLog('debug', 'UI', 'Reply cancelled');
   };
 
+  // Multi-select functions
+  const toggleMultiSelectMode = () => {
+    setIsMultiSelectMode(!isMultiSelectMode);
+    if (isMultiSelectMode) {
+      // Exiting multi-select mode, clear selections
+      setSelectedMessages(new Set());
+    }
+    addDebugLog('info', 'UI', `Multi-select mode ${!isMultiSelectMode ? 'enabled' : 'disabled'}`);
+  };
+
+  const toggleMessageSelection = (messageId: string) => {
+    setSelectedMessages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId);
+      } else {
+        newSet.add(messageId);
+      }
+      addDebugLog('debug', 'UI', `Message ${messageId} ${newSet.has(messageId) ? 'selected' : 'deselected'}`);
+      return newSet;
+    });
+  };
+
+  const selectAllMessages = () => {
+    const currentMessages = getCurrentMessages();
+    const allMessageIds = new Set(currentMessages.map(msg => msg.id));
+    setSelectedMessages(allMessageIds);
+    addDebugLog('info', 'UI', `Selected all ${allMessageIds.size} messages`);
+  };
+
+  const deselectAllMessages = () => {
+    setSelectedMessages(new Set());
+    addDebugLog('info', 'UI', 'Deselected all messages');
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedMessages.size === 0) return;
+    setShowBatchDeleteModal(true);
+    addDebugLog('info', 'UI', `Opening batch delete modal for ${selectedMessages.size} messages`);
+  };
+
+  const handleBatchForward = () => {
+    if (selectedMessages.size === 0) return;
+    setShowBatchForwardModal(true);
+    addDebugLog('info', 'UI', `Opening batch forward modal for ${selectedMessages.size} messages`);
+  };
+
+  const confirmBatchDelete = async () => {
+    const messagesToDelete = Array.from(selectedMessages);
+    setIsDeleting(true);
+    
+    try {
+      // Remove messages from UI immediately
+      setChannelMessages(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(channelKey => {
+          updated[channelKey] = updated[channelKey].filter(msg => !selectedMessages.has(msg.id));
+        });
+        return updated;
+      });
+
+      addDebugLog('info', 'Messages', `Batch deleted ${messagesToDelete.length} messages from UI`);
+
+      // Call backend API for each message
+      const deletePromises = messagesToDelete.map(async (messageId) => {
+        try {
+          const response = await fetch(`/api/v1/messages/${messageId}`, { 
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          
+          if (!response.ok && response.status !== 404) {
+            throw new Error(`Failed to delete message ${messageId}: ${response.statusText}`);
+          }
+          return { messageId, success: true };
+        } catch (error) {
+          addDebugLog('error', 'Messages', `Failed to delete message ${messageId}: ${error}`);
+          return { messageId, success: false };
+        }
+      });
+
+      const results = await Promise.all(deletePromises);
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.length - successCount;
+
+      addDebugLog('info', 'Messages', `Batch delete completed: ${successCount} succeeded, ${failCount} failed`);
+
+      // Clear selections and exit multi-select mode
+      setSelectedMessages(new Set());
+      setIsMultiSelectMode(false);
+      setShowBatchDeleteModal(false);
+
+    } catch (error) {
+      addDebugLog('error', 'Messages', `Batch delete failed: ${error}`);
+      // Restore messages on error
+      // Note: In a real app, you'd want to restore only the messages that failed to delete
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const cancelBatchDelete = () => {
+    setShowBatchDeleteModal(false);
+    addDebugLog('debug', 'UI', 'Batch delete cancelled');
+  };
+
+  const handleBatchForwardToChannel = (targetChannelType: string, targetChannelId: string) => {
+    const currentMessages = getCurrentMessages();
+    const messagesToForward = currentMessages.filter(msg => selectedMessages.has(msg.id));
+    
+    messagesToForward.forEach(message => {
+      const forwardedMessage: ChatMessage = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        type: 'forwarded',
+        content: message.content,
+        timestamp: new Date().toISOString(),
+        sender: 'You',
+        forwarded_from: {
+          channel_id: activeView.id,
+          channel_name: activeView.name,
+          original_sender: message.type === 'user' ? 'You' : message.sender || 'Council'
+        }
+      };
+
+      // Add to target channel
+      const targetChannelKey = getChannelKey(targetChannelType, targetChannelId);
+      addMessageToChannel(forwardedMessage, targetChannelKey);
+    });
+
+    // Get target channel name for logging
+    const targetName = targetChannelType === 'dm' ? 
+      Object.values(DIRECT_MESSAGES).find(dm => dm.id === targetChannelId)?.memberName || targetChannelId :
+      Object.values(CHANNELS).find(ch => ch.id === targetChannelId)?.displayName || `# ${targetChannelId}`;
+
+    addDebugLog('info', 'Messages', `Batch forwarded ${messagesToForward.length} messages to ${targetName}`);
+
+    // Clear selections and close modal
+    setSelectedMessages(new Set());
+    setIsMultiSelectMode(false);
+    setShowBatchForwardModal(false);
+  };
+
+  const cancelBatchForward = () => {
+    setShowBatchForwardModal(false);
+    addDebugLog('debug', 'UI', 'Batch forward cancelled');
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -822,7 +991,18 @@ const App: React.FC = () => {
             </div>
             
             <div className="ml-auto flex items-center space-x-4">
-              {/* Removed redundant History Toggle Button - user can use main search instead */}
+              {/* Multi-select toggle button */}
+              <button
+                onClick={toggleMultiSelectMode}
+                className={`flex items-center px-3 py-1 rounded-md text-xs transition-colors ${
+                  isMultiSelectMode 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                <CheckSquare className="h-3 w-3 mr-1" />
+                {isMultiSelectMode ? 'Exit Select' : 'Select'}
+              </button>
               
               <div className={`flex items-center space-x-2 ${getConnectionStatusColor()}`}>
                 <Zap className="h-3 w-3" />
@@ -838,11 +1018,26 @@ const App: React.FC = () => {
               messages={getCurrentMessages()}
               isProcessing={isProcessing}
               activeView={activeView}
-              interactionMode={interactionMode}
+              interactionMode={interactionProfile}
+              isMultiSelectMode={isMultiSelectMode}
+              selectedMessages={selectedMessages}
+              onSelect={toggleMessageSelection}
             onReply={handleReplyToMessage}
             onForward={handleForwardMessage}
             onDelete={handleDeleteMessage}
             onCopy={handleCopyMessage}
+          />
+
+          {/* Batch Actions Toolbar */}
+          <BatchActionsToolbar
+            isVisible={isMultiSelectMode}
+            selectedCount={selectedMessages.size}
+            totalCount={getCurrentMessages().length}
+            onToggleMultiSelect={toggleMultiSelectMode}
+            onSelectAll={selectAllMessages}
+            onDeselectAll={deselectAllMessages}
+            onBatchDelete={handleBatchDelete}
+            onBatchForward={handleBatchForward}
           />
 
           {/* Reply Indicator */}
@@ -887,8 +1082,10 @@ const App: React.FC = () => {
               <div className="flex items-center space-x-3">
                 {/* Compact Interaction Mode Selector */}
                 <InteractionModeSelector
-                  selectedMode={interactionMode}
-                  onModeChange={setInteractionMode}
+                  selectedProfile={interactionProfile}
+                  enabledAbilities={enabledAbilities}
+                  onProfileChange={setInteractionProfile}
+                  onAbilitiesChange={setEnabledAbilities}
                   compact={true}
                 />
               </div>
@@ -950,6 +1147,23 @@ const App: React.FC = () => {
           isDeleting={isDeleting}
         />
       )}
+
+      {/* Batch Delete Modal */}
+      <BatchDeleteModal
+        isOpen={showBatchDeleteModal}
+        messageCount={selectedMessages.size}
+        isDeleting={isDeleting}
+        onConfirm={confirmBatchDelete}
+        onCancel={cancelBatchDelete}
+      />
+
+      {/* Batch Forward Modal */}
+      <BatchForwardModal
+        isOpen={showBatchForwardModal}
+        messageCount={selectedMessages.size}
+        onForward={handleBatchForwardToChannel}
+        onCancel={cancelBatchForward}
+      />
 
       {/* Initial Loading Overlay */}
       {isInitialLoading && (

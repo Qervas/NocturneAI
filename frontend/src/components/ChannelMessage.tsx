@@ -1,17 +1,20 @@
 import React from 'react';
+import { INTERACTION_PROFILES } from '../types/interaction';
 import { ChatMessage } from '../types/council';
-import { INTERACTION_MODES } from '../types/interaction';
 import CouncilMemberResponse from './CouncilMemberResponse';
 import StrategicSynthesis from './StrategicSynthesis';
 import RecommendedActions from './RecommendedActions';
 import MessageActions from './MessageActions';
-import { Hash, MessageCircle, User, Reply, Forward } from 'lucide-react';
+import { Hash, MessageCircle, User, Reply, Forward, CheckSquare, Square } from 'lucide-react';
 
 interface ChannelMessageProps {
   message: ChatMessage;
   channelType: 'channel' | 'dm';
   channelId: string;
   interactionMode?: string;
+  isMultiSelectMode?: boolean;
+  isSelected?: boolean;
+  onSelect?: (messageId: string) => void;
   onReply?: (message: ChatMessage) => void;
   onForward?: (message: ChatMessage) => void;
   onDelete?: (message: ChatMessage) => void;
@@ -23,6 +26,9 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
   channelType, 
   channelId, 
   interactionMode = 'casual_chat',
+  isMultiSelectMode = false,
+  isSelected = false,
+  onSelect,
   onReply,
   onForward,
   onDelete,
@@ -99,6 +105,20 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
         )}
 
         <div className="flex items-start space-x-3 p-3">
+          {/* Multi-select checkbox */}
+          {isMultiSelectMode && (
+            <button
+              onClick={() => onSelect?.(message.id)}
+              className="mt-1 p-1 hover:bg-gray-700 rounded transition-colors"
+            >
+              {isSelected ? (
+                <CheckSquare className="h-4 w-4 text-blue-400" />
+              ) : (
+                <Square className="h-4 w-4 text-gray-400" />
+              )}
+            </button>
+          )}
+          
           <div className={`w-8 h-8 ${
             isForwarded 
               ? 'bg-gradient-to-r from-blue-500 to-cyan-500' 
@@ -169,6 +189,20 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
     return (
       <div className={`group hover:bg-slate-800/30 transition-colors`}>
         <div className="flex items-start space-x-3 p-3">
+          {/* Multi-select checkbox */}
+          {isMultiSelectMode && (
+            <button
+              onClick={() => onSelect?.(message.id)}
+              className="mt-1 p-1 hover:bg-gray-700 rounded transition-colors"
+            >
+              {isSelected ? (
+                <CheckSquare className="h-4 w-4 text-blue-400" />
+              ) : (
+                <Square className="h-4 w-4 text-gray-400" />
+              )}
+            </button>
+          )}
+          
           <div className={`w-8 h-8 ${
             isSynthesis 
               ? 'bg-gradient-to-r from-purple-500 to-pink-500'
@@ -235,7 +269,7 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
     const response = message.council_response;
     const isDM = channelType === 'dm';
     const isIndividualResponse = response.response_type === 'individual';
-    const mode = INTERACTION_MODES[interactionMode];
+    const mode = INTERACTION_PROFILES[interactionMode];
 
     // Individual DM Response - simpler, more personal layout
     if (isIndividualResponse && isDM) {
@@ -271,7 +305,22 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
             </div>
           )}
 
-          <div className="space-y-3 p-4 bg-slate-800/30 rounded-lg border-l-4 border-blue-500">
+          <div className="flex items-start space-x-3">
+            {/* Multi-select checkbox */}
+            {isMultiSelectMode && (
+              <button
+                onClick={() => onSelect?.(message.id)}
+                className="mt-1 p-1 hover:bg-gray-700 rounded transition-colors"
+              >
+                {isSelected ? (
+                  <CheckSquare className="h-4 w-4 text-blue-400" />
+                ) : (
+                  <Square className="h-4 w-4 text-gray-400" />
+                )}
+              </button>
+            )}
+
+            <div className="flex-1 space-y-3 p-4 bg-slate-800/30 rounded-lg border-l-4 border-blue-500">
             {/* Individual Response Header */}
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
@@ -313,7 +362,7 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
           </div>
 
           {/* Individual Actions (if any) */}
-          {mode.hasActions && response.recommended_actions && response.recommended_actions.length > 0 && (
+          {mode?.abilities?.includes('actions') && response.recommended_actions && response.recommended_actions.length > 0 && (
             <div className="mt-4 p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
               <div className="text-sm font-medium text-blue-300 mb-2">Suggested next steps:</div>
               <ul className="space-y-1">
@@ -328,11 +377,12 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
           )}
 
           {/* Personal touch for casual chat */}
-          {mode.responseStyle === 'casual' && (
+          {mode?.abilities?.includes('conversational') && (
             <div className="text-xs text-slate-500 italic">
               💬 Personal conversation with {councilMember.member_name}
             </div>
           )}
+            </div>
           </div>
         </div>
       );
@@ -368,7 +418,22 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
           </div>
         )}
 
-      <div className="space-y-4 p-4 bg-slate-800/20 rounded-lg">
+        <div className="flex items-start space-x-3">
+          {/* Multi-select checkbox */}
+          {isMultiSelectMode && (
+            <button
+              onClick={() => onSelect?.(message.id)}
+              className="mt-1 p-1 hover:bg-gray-700 rounded transition-colors"
+            >
+              {isSelected ? (
+                <CheckSquare className="h-4 w-4 text-blue-400" />
+              ) : (
+                <Square className="h-4 w-4 text-gray-400" />
+              )}
+            </button>
+          )}
+
+          <div className="flex-1 space-y-4 p-4 bg-slate-800/20 rounded-lg">
         {/* Response Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -415,7 +480,7 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
         ))}
 
         {/* Strategic Synthesis - based on interaction mode */}
-        {mode.hasStrategicSynthesis && !isDM && response.council_responses.length > 1 && (
+        {mode?.abilities?.includes('synthesis') && !isDM && response.council_responses.length > 1 && (
           <StrategicSynthesis 
             synthesis={response.synthesis}
             processingTime={response.processing_time || 0}
@@ -424,7 +489,7 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
         )}
 
         {/* Recommended Actions - based on interaction mode */}
-        {mode.hasActions && response.recommended_actions && response.recommended_actions.length > 0 && (
+        {mode?.abilities?.includes('actions') && response.recommended_actions && response.recommended_actions.length > 0 && (
           <RecommendedActions 
             actions={response.recommended_actions}
             confidenceScore={response.confidence_score || 0}
@@ -432,11 +497,12 @@ const ChannelMessage: React.FC<ChannelMessageProps> = ({
         )}
 
         {/* Mode-specific footer info */}
-        {mode.responseStyle === 'casual' && (
+        {mode?.abilities?.includes('conversational') && (
           <div className="text-xs text-slate-500 italic">
-            💬 Casual conversation mode - responses are conversational and brief
+            💬 Conversational mode - natural, engaging dialogue
           </div>
         )}
+          </div>
         </div>
       </div>
     );

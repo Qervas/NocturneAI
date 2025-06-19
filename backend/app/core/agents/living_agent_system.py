@@ -12,10 +12,7 @@ from enum import Enum
 import uuid
 
 # Import the Ollama service for AI-powered responses
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from services.ollama_service import OllamaService
+from ...services.ollama_service import ollama_service
 
 
 class PersonalityTrait(Enum):
@@ -208,7 +205,7 @@ class LivingAgent:
         self.role = role
         
         # Initialize Ollama service for AI-powered responses
-        self.ollama_service = OllamaService()
+        self.ollama_service = ollama_service
         
         # Extract core traits
         self.core_values = core_personality.get('core_values', [])
@@ -267,7 +264,7 @@ class LivingAgent:
         await self._update_mood_from_interaction(message, context)
         
         # Generate response based on current state
-        response = await self._generate_contextual_response(user_id, message, context)
+        response = await self._generate_contextual_response(message, self.relationships[user_id], context)
         
         # Learn from this interaction
         await self._learn_from_interaction(user_id, message, response, context)
@@ -360,39 +357,202 @@ class LivingAgent:
         # Time-based mood decay (gradual return to baseline)
         await self._apply_mood_decay()
     
-    async def _generate_contextual_response(self, user_id: str, message: str, context: Dict) -> str:
-        """Generate AI-powered response based on personality, relationship, and current state"""
-        relationship = self.relationships.get(user_id, Relationship(user_id, "user"))
+    async def _generate_contextual_response(self, message: str, relationship: 'AgentRelationship', context: Dict) -> str:
+        """Generate contextual response using AI with personality and computational modes"""
         
-        # Build comprehensive context for AI response
-        personality_context = self._build_personality_context()
-        relationship_context = self._build_relationship_context(relationship)
-        mood_context = self._build_mood_context()
-        memory_context = self._build_memory_context(message)
+        # Extract interaction profile and abilities from context
+        interaction_profile = context.get('interaction_mode', 'active_mode')  # Note: frontend still sends as interaction_mode
+        enabled_abilities = context.get('enabled_abilities', [])
+        computational_level = context.get('computational_level', 'active')
         
-        # Create the system prompt based on the agent's personality and current state
-        system_prompt = self._create_system_prompt(
-            personality_context, 
-            relationship_context, 
-            mood_context, 
-            memory_context
-        )
+        # Auto Mode: Let AI decide which abilities to use based on context
+        if interaction_profile == 'auto_mode' or not enabled_abilities:
+            enabled_abilities = await self._intelligent_ability_selection(message, context, relationship)
+            print(f"🤖 Auto Mode selected abilities: {enabled_abilities}")
         
-        # Generate AI response using Ollama
+        # Set computational parameters based on mode
+        temperature, max_tokens, model_complexity = self._get_computational_parameters(interaction_profile, computational_level, enabled_abilities)
+        
+        # Create dynamic system prompt based on selected abilities and computational level
+        system_prompt = await self._create_dynamic_system_prompt(enabled_abilities, context, relationship, computational_level)
+        
+        # Generate AI response using Ollama with computational parameters
         try:
-            response = await self.ollama_service.generate_response(
+            response = await self.ollama_service.chat_completion(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": message}
                 ],
                 model="llama3.2:3b",
-                temperature=0.7,
-                max_tokens=500
+                temperature=temperature,
+                max_tokens=max_tokens
             )
             return response
         except Exception as e:
+            print(f"🚨 Living Agent AI generation failed: {str(e)}")
             # Fallback to basic response if AI service fails
             return await self._generate_fallback_response(message, relationship, context)
+    
+    def _get_computational_parameters(self, interaction_profile: str, computational_level: str, enabled_abilities: List[str]) -> tuple:
+        """Get AI parameters based on computational intensity"""
+        
+        # Base parameters
+        temperature = 0.6
+        max_tokens = 600
+        model_complexity = "standard"
+        
+        # Adjust based on computational level
+        if computational_level == 'passive' or interaction_profile == 'passive_mode':
+            temperature = 0.3  # More focused
+            max_tokens = 300   # Shorter responses
+            model_complexity = "light"
+        elif computational_level == 'autonomous' or interaction_profile == 'autonomous_mode':
+            temperature = 0.8  # More creative
+            max_tokens = 1500  # Longer responses
+            model_complexity = "complex"
+        elif 'creative_ideation' in enabled_abilities:
+            temperature = 0.8
+        elif 'deep_thinking' in enabled_abilities:
+            max_tokens = 1200
+            
+        return temperature, max_tokens, model_complexity
+    
+    async def _intelligent_ability_selection(self, message: str, context: Dict, relationship: 'AgentRelationship') -> List[str]:
+        """AI-powered ability selection based on message analysis"""
+        
+        # Analyze message characteristics
+        message_lower = message.lower()
+        word_count = len(message.split())
+        
+        selected_abilities = []
+        
+        # Always include conversational for natural interaction
+        selected_abilities.append('conversational')
+        
+        # Question complexity analysis
+        complex_indicators = ['how', 'why', 'strategy', 'plan', 'analysis', 'recommend', 'should', 'best practices']
+        simple_indicators = ['what', 'when', 'where', 'quick', 'simple']
+        
+        is_complex = any(indicator in message_lower for indicator in complex_indicators)
+        is_simple = any(indicator in message_lower for indicator in simple_indicators)
+        
+        # Strategic/Business context
+        business_keywords = ['strategy', 'market', 'business', 'revenue', 'growth', 'competitive', 'roi']
+        if any(keyword in message_lower for keyword in business_keywords):
+            selected_abilities.extend(['strategic_analysis', 'data_driven'])
+        
+        # Creative/Ideation context
+        creative_keywords = ['idea', 'creative', 'brainstorm', 'innovative', 'design', 'concept']
+        if any(keyword in message_lower for keyword in creative_keywords):
+            selected_abilities.extend(['creative_ideation', 'collaborative'])
+        
+        # Action-oriented requests
+        action_keywords = ['do', 'implement', 'execute', 'steps', 'action', 'next', 'how to']
+        if any(keyword in message_lower for keyword in action_keywords):
+            selected_abilities.append('actions')
+        
+        # Analysis requests
+        analysis_keywords = ['analyze', 'evaluate', 'assess', 'compare', 'review', 'pros and cons']
+        if any(keyword in message_lower for keyword in analysis_keywords):
+            selected_abilities.extend(['deep_thinking', 'structured_output'])
+        
+        # Multiple perspectives needed
+        synthesis_keywords = ['overall', 'combine', 'together', 'synthesis', 'holistic']
+        if any(keyword in message_lower for keyword in synthesis_keywords) or is_complex:
+            selected_abilities.append('synthesis')
+        
+        # Quick response indicators
+        if is_simple or word_count < 10:
+            selected_abilities.append('quick_response')
+        
+        # Complex analysis for longer questions
+        if word_count > 20 or is_complex:
+            selected_abilities.extend(['deep_thinking', 'structured_output'])
+        
+        # Relationship-based adjustments
+        if relationship.trust_score > 80:
+            selected_abilities.append('collaborative')  # More interactive with trusted users
+        
+        # Remove duplicates and return
+        return list(set(selected_abilities))
+    
+    async def _create_dynamic_system_prompt(self, abilities: List[str], context: Dict, relationship: 'AgentRelationship', computational_level: str = 'active') -> str:
+        """Create system prompt based on selected abilities and computational level"""
+        
+        # Computational level specific instructions
+        computational_instructions = {
+            'passive': "Keep responses concise and direct. Focus on immediate practical value. Minimize complex analysis.",
+            'active': "Provide balanced responses with moderate analysis. Include some context and reasoning.",
+            'autonomous': "Engage in deep analysis. Proactively consider implications. Think strategically and comprehensively."
+        }
+        
+        base_prompt = f"You are {self.name}, a {self.role}."
+        
+        # Add computational mode context
+        computational_context = f"COMPUTATIONAL MODE: {computational_level.upper()}\n{computational_instructions.get(computational_level, computational_instructions['active'])}"
+        
+        # Add personality context
+        personality_traits = []
+        if self.core_personality.get('core_values'):
+            personality_traits.append(f"Your core values: {', '.join(self.core_personality['core_values'])}")
+        if self.core_personality.get('expertise'):
+            personality_traits.append(f"Your expertise: {', '.join(self.core_personality['expertise'])}")
+        
+        personality_context = "\n".join(personality_traits)
+        
+        # Build ability-specific instructions
+        ability_instructions = []
+        
+        if 'conversational' in abilities:
+            ability_instructions.append("• Be natural, engaging, and personable in your communication")
+        
+        if 'quick_response' in abilities:
+            ability_instructions.append("• Provide concise, focused answers without unnecessary detail")
+        
+        if 'deep_thinking' in abilities:
+            ability_instructions.append("• Provide thorough analysis with detailed reasoning and multiple perspectives")
+        
+        if 'creative_ideation' in abilities:
+            ability_instructions.append("• Think creatively and generate innovative ideas. Use enthusiastic language and explore possibilities")
+        
+        if 'strategic_analysis' in abilities:
+            ability_instructions.append("• Apply strategic thinking, consider long-term implications, and analyze market dynamics")
+        
+        if 'data_driven' in abilities:
+            ability_instructions.append("• Reference relevant data, metrics, and evidence-based insights where appropriate")
+        
+        if 'collaborative' in abilities:
+            ability_instructions.append("• Ask thoughtful follow-up questions and encourage interactive discussion")
+        
+        if 'actions' in abilities:
+            ability_instructions.append("• Include specific, actionable next steps and concrete recommendations")
+        
+        if 'structured_output' in abilities:
+            ability_instructions.append("• Organize your response with clear headings, bullet points, and logical structure")
+        
+        if 'synthesis' in abilities:
+            ability_instructions.append("• Combine different perspectives and provide a holistic view of the topic")
+        
+        # Relationship context
+        relationship_context = f"Your relationship with this user: {relationship.trust_score:.0f}% trust level, {relationship.interaction_count} previous conversations."
+        if relationship.trust_score > 70:
+            relationship_context += " Feel free to be more personal and reference past conversations."
+        
+        # Combine all parts
+        full_prompt = f"""{base_prompt}
+
+{computational_context}
+
+{personality_context}
+
+{relationship_context}
+
+Response Guidelines:
+{chr(10).join(ability_instructions)}
+
+Respond naturally while incorporating these capabilities as appropriate for the user's question."""
+        
+        return full_prompt
     
     def _build_personality_context(self) -> str:
         """Build personality context for AI prompt"""

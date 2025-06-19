@@ -9,6 +9,9 @@ interface ChatInterfaceProps {
   isProcessing: boolean;
   activeView: ActiveView;
   interactionMode: string;
+  isMultiSelectMode?: boolean;
+  selectedMessages?: Set<string>;
+  onSelect?: (messageId: string) => void;
   onReply?: (message: ChatMessage) => void;
   onForward?: (message: ChatMessage) => void;
   onDelete?: (message: ChatMessage) => void;
@@ -20,6 +23,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   isProcessing, 
   activeView, 
   interactionMode,
+  isMultiSelectMode = false,
+  selectedMessages = new Set(),
+  onSelect,
   onReply,
   onForward,
   onDelete,
@@ -89,6 +95,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             channelType={activeView.type}
             channelId={activeView.id}
             interactionMode={interactionMode}
+            isMultiSelectMode={isMultiSelectMode}
+            isSelected={selectedMessages.has(message.id)}
+            onSelect={onSelect}
                 onReply={onReply}
                 onForward={onForward}
                 onDelete={onDelete}

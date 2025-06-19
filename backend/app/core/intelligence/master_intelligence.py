@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Union
 import openai
 import anthropic
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import uuid
 
 from app.core.agents.council_members import AICouncil, CouncilMember, CouncilResponse
@@ -24,7 +24,8 @@ class IntelligenceQuery:
     requested_members: List[str] = None
     query_type: str = "general"
     priority: str = "normal"
-    interaction_mode: str = "casual_chat"
+    interaction_mode: str = "auto_mode"
+    enabled_abilities: List[str] = field(default_factory=list)
     channel_id: str = None
     channel_type: str = "channel"  # "channel" or "dm"
 
@@ -73,52 +74,238 @@ class IndividualIntelligence:
     def __init__(self):
         self.council = AICouncil()
         self.council_members = self.council.get_all_members()
+        # Import living agents system
+        from ..agents.living_agent_system import LivingAgent
+        self.living_agents = {}  # Will store living agents by name
+        
+        # Initialize default living agents
+        self._initialize_default_agents()
+    
+    def _initialize_default_agents(self):
+        """Initialize default living agents for council members"""
+        from ..agents.living_agent_system import LivingAgent
+        
+        # Sarah Chen - Product Strategy
+        sarah_personality = {
+            'origin_story': "Former product manager at top tech companies, now your AI advisor",
+            'core_values': ['user_value', 'data_driven_decisions', 'strategic_thinking'],
+            'fundamental_traits': {
+                'communication_style': 'thoughtful',
+                'decision_framework': 'analytical',
+                'stress_response': 'systematic_analysis'
+            },
+            'expertise': ['product_strategy', 'user_research', 'market_analysis'],
+            'quirks': ['loves_frameworks', 'asks_clarifying_questions', 'uses_product_metaphors'],
+            'humor_style': 'witty'
+        }
+        
+        sarah_agent = LivingAgent(
+            agent_id="sarah_chen_default",
+            name="Sarah Chen",
+            role="Product Strategy Advisor",
+            core_personality=sarah_personality
+        )
+        self.living_agents["Sarah Chen"] = sarah_agent
+        
+        # Marcus Rodriguez - Market Intelligence
+        marcus_personality = {
+            'origin_story': "Former business development executive, now your strategic market advisor",
+            'core_values': ['opportunity_driven', 'market_focused', 'competitive_advantage'],
+            'fundamental_traits': {
+                'communication_style': 'enthusiastic',
+                'decision_framework': 'opportunity_based',
+                'stress_response': 'competitive_analysis'
+            },
+            'expertise': ['market_analysis', 'competitive_intelligence', 'business_development'],
+            'quirks': ['spots_opportunities', 'thinks_in_numbers', 'competitive_spirit'],
+            'humor_style': 'business_savvy'
+        }
+        
+        marcus_agent = LivingAgent(
+            agent_id="marcus_rodriguez_default",
+            name="Marcus Rodriguez",
+            role="Market Intelligence Advisor",
+            core_personality=marcus_personality
+        )
+        self.living_agents["Marcus Rodriguez"] = marcus_agent
+        
+        # Elena Vasquez - UX Design
+        elena_personality = {
+            'origin_story': "Senior UX designer at innovative startups, now your design thinking advisor",
+            'core_values': ['user_centered', 'design_thinking', 'accessibility'],
+            'fundamental_traits': {
+                'communication_style': 'creative',
+                'decision_framework': 'user_experience',
+                'stress_response': 'design_iteration'
+            },
+            'expertise': ['user_experience', 'interface_design', 'design_systems'],
+            'quirks': ['visualizes_solutions', 'empathy_driven', 'iterative_mindset'],
+            'humor_style': 'playful'
+        }
+        
+        elena_agent = LivingAgent(
+            agent_id="elena_vasquez_default",
+            name="Elena Vasquez",
+            role="UX Design Advisor",
+            core_personality=elena_personality
+        )
+        self.living_agents["Elena Vasquez"] = elena_agent
+        
+        # David Kim - Operations
+        david_personality = {
+            'origin_story': "Former engineering manager and operations lead, now your execution advisor",
+            'core_values': ['systematic_execution', 'process_optimization', 'reliable_delivery'],
+            'fundamental_traits': {
+                'communication_style': 'structured',
+                'decision_framework': 'process_based',
+                'stress_response': 'systematic_planning'
+            },
+            'expertise': ['project_management', 'system_architecture', 'operational_planning'],
+            'quirks': ['plans_everything', 'risk_aware', 'implementation_focused'],
+            'humor_style': 'dry'
+        }
+        
+        david_agent = LivingAgent(
+            agent_id="david_kim_default",
+            name="David Kim",
+            role="Operations Advisor",
+            core_personality=david_personality
+        )
+        self.living_agents["David Kim"] = david_agent
 
-    async def get_individual_response(self, member_name: str, query: IntelligenceQuery) -> List[AgentMessage]:
+    async def get_individual_response(self, member_key: str, query: IntelligenceQuery) -> List[AgentMessage]:
         """
         Get response from a specific council member for 1-on-1 conversation.
+        member_key: The council member key (e.g., 'sarah', 'marcus', etc.)
         Returns list of AgentMessage objects that will render as user-like messages.
         """
-        member = self.council_members.get(member_name.lower())
+        # Map member keys to full names for living agent lookup
+        full_name_map = {
+            'sarah': 'Sarah Chen',
+            'marcus': 'Marcus Rodriguez',
+            'elena': 'Elena Vasquez', 
+            'david': 'David Kim'
+        }
+        member_name = full_name_map.get(member_key, 'Sarah Chen')
+        
+        # Check if we have a living agent for this member
+        if member_name in self.living_agents:
+            return await self._get_living_agent_response(member_name, query)
+        
+        # Fallback to original council member if no living agent
+        member = self.council_members.get(member_key)
         if not member:
             return [AgentMessage(
                 agent_name="System",
-                agent_role="Assistant",
-                content=f"Council member '{member_name}' not found.",
+                agent_role="Assistant", 
+                content=f"Council member '{member_key}' not found.",
                 workflow_step='response'
             )]
-
-        # Generate individual response based on interaction mode
+        # Generate individual response based on interaction mode (fallback)
         return await self._generate_mode_based_response(member, query)
+    
+    async def _get_living_agent_response(self, member_name: str, query: IntelligenceQuery) -> List[AgentMessage]:
+        """Get response from living agent with enhanced backend integration"""
+        agent = self.living_agents[member_name]
+        
+        # Use default user ID for council queries
+        user_id = "council_user"
+        
+        try:
+            # Process interaction with living agent
+            result = await agent.process_interaction(
+                user_id=user_id,
+                message=query.user_input,
+                context={
+                    'interaction_mode': query.interaction_mode,
+                    'enabled_abilities': getattr(query, 'enabled_abilities', []),
+                    'channel_type': query.channel_type,
+                    'channel_id': query.channel_id
+                }
+            )
+            
+            # TRY to use enhanced integration if available
+            try:
+                from .enhanced_integration import get_enhanced_integration
+                enhanced_integration = get_enhanced_integration(user_id)
+                
+                # Use enhanced integration for full autonomy
+                enhanced_messages = await enhanced_integration.enhance_agent_response(
+                    agent, query, result['response']
+                )
+                
+                print(f"✨ Enhanced response generated for {member_name} with {len(enhanced_messages)} messages")
+                return enhanced_messages
+                
+            except ImportError:
+                print(f"ℹ️  Enhanced integration not available, using basic living agent response")
+            except Exception as e:
+                print(f"⚠️  Enhanced integration failed, falling back to basic response: {str(e)}")
+            
+            # Fallback to basic living agent response
+            return [AgentMessage(
+                agent_name=agent.name,
+                agent_role=agent.role,
+                content=result['response'],
+                workflow_step='response'
+            )]
+            
+        except Exception as e:
+            print(f"🚨 Living agent response failed for {member_name}: {str(e)}")
+            # Fallback to simple response
+            return [AgentMessage(
+                agent_name=member_name,
+                agent_role="AI Advisor",
+                content=f"I'm sorry, I'm having trouble processing your question about '{query.user_input}' right now. Could you try rephrasing it?",
+                workflow_step='response'
+            )]
 
     async def _generate_mode_based_response(self, member: CouncilMember, query: IntelligenceQuery) -> List[AgentMessage]:
         """Generate response based on interaction mode"""
         mode = query.interaction_mode
         user_input = query.user_input
         
-        if mode == 'casual_chat':
-            return await self._generate_casual_response(member, user_input)
-        elif mode == 'quick_consult':
-            return await self._generate_quick_consult_response(member, user_input)
-        elif mode == 'strategic_brief':
-            return await self._generate_strategic_brief_response(member, user_input)
-        elif mode == 'brainstorm':
-            return await self._generate_brainstorm_response(member, user_input)
-        elif mode == 'formal_analysis':
-            return await self._generate_formal_analysis_response(member, user_input)
+        # Map computational modes to appropriate response styles
+        if mode in ['passive_mode']:
+            return await self._generate_passive_response(member, user_input)
+        elif mode in ['active_mode', 'auto_mode']:  # auto_mode defaults to active
+            return await self._generate_active_response(member, user_input)
+        elif mode == 'autonomous_mode':
+            return await self._generate_autonomous_response(member, user_input)
         else:
-            return await self._generate_casual_response(member, user_input)
+            # Default to active for any unknown mode
+            return await self._generate_active_response(member, user_input)
 
-    async def _generate_casual_response(self, member: CouncilMember, user_input: str) -> List[AgentMessage]:
-        """Generate casual, conversational response"""
-        responses = {
-            'Sarah Chen': f"Hey! 👋 Nice to hear from you! {user_input} sounds interesting. From a product perspective, I think there's definitely potential here. What specific aspects are you curious about?",
-            'Marcus Rodriguez': f"Hi there! 😊 Great question about {user_input}. I see some solid market opportunities here. Want to dive into the business side of things?",
-            'Elena Vasquez': f"Hello! 🎨 Love chatting about {user_input}! From a design standpoint, I'm already picturing some cool user experiences. What's your vision for how people would interact with this?",
-            'David Kim': f"Hey! 👨‍💻 Thanks for reaching out about {user_input}. Operationally, this looks doable. What's your timeline looking like? Let's make it happen!"
+    async def _generate_passive_response(self, member: CouncilMember, user_input: str) -> List[AgentMessage]:
+        """Generate passive mode response - low computational power, quick and direct"""
+        
+        passive_responses = {
+            'Sarah Chen': f"Quick take on {user_input}: I'd focus on user value first. Simple, direct approach usually works best.",
+            'Marcus Rodriguez': f"Short answer for {user_input}: Market timing is key. Let's move fast but smart.",
+            'Elena Vasquez': f"Quick UX thought on {user_input}: Keep it simple, make it intuitive. Users first, always.",
+            'David Kim': f"Operationally speaking: {user_input} needs clear steps. Let's define scope and timeline first."
         }
         
-        content = responses.get(member.name, f"Thanks for the question about {user_input}. Let me share my perspective...")
+        content = passive_responses.get(member.name, f"Quick response: {user_input} needs focused attention. Let me give you the key points...")
+        
+        return [AgentMessage(
+            agent_name=member.name,
+            agent_role=member.role.value,
+            content=content,
+            workflow_step='response'
+        )]
+
+    async def _generate_active_response(self, member: CouncilMember, user_input: str) -> List[AgentMessage]:
+        """Generate active mode response - balanced computational power with moderate analysis"""
+        
+        active_responses = {
+            'Sarah Chen': f"Looking at {user_input} from a product perspective: I see strong potential here. The key is balancing user needs with business goals. We should validate assumptions early and iterate based on feedback.",
+            'Marcus Rodriguez': f"From a business standpoint, {user_input} presents interesting opportunities. Market analysis shows promise, but we need to consider competitive landscape and timing. I'd recommend a phased approach.",
+            'Elena Vasquez': f"Design-wise, {user_input} has great UX potential. I'm thinking about user journeys and how to make this intuitive. The interface should feel natural while supporting complex functionality underneath.",
+            'David Kim': f"Operationally, {user_input} is achievable with proper planning. I'd structure this in phases: foundation setup, core implementation, and optimization. Resource allocation will be critical for success."
+        }
+        
+        content = active_responses.get(member.name, f"Analyzing {user_input}: This requires balanced consideration of multiple factors. Let me share my perspective...")
         
         return [AgentMessage(
             agent_name=member.name,
@@ -303,6 +490,58 @@ class IndividualIntelligence:
             agent_name="Action Plan",
             agent_role="Implementation Steps",
             content="\n".join(action_items),
+            workflow_step='actions'
+        ))
+        
+        return messages
+
+    async def _generate_autonomous_response(self, member: CouncilMember, user_input: str) -> List[AgentMessage]:
+        """Generate autonomous mode response - high computational power with deep strategic analysis"""
+        
+        # Deep analysis responses with strategic thinking
+        responses_by_member = {
+            'Sarah Chen': f"Deep product analysis of {user_input}: This represents a significant strategic opportunity that requires comprehensive user research and competitive positioning. From a product strategy perspective, I recommend conducting extensive user interviews, building detailed personas, and creating a robust product roadmap that accounts for scalability, technical debt, and long-term vision alignment.\n\n**Strategic Framework:**\n- User validation through 50+ interviews\n- Competitive analysis across 3 market segments\n- Technical architecture review for 5-year scalability\n- Risk assessment matrix with mitigation strategies",
+            
+            'Marcus Rodriguez': f"Comprehensive business analysis of {user_input}: This initiative presents multi-dimensional market opportunities with substantial revenue potential. My analysis indicates strong market timing, but requires sophisticated go-to-market strategy.\n\n**Market Intelligence:**\n- TAM: Estimated $2.5B+ addressable market\n- Competition: 3 direct, 12 indirect competitors\n- Market timing: Optimal entry window (6-month advantage)\n- Revenue projections: $500K ARR by month 12\n\n**Strategic Recommendations:**\n- Capture early market share through differentiated positioning\n- Build strategic partnerships with key industry players\n- Develop intellectual property protection strategy",
+            
+            'Elena Vasquez': f"Comprehensive UX strategy for {user_input}: This requires sophisticated user experience design that balances complexity with accessibility. Deep research into user mental models, behavioral patterns, and emotional triggers will be essential.\n\n**Design Strategy:**\n- Ethnographic user research (qualitative + quantitative)\n- Advanced prototyping with micro-interactions\n- Accessibility compliance (WCAG 2.1 AA+)\n- Cross-platform experience consistency\n- Progressive disclosure information architecture\n\n**Innovation Opportunities:**\n- AI-powered personalization engine\n- Predictive interface adaptation\n- Contextual help system with machine learning",
+            
+            'David Kim': f"Comprehensive operational framework for {user_input}: This requires sophisticated project management, resource optimization, and risk mitigation strategies. Deep systems thinking approach needed.\n\n**Operational Excellence Framework:**\n- Phase 1: Infrastructure & Foundation (8-10 weeks)\n- Phase 2: Core Development & Testing (12-16 weeks)\n- Phase 3: Optimization & Scale (6-8 weeks)\n\n**Resource Allocation:**\n- Engineering: 4 senior developers, 2 junior developers\n- Design: 2 UX designers, 1 visual designer\n- QA: 2 test engineers, automated testing suite\n- DevOps: 1 senior engineer, cloud infrastructure\n\n**Risk Management:**\n- Technical risk: 15% contingency buffer\n- Market risk: Agile iteration cycles\n- Resource risk: Cross-training protocols"
+        }
+        
+        messages = []
+        
+        # Main comprehensive response
+        main_content = responses_by_member.get(member.name, f"Comprehensive analysis of {user_input}: This requires deep strategic thinking across multiple dimensions...")
+        messages.append(AgentMessage(
+            agent_name=member.name,
+            agent_role=member.role.value,
+            content=main_content,
+            workflow_step='response'
+        ))
+        
+        # Add synthesis for autonomous mode
+        synthesis_content = f"**Strategic Synthesis**: {user_input} presents high-value opportunity requiring coordinated execution across product, business, design, and operations. Success factors: deep user research, market timing, technical excellence, and operational discipline."
+        messages.append(AgentMessage(
+            agent_name="Master Intelligence",
+            agent_role="Strategic Synthesis",
+            content=synthesis_content,
+            workflow_step='synthesis'
+        ))
+        
+        # Add strategic action items
+        actions = [
+            "Conduct comprehensive user research (50+ interviews, behavioral analysis)",
+            "Develop detailed competitive intelligence report with SWOT analysis",
+            "Create technical architecture review with scalability assessment",
+            "Build detailed project timeline with resource allocation and risk mitigation",
+            "Establish success metrics and tracking systems for all phases"
+        ]
+        action_content = "\n".join(actions)
+        messages.append(AgentMessage(
+            agent_name="Strategic Actions",
+            agent_role="Next Steps",
+            content=action_content,
             workflow_step='actions'
         ))
         
@@ -627,12 +866,26 @@ Please acknowledge the context and respond appropriately to their reply, taking 
         # Personality-based simulated responses with casual chat support
         interaction_mode = getattr(query, 'interaction_mode', 'casual_chat')
         
-        if interaction_mode == 'casual_chat':
+        if interaction_mode == 'passive_mode':
             responses_by_member = {
-                'Sarah': f"Hey! 👋 Nice to hear from you! {query.user_input} sounds interesting. From a product perspective, I think there's definitely potential here. What specific aspects are you curious about?",
-                'Marcus': f"Hi there! 😊 Great question about {query.user_input}. I see some solid market opportunities here. Want to dive into the business side of things?", 
-                'Elena': f"Hello! 🎨 Love chatting about {query.user_input}! From a design standpoint, I'm already picturing some cool user experiences. What's your vision for how people would interact with this?",
-                'David': f"Hey! 👨‍💻 Thanks for reaching out about {query.user_input}. Operationally, this looks doable. What's your timeline looking like? Let's make it happen!"
+                'Sarah': f"Quick take on {query.user_input}: I'd focus on user value first. Simple, direct approach usually works best.",
+                'Marcus': f"Short answer for {query.user_input}: Market timing is key. Let's move fast but smart.", 
+                'Elena': f"Quick UX thought on {query.user_input}: Keep it simple, make it intuitive. Users first, always.",
+                'David': f"Operationally speaking: {query.user_input} needs clear steps. Let's define scope and timeline first."
+            }
+        elif interaction_mode in ['active_mode', 'auto_mode']:
+            responses_by_member = {
+                'Sarah': f"Looking at {query.user_input} from a product perspective: I see strong potential here. The key is balancing user needs with business goals. We should validate assumptions early and iterate based on feedback.",
+                'Marcus': f"From a business standpoint, {query.user_input} presents interesting opportunities. Market analysis shows promise, but we need to consider competitive landscape and timing. I'd recommend a phased approach.", 
+                'Elena': f"Design-wise, {query.user_input} has great UX potential. I'm thinking about user journeys and how to make this intuitive. The interface should feel natural while supporting complex functionality underneath.",
+                'David': f"Operationally, {query.user_input} is achievable with proper planning. I'd structure this in phases: foundation setup, core implementation, and optimization. Resource allocation will be critical for success."
+            }
+        elif interaction_mode == 'autonomous_mode':
+            responses_by_member = {
+                'Sarah': f"Deep product analysis of {query.user_input}: This represents a significant strategic opportunity requiring comprehensive user research and competitive positioning. From a product strategy perspective, I recommend conducting extensive user interviews, building detailed personas, and creating a robust product roadmap.",
+                'Marcus': f"Comprehensive business analysis of {query.user_input}: This initiative presents multi-dimensional market opportunities with substantial revenue potential. My analysis indicates strong market timing, but requires sophisticated go-to-market strategy.", 
+                'Elena': f"Comprehensive UX strategy for {query.user_input}: This requires sophisticated user experience design that balances complexity with accessibility. Deep research into user mental models, behavioral patterns, and emotional triggers will be essential.",
+                'David': f"Comprehensive operational framework for {query.user_input}: This requires sophisticated project management, resource optimization, and risk mitigation strategies. Deep systems thinking approach needed."
             }
         else:
             responses_by_member = {
@@ -736,9 +989,9 @@ Provide your strategic synthesis:"""
         if not responses:
             return ["Gather more information before proceeding"]
         
-        # Skip actions for casual chat mode
-        interaction_mode = getattr(query, 'interaction_mode', 'casual_chat')
-        if interaction_mode == 'casual_chat':
+        # Skip actions for passive mode (low computational requirements)
+        interaction_mode = getattr(query, 'interaction_mode', 'active_mode')
+        if interaction_mode == 'passive_mode':
             return []
         
         # Prepare input for action generation

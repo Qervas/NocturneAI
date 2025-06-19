@@ -10,33 +10,13 @@ interface ConversationHistoryProps {
   onToggleVisibility: () => void;
 }
 
-interface HistoryMessage {
-  id: string;
-  type: 'user' | 'council' | 'system';
-  content: string;
-  sender?: string;
-  timestamp: string;
-  interaction_mode?: string;
-  council_response?: {
-    council_responses: Array<{
-      member_name: string;
-      role: string;
-      message: string;
-      confidence_level: string;
-      reasoning: string;
-      suggested_actions: string[];
-      timestamp: string;
-    }>;
-  };
-}
-
 const ConversationHistory: React.FC<ConversationHistoryProps> = ({
   activeView,
   onLoadHistory,
   isVisible,
   onToggleVisibility
 }) => {
-  const [historyMessages, setHistoryMessages] = useState<HistoryMessage[]>([]);
+  const [historyMessages, setHistoryMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -72,24 +52,42 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
       const offset = page * limit;
       
       const response = await fetch(
-        `/api/v1/conversations/${activeView.type}/${activeView.id}/history?limit=${limit}&offset=${offset}`
+        `/api/v1/channels/${activeView.type}/${activeView.id}/messages?limit=${limit}&before=${offset > 0 ? 'some_message_id' : ''}`
       );
       
       if (response.ok) {
         const data = await response.json();
-        const newMessages = data.messages || [];
         
-        if (isReset || page === 0) {
-          setHistoryMessages(newMessages);
+        if (data.success && data.messages && Array.isArray(data.messages)) {
+          const historyMessages: ChatMessage[] = data.messages.map((msg: any) => ({
+            id: msg.id,
+            type: msg.type,
+            content: msg.content,
+            timestamp: msg.timestamp,
+            sender: msg.sender,
+            agent_name: msg.agent_name,
+            agent_role: msg.agent_role,
+            workflow_step: msg.workflow_step,
+            council_response: msg.council_response,
+            // Handle other message properties
+            reply_to: msg.reply_to,
+            forwarded_from: msg.forwarded_from
+          }));
+          
+          if (isReset || page === 0) {
+            setHistoryMessages(historyMessages);
+          } else {
+            setHistoryMessages(prev => [...prev, ...historyMessages]);
+          }
+          
+          setHasMore(historyMessages.length === limit);
+          setCurrentPage(page);
+          setTotalMessages(data.total_messages || historyMessages.length + historyMessages.length);
+          
+          console.log(`📜 Loaded ${historyMessages.length} messages (page ${page}) for ${activeView.type}:${activeView.id}`);
         } else {
-          setHistoryMessages(prev => [...prev, ...newMessages]);
+          console.error('Invalid data format');
         }
-        
-        setHasMore(newMessages.length === limit);
-        setCurrentPage(page);
-        setTotalMessages(data.total_messages || historyMessages.length + newMessages.length);
-        
-        console.log(`📜 Loaded ${newMessages.length} messages (page ${page}) for ${activeView.type}:${activeView.id}`);
       } else {
         console.error('Failed to load conversation history:', response.status);
       }
@@ -187,7 +185,7 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
               member_name: cr.member_name,
               role: { value: cr.role } as any, // Convert string to enum-like object
               message: cr.message,
-              confidence_level: parseFloat(cr.confidence_level) || 0.8,
+              confidence_level: parseFloat(cr.confidence_level?.toString()) || 0.8,
               reasoning: cr.reasoning,
               suggested_actions: cr.suggested_actions,
               timestamp: cr.timestamp
@@ -319,11 +317,6 @@ const ConversationHistory: React.FC<ConversationHistoryProps> = ({
                     </span>
                   </div>
                   <p className="text-sm text-slate-200 line-clamp-3">{message.content}</p>
-                  {message.interaction_mode && (
-                    <span className="inline-block text-xs bg-slate-600 text-slate-300 px-1.5 py-0.5 rounded mt-1">
-                      {message.interaction_mode.replace('_', ' ')}
-                    </span>
-                  )}
                 </div>
               ))}
 

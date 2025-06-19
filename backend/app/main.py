@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from app.core.intelligence.master_intelligence import MasterIntelligence, IntelligenceQuery
+from app.core.intelligence.master_intelligence import MasterIntelligence
 from app.services.ollama_service import ollama_service
 from app.services.conversation_service import ConversationService
 from app.models.database import get_db, AsyncSession
@@ -46,11 +46,35 @@ conversation_service = ConversationService()
 # Include unified API routes
 app.include_router(messages.router, prefix="/api/v1", tags=["messages"])
 
+# Import and include living agent routes for Phase 2
+try:
+    from app.api.routes.living_agent_routes import router as living_agent_router
+    app.include_router(living_agent_router, prefix="/api/v2", tags=["living-agents"])
+except ImportError:
+    print("⚠️  Living agent routes not available yet - Phase 2 features disabled")
+
+# Import and include strategic routes for Phase 3
+try:
+    from app.api.routes.strategic_routes import router as strategic_router
+    app.include_router(strategic_router, prefix="/api/v3", tags=["strategic-intelligence"])
+    print("✅ Phase 3 Strategic Intelligence routes loaded")
+except ImportError as e:
+    print(f"⚠️  Strategic routes not available yet - Phase 3 features disabled: {e}")
+
+# Import and include enhanced routes for maximum autonomy
+try:
+    from app.api.routes.enhanced_routes import router as enhanced_router
+    app.include_router(enhanced_router, prefix="/api/enhanced", tags=["enhanced-autonomy"])
+    print("✅ Enhanced Autonomy routes loaded - Full backend cooperation enabled")
+except ImportError as e:
+    print(f"⚠️  Enhanced routes not available yet - Enhanced features disabled: {e}")
+
 # Pydantic models
 class AIQueryRequest(BaseModel):
     message: str
     requested_members: Optional[List[str]] = None
-    interaction_mode: Optional[str] = 'casual'
+    interaction_mode: Optional[str] = 'auto_mode'  # Default to auto mode
+    enabled_abilities: Optional[List[str]] = []
     channel_id: str
     channel_type: str
     user_message_id: Optional[str] = None
@@ -97,8 +121,8 @@ async def get_council_members():
 @app.post("/api/v1/council/query", response_model=AIQueryResponse)
 async def query_council(request: AIQueryRequest, db: AsyncSession = Depends(get_db)):
     """
-    Trigger AI response for a user message (simplified & clean)
-    Used by frontend after message is already saved via /messages API
+    Trigger AI response for a user message - NEW AGENT MESSAGE FORMAT
+    Returns individual agent messages that look like user messages
     """
     try:
         # Get conversation context
@@ -107,68 +131,70 @@ async def query_council(request: AIQueryRequest, db: AsyncSession = Depends(get_
         )
         
         # Create AI query
+        from app.core.intelligence.master_intelligence import IntelligenceQuery
         query = IntelligenceQuery(
             user_input=request.message,
             requested_members=request.requested_members,
             context={"recent_messages": recent_context},
             interaction_mode=request.interaction_mode,
+            enabled_abilities=request.enabled_abilities or [],
             channel_id=request.channel_id,
             channel_type=request.channel_type
         )
         
-        # Process through AI
-        response = await master_intelligence.process_query(query)
+        # NEW: Generate agent messages instead of council response
+        from app.core.intelligence.master_intelligence import IndividualIntelligence
+        individual_intelligence = IndividualIntelligence()
         
-        # Save AI response to database
-        if request.user_message_id:
-            conversation = await conversation_service.get_or_create_conversation(
-                db, request.channel_id, request.channel_type
+        # For DMs, use individual intelligence
+        if request.channel_type == 'dm':
+            # Map DM channel ID to council member key
+            dm_to_member_key_map = {
+                'dm-sarah': 'sarah',
+                'dm-sarah-chen': 'sarah',  # Handle both formats
+                'dm-marcus': 'marcus', 
+                'dm-marcus-rodriguez': 'marcus',  # Handle both formats
+                'dm-elena': 'elena',
+                'dm-elena-vasquez': 'elena',  # Handle both formats
+                'dm-david': 'david',
+                'dm-david-kim': 'david'  # Handle both formats
+            }
+            member_key = dm_to_member_key_map.get(request.channel_id, 'sarah')  # Default fallback
+            agent_messages = await individual_intelligence.get_individual_response(member_key, query)
+        else:
+            # For channels, we still need to implement multi-agent workflows
+            # For now, use single agent based on first requested member or default to Sarah
+            if request.requested_members:
+                member_key = request.requested_members[0]  # Use member_key instead of member_name
+            else:
+                member_key = "sarah"  # Default to product strategy lead
+            agent_messages = await individual_intelligence.get_individual_response(member_key, query)
+        
+        # Save agent messages to database as separate messages
+        conversation = await conversation_service.get_or_create_conversation(
+            db, request.channel_id, request.channel_type
+        )
+        
+        saved_messages = []
+        for agent_msg in agent_messages:
+            # Save each agent message as a separate database message
+            saved_msg = await conversation_service.save_message(
+                db, conversation, agent_msg.content, 
+                message_type=agent_msg.type,
+                agent_name=agent_msg.agent_name,
+                agent_role=agent_msg.agent_role,
+                workflow_step=agent_msg.workflow_step
             )
-            
-            await conversation_service.save_council_response(
-                db, conversation, {
-                    "council_responses": [
-                        {
-                            "member_name": cr.member_name,
-                            "role": cr.role.value,
-                            "message": cr.message,
-                            "confidence_level": cr.confidence_level,
-                            "reasoning": cr.reasoning,
-                            "suggested_actions": cr.suggested_actions,
-                            "timestamp": cr.timestamp
-                        }
-                        for cr in response.council_responses
-                    ],
-                    "synthesis": response.synthesis,
-                    "recommended_actions": response.recommended_actions,
-                    "confidence_score": response.confidence_score,
-                    "processing_time": response.processing_time,
-                    "response_type": response.response_type
-                }, None, response.synthesis
-            )
+            saved_messages.append(saved_msg)
         
         return AIQueryResponse(
             success=True,
             response={
-                "council_responses": [
-                    {
-                        "member_name": cr.member_name,
-                        "role": cr.role.value,
-                        "message": cr.message,
-                        "confidence_level": cr.confidence_level,
-                        "reasoning": cr.reasoning,
-                        "suggested_actions": cr.suggested_actions,
-                        "timestamp": cr.timestamp
-                    }
-                    for cr in response.council_responses
-                ],
-                "synthesis": response.synthesis,
-                "recommended_actions": response.recommended_actions,
-                "confidence_score": response.confidence_score,
-                "processing_time": response.processing_time,
-                "response_type": response.response_type,
+                "type": "agent_messages",
+                "messages": [msg.to_dict() for msg in agent_messages],
                 "channel_id": request.channel_id,
-                "channel_type": request.channel_type
+                "channel_type": request.channel_type,
+                "interaction_mode": request.interaction_mode
             }
         )
         
@@ -202,20 +228,22 @@ async def search_conversations(
 @app.get("/api/v1/health")
 async def health_check():
     """Health check endpoint"""
+    ollama_available = await ollama_service.is_available()
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
         "services": {
             "master_intelligence": "online",
             "database": "connected",
-            "ollama": "available" if ollama_service.is_available() else "unavailable"
+            "ollama": "available" if ollama_available else "unavailable"
         }
     }
 
 @app.get("/api/v1/ollama/status")
 async def get_ollama_status():
     """Get Ollama service status"""
-    return {"available": ollama_service.is_available()}
+    health_status = await ollama_service.health_check()
+    return health_status
 
 @app.on_event("startup")
 async def startup_event():

@@ -84,7 +84,7 @@ class SarahChen(CouncilMember):
                 "Product-market fit analysis"
             ]
         }
-        super().__init__("Sarah", CouncilRole.PRODUCT_STRATEGY, personality)
+        super().__init__("Sarah Chen", CouncilRole.PRODUCT_STRATEGY, personality)
 
 
 class MarcusRodriguez(CouncilMember):
@@ -109,7 +109,7 @@ class MarcusRodriguez(CouncilMember):
                 "Revenue optimization"
             ]
         }
-        super().__init__("Marcus", CouncilRole.MARKET_INTELLIGENCE, personality)
+        super().__init__("Marcus Rodriguez", CouncilRole.MARKET_INTELLIGENCE, personality)
 
 
 class ElenaVasquez(CouncilMember):
@@ -134,7 +134,7 @@ class ElenaVasquez(CouncilMember):
                 "Design system architecture"
             ]
         }
-        super().__init__("Elena", CouncilRole.UX_DESIGN, personality)
+        super().__init__("Elena Vasquez", CouncilRole.UX_DESIGN, personality)
 
 
 class DavidKim(CouncilMember):
@@ -159,7 +159,7 @@ class DavidKim(CouncilMember):
                 "Technical implementation planning"
             ]
         }
-        super().__init__("David", CouncilRole.OPERATIONS, personality)
+        super().__init__("David Kim", CouncilRole.OPERATIONS, personality)
 
 
 class AICouncil:

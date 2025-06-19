@@ -85,6 +85,60 @@ class ConversationService:
         await db.flush()
         return message
 
+    async def save_message(
+        self,
+        db: AsyncSession,
+        conversation: Conversation,
+        content: str,
+        message_type: str = "user",
+        sender: Optional[str] = None,
+        agent_name: Optional[str] = None,
+        agent_role: Optional[str] = None,
+        workflow_step: Optional[str] = None,
+        interaction_mode: Optional[str] = None,
+        metadata: Optional[Dict] = None
+    ) -> Message:
+        """Save any type of message to the database - unified method"""
+        
+        # Ensure metadata is properly serializable
+        safe_metadata = {}
+        if metadata:
+            safe_metadata = dict(metadata)  # Make a copy to avoid mutation
+        
+        # Add agent-specific metadata if provided
+        if agent_name:
+            safe_metadata["agent_name"] = agent_name
+        if agent_role:
+            safe_metadata["agent_role"] = agent_role
+        if workflow_step:
+            safe_metadata["workflow_step"] = workflow_step
+        
+        # Determine sender
+        final_sender = sender
+        if not final_sender:
+            if message_type == "agent":
+                final_sender = agent_name or "AI Agent"
+            elif message_type == "synthesis":
+                final_sender = "🧠 Master Intelligence"
+            elif message_type == "actions":
+                final_sender = "🎯 Action Items"
+            else:
+                final_sender = "You"
+        
+        message = Message(
+            conversation_id=conversation.id,
+            content=content,
+            message_type=message_type,
+            sender=final_sender,
+            interaction_mode=interaction_mode or "casual",
+            message_metadata=safe_metadata,
+            is_deleted=False
+        )
+        
+        db.add(message)
+        await db.flush()
+        return message
+
     async def save_council_response(
         self,
         db: AsyncSession,
@@ -199,7 +253,14 @@ class ConversationService:
                 "is_deleted": message.is_deleted
             }
             
-            # Add council responses if available
+            # Add agent-specific fields if this is an agent message
+            metadata = message.message_metadata or {}
+            if message.message_type in ["agent", "synthesis", "actions"]:
+                msg_data["agent_name"] = metadata.get("agent_name")
+                msg_data["agent_role"] = metadata.get("agent_role")
+                msg_data["workflow_step"] = metadata.get("workflow_step")
+            
+            # Add council responses if available (legacy format)
             if message.council_responses:
                 msg_data["council_response"] = {
                     "council_responses": [
