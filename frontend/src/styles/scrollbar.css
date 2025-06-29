@@ -1,61 +1,37 @@
 /* Custom Scrollbars for Intelligence Empire */
 
-/* Enhanced custom scrollbar class for chat areas */
+/* Custom scrollbar class for specific elements */
 .custom-scrollbar {
-  scrollbar-width: auto;
-  scrollbar-color: #64748b #334155;
-}
-
-/* Webkit browsers - Enhanced scrollbars for better visibility */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 12px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: #334155;
-  border-radius: 6px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #64748b;
-  border-radius: 6px;
-  border: 2px solid #334155;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:active {
-  background: #cbd5e1;
-}
-
-/* Sidebar scrollbar - thinner for navigation */
-.sidebar-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: #475569 #1e293b;
 }
 
-.sidebar-scrollbar::-webkit-scrollbar {
+/* Webkit browsers - Global scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 
-.sidebar-scrollbar::-webkit-scrollbar-track {
+.custom-scrollbar::-webkit-scrollbar-track {
   background: #1e293b;
   border-radius: 4px;
 }
 
-.sidebar-scrollbar::-webkit-scrollbar-thumb {
+.custom-scrollbar::-webkit-scrollbar-thumb {
   background: #475569;
   border-radius: 4px;
   border: 1px solid #334155;
 }
 
-.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #64748b;
 }
 
-/* Global fallback for other scrollbars */
+.custom-scrollbar::-webkit-scrollbar-corner {
+  background: #1e293b;
+}
+
+/* Global fallback for all scrollbars */
 * {
   scrollbar-width: thin;
   scrollbar-color: #475569 #1e293b;

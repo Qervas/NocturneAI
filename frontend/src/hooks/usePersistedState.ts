@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChatMessage } from '../types/council';
+import { ChatMessage } from '../types/living-agents';
 
 export function usePersistedState<T>(
   key: string,

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from ...core.intelligence.enhanced_integration import get_enhanced_integration
 from ...core.intelligence.master_intelligence import IntelligenceQuery, IndividualIntelligence
-from ...services.conversation_service import conversation_service
+from ...services.conversation_service import ConversationService
 from ...models.database import get_db
 
 router = APIRouter(prefix="/enhanced", tags=["enhanced-autonomy"])

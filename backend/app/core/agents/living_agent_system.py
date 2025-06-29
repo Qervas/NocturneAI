@@ -151,6 +151,19 @@ class MoodState:
             'last_updated': self.last_updated.isoformat()
         }
 
+    @classmethod
+    def from_dict(cls, data: Dict) -> 'MoodState':
+        """Create MoodState from dictionary"""
+        return cls(
+            energy=data.get('energy', 70.0),
+            stress=data.get('stress', 20.0),
+            focus=data.get('focus', 75.0),
+            creativity=data.get('creativity', 60.0),
+            confidence=data.get('confidence', 80.0),
+            social_energy=data.get('social_energy', 65.0),
+            last_updated=datetime.fromisoformat(data.get('last_updated', datetime.now().isoformat()))
+        )
+
 
 @dataclass
 class PersonalityEvolution:
@@ -859,3 +872,48 @@ Remember: You are a living, evolving AI that builds genuine relationships."""
             'communication_quirks': self.communication_quirks,
             'semantic_memory': self.semantic_memory
         }
+
+
+class LivingAgentSystem:
+    """System manager for multiple living agents"""
+    
+    def __init__(self):
+        self.agents: Dict[str, LivingAgent] = {}
+    
+    def initialize_agent(self, agent_id: str, user_id: str, name: str, 
+                        role: str, personality_traits: Dict) -> LivingAgent:
+        """Initialize a new living agent"""
+        agent = LivingAgent(
+            agent_id=agent_id,
+            name=name,
+            role=role,
+            core_personality=personality_traits
+        )
+        self.agents[agent_id] = agent
+        return agent
+    
+    def get_agent(self, agent_id: str) -> Optional[LivingAgent]:
+        """Get agent by ID"""
+        return self.agents.get(agent_id)
+    
+    def process_interaction(self, agent_id: str, user_id: str, 
+                          user_input: str, context: Dict = None) -> Dict:
+        """Process interaction with an agent"""
+        agent = self.agents.get(agent_id)
+        if not agent:
+            return {"error": "Agent not found"}
+        
+        # This would normally be async, but we'll handle it in the service layer
+        return {
+            "response": f"Processed interaction with {agent.name}",
+            "agent_state": agent.get_agent_summary(),
+            "learning_triggered": False,
+            "evolution_triggered": False
+        }
+    
+    def remove_agent(self, agent_id: str) -> bool:
+        """Remove agent from system"""
+        if agent_id in self.agents:
+            del self.agents[agent_id]
+            return True
+        return False

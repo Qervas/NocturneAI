@@ -5,59 +5,64 @@ export interface Channel {
   description: string;
   icon: string;
   color: string;
-  primaryMembers: string[]; // Which council members are most active in this channel
+  primaryAgents: string[]; // Which living agents are most active in this channel
   type: 'channel' | 'dm' | 'group';
 }
 
 export interface DirectMessage {
   id: string;
-  memberName: string;
-  memberKey: string;
+  agentName: string;
+  agentId: string;
   isOnline: boolean;
   lastMessage?: string;
   lastActivity?: string;
   unreadCount: number;
 }
 
-export interface ChannelMessage extends ChatMessage {
+export interface ChannelMessage {
+  id: string;
+  type: 'user' | 'agent' | 'system';
+  content: string;
+  timestamp: string;
   channelId: string;
   mentions?: string[];
   isChannelSpecific?: boolean;
+  agent_response?: any;
+  sender?: string;
+  agent_id?: string;
+  agent_name?: string;
 }
 
-// Import ChatMessage from existing types
-import { ChatMessage } from './council';
-
-// Channel definitions
+// Channel definitions for living agent system
 export const CHANNELS: Record<string, Channel> = {
   'general': {
     id: 'general',
     name: 'general',
     displayName: '# general',
-    description: 'General discussions with auto-assigned experts',
+    description: 'General discussions with living agents',
     icon: '🏛️',
     color: 'text-purple-400',
-    primaryMembers: [], // Auto-assign based on keywords
+    primaryAgents: [], // Auto-assign based on context and agent availability
     type: 'channel'
   },
-  'council': {
-    id: 'council',
-    name: 'council',
-    displayName: '# council',
-    description: 'Full council assembly with Master Intelligence synthesis',
+  'living-agents': {
+    id: 'living-agents',
+    name: 'living-agents',
+    displayName: '# living-agents',
+    description: 'Collaborate with all your living agents',
     icon: '🧠',
     color: 'text-gold-400',
-    primaryMembers: ['sarah', 'marcus', 'elena', 'david'],
+    primaryAgents: [], // All available living agents
     type: 'channel'
   },
   'strategy': {
     id: 'strategy',
     name: 'strategy',
     displayName: '# strategy',
-    description: 'High-level strategic planning and frameworks',
+    description: 'High-level strategic planning with expert agents',
     icon: '🎯',
     color: 'text-blue-400',
-    primaryMembers: ['sarah', 'marcus'],
+    primaryAgents: [], // Strategy-focused agents
     type: 'channel'
   },
   'product': {
@@ -67,17 +72,17 @@ export const CHANNELS: Record<string, Channel> = {
     description: 'Product strategy, roadmaps, and user insights',
     icon: '📱',
     color: 'text-green-400',
-    primaryMembers: ['sarah', 'elena'],
+    primaryAgents: [], // Product and UX agents
     type: 'channel'
   },
   'market-intel': {
     id: 'market-intel',
     name: 'market-intel',
     displayName: '# market-intel',
-    description: 'Market analysis, competitive intelligence, opportunities',
+    description: 'Market analysis and competitive intelligence',
     icon: '📊',
     color: 'text-orange-400',
-    primaryMembers: ['marcus'],
+    primaryAgents: [], // Market intelligence agents
     type: 'channel'
   },
   'design': {
@@ -87,7 +92,7 @@ export const CHANNELS: Record<string, Channel> = {
     description: 'UX design, user experience, interface decisions',
     icon: '🎨',
     color: 'text-pink-400',
-    primaryMembers: ['elena'],
+    primaryAgents: [], // Design-focused agents
     type: 'channel'
   },
   'operations': {
@@ -97,42 +102,13 @@ export const CHANNELS: Record<string, Channel> = {
     description: 'Implementation, processes, technical planning',
     icon: '⚙️',
     color: 'text-cyan-400',
-    primaryMembers: ['david'],
+    primaryAgents: [], // Operations agents
     type: 'channel'
   }
 };
 
-// Direct message setup
-export const DIRECT_MESSAGES: Record<string, DirectMessage> = {
-  'sarah': {
-    id: 'dm-sarah',
-    memberName: 'Sarah Chen',
-    memberKey: 'sarah',
-    isOnline: true,
-    unreadCount: 0
-  },
-  'marcus': {
-    id: 'dm-marcus', 
-    memberName: 'Marcus Rodriguez',
-    memberKey: 'marcus',
-    isOnline: true,
-    unreadCount: 0
-  },
-  'elena': {
-    id: 'dm-elena',
-    memberName: 'Elena Vasquez', 
-    memberKey: 'elena',
-    isOnline: true,
-    unreadCount: 0
-  },
-  'david': {
-    id: 'dm-david',
-    memberName: 'David Kim',
-    memberKey: 'david', 
-    isOnline: true,
-    unreadCount: 0
-  }
-};
+// Direct message setup - will be populated dynamically with living agents
+export const DIRECT_MESSAGES: Record<string, DirectMessage> = {};
 
 export type ActiveView = {
   type: 'channel' | 'dm';

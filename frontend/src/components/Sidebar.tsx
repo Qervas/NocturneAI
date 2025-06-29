@@ -1,16 +1,16 @@
 import React from 'react';
-import { Hash, MessageCircle, Users, Settings, Crown } from 'lucide-react';
-import { ActiveView, CHANNELS, DIRECT_MESSAGES } from '../types/channels';
-import { ChatMessage, COUNCIL_MEMBERS, CouncilMemberKey } from '../types/council';
+import { Hash, MessageCircle, Users, Settings, Crown, Circle } from 'lucide-react';
+import { CHANNELS, DIRECT_MESSAGES, ActiveView } from '../types/channels';
+import { COUNCIL_MEMBERS, CouncilMemberKey } from '../types/council';
 
 interface SidebarProps {
   activeView: ActiveView;
   onViewChange: (view: ActiveView) => void;
   connectionStatus: string;
-  channelMessages?: Record<string, ChatMessage[]>;
+  channelMessages?: Record<string, any[]>; // For unread counts
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, connectionStatus }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, connectionStatus, channelMessages = {} }) => {
   const handleChannelClick = (channelId: string, channelName: string) => {
     onViewChange({
       type: 'channel',
@@ -47,7 +47,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeView, onViewChange, connectionS
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto sidebar-scrollbar">
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
         {/* Channels Section */}
         <div className="p-3">
           <div className="flex items-center justify-between mb-2">

@@ -1,22 +1,20 @@
 """
 Intelligence Empire Backend - FastAPI Application
-Your Personal AI Council API - Clean & Unified
+Your Personal AI Council API
 """
 
 import os
+import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-from app.core.intelligence.master_intelligence import MasterIntelligence
+from app.core.intelligence.master_intelligence import MasterIntelligence, IntelligenceQuery
+from app.core.agents.council_members import CouncilRole
 from app.services.ollama_service import ollama_service
-from app.services.conversation_service import ConversationService
-from app.models.database import get_db, AsyncSession
-from app.core.database_init import init_database
-from app.api.routes import messages
 
 # Load environment variables
 load_dotenv()
@@ -24,67 +22,67 @@ load_dotenv()
 # Initialize FastAPI app
 app = FastAPI(
     title="Intelligence Empire API",
-    description="Your Personal AI Council - Unified Chat API",
-    version="2.0.0",
+    description="Your Personal AI Council and Intelligence Empire Backend",
+    version="1.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc"
 )
 
-# Add CORS middleware
+# Add CORS middleware for frontend connection
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev servers
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize services
+# Initialize Master Intelligence
 master_intelligence = MasterIntelligence()
-conversation_service = ConversationService()
 
-# Include unified API routes
-app.include_router(messages.router, prefix="/api/v1", tags=["messages"])
+# WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+    
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+    
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+    
+    async def broadcast(self, message: str):
+        # Temporarily disabled to avoid connection issues
+        print(f"Broadcast message: {message}")
+        return
 
-# Import and include living agent routes for Phase 2
-try:
-    from app.api.routes.living_agent_routes import router as living_agent_router
-    app.include_router(living_agent_router, prefix="/api/v2", tags=["living-agents"])
-except ImportError:
-    print("⚠️  Living agent routes not available yet - Phase 2 features disabled")
+manager = ConnectionManager()
 
-# Import and include strategic routes for Phase 3
-try:
-    from app.api.routes.strategic_routes import router as strategic_router
-    app.include_router(strategic_router, prefix="/api/v3", tags=["strategic-intelligence"])
-    print("✅ Phase 3 Strategic Intelligence routes loaded")
-except ImportError as e:
-    print(f"⚠️  Strategic routes not available yet - Phase 3 features disabled: {e}")
-
-# Import and include enhanced routes for maximum autonomy
-try:
-    from app.api.routes.enhanced_routes import router as enhanced_router
-    app.include_router(enhanced_router, prefix="/api/enhanced", tags=["enhanced-autonomy"])
-    print("✅ Enhanced Autonomy routes loaded - Full backend cooperation enabled")
-except ImportError as e:
-    print(f"⚠️  Enhanced routes not available yet - Enhanced features disabled: {e}")
-
-# Pydantic models
-class AIQueryRequest(BaseModel):
+# Pydantic models for API
+class CouncilQueryRequest(BaseModel):
     message: str
     requested_members: Optional[List[str]] = None
-    interaction_mode: Optional[str] = 'auto_mode'  # Default to auto mode
-    enabled_abilities: Optional[List[str]] = []
-    channel_id: str
-    channel_type: str
-    user_message_id: Optional[str] = None
+    context: Optional[Dict] = None
+    interaction_mode: Optional[str] = 'casual_chat'
+    channel_type: Optional[str] = 'general'  # 'general', 'dm', 'team'
+    channel_id: Optional[str] = None
+    direct_member: Optional[str] = None  # For DM conversations
 
-class AIQueryResponse(BaseModel):
+class CouncilQueryResponse(BaseModel):
     success: bool
     response: Optional[Dict] = None
     error: Optional[str] = None
 
-# Core API Endpoints
+class CouncilStatusResponse(BaseModel):
+    members: Dict
+    total_members: int
+    active_members: int
+
+# API Routes
 
 @app.get("/")
 async def root():
@@ -92,167 +90,284 @@ async def root():
     return {
         "service": "Intelligence Empire API",
         "status": "active",
-        "version": "2.0.0",
-        "message": "Your Personal AI Council - Clean & Unified"
+        "version": "1.0.0",
+        "message": "Your Personal AI Council is ready to serve"
     }
 
 @app.get("/api/v1/status")
 async def get_status():
-    """Get system status"""
+    """Get overall system status"""
     return {
         "status": "active",
         "master_intelligence": "online",
         "council_members": len(master_intelligence.council.get_all_members()),
-        "api_version": "2.0.0",
+        "conversation_history": len(master_intelligence.conversation_history),
         "timestamp": datetime.now().isoformat()
     }
 
-@app.get("/api/v1/council/members")
+@app.get("/api/v1/council/members", response_model=CouncilStatusResponse)
 async def get_council_members():
-    """Get council members information"""
+    """Get information about all council members"""
     members = master_intelligence.get_council_status()
+    return CouncilStatusResponse(
+        members=members,
+        total_members=len(members),
+        active_members=len([m for m in members.values() if m['status'] == 'active'])
+    )
+
+@app.get("/api/v1/council/members/{member_name}")
+async def get_council_member(member_name: str):
+    """Get detailed information about a specific council member"""
+    member = master_intelligence.council.get_member(member_name)
+    if not member:
+        raise HTTPException(status_code=404, detail=f"Council member '{member_name}' not found")
+    
     return {
-        "success": True,
-        "members": members,
-        "total_members": len(members),
-        "active_members": len([m for m in members.values() if m.get('status') == 'active'])
+        "name": member.name,
+        "role": member.role.value,
+        "personality_traits": member.personality_traits,
+        "status": "active"
     }
 
-@app.post("/api/v1/council/query", response_model=AIQueryResponse)
-async def query_council(request: AIQueryRequest, db: AsyncSession = Depends(get_db)):
-    """
-    Trigger AI response for a user message - NEW AGENT MESSAGE FORMAT
-    Returns individual agent messages that look like user messages
-    """
+@app.post("/api/v1/council/query", response_model=CouncilQueryResponse)
+async def query_council(request: dict):
+    """Send a query to your AI Council"""
     try:
-        # Get conversation context
-        recent_context = await conversation_service.get_recent_context(
-            db, request.channel_id, request.channel_type, hours=24, max_messages=5
-        )
-        
-        # Create AI query
-        from app.core.intelligence.master_intelligence import IntelligenceQuery
+        # Create intelligence query with channel context
         query = IntelligenceQuery(
-            user_input=request.message,
-            requested_members=request.requested_members,
-            context={"recent_messages": recent_context},
-            interaction_mode=request.interaction_mode,
-            enabled_abilities=request.enabled_abilities or [],
-            channel_id=request.channel_id,
-            channel_type=request.channel_type
+            user_input=request.get("message", ""),
+            requested_members=request.get("requested_members"),
+            context=request.get("context", {}),
+            interaction_mode=request.get("interaction_mode", "casual_chat"),
+            channel_type=request.get("channel_type", "general"),
+            channel_id=request.get("channel_id"),
+            direct_member=request.get("direct_member")
         )
         
-        # NEW: Generate agent messages instead of council response
-        from app.core.intelligence.master_intelligence import IndividualIntelligence
-        individual_intelligence = IndividualIntelligence()
+        print(f"DEBUG: Processing query - channel_type: {query.channel_type}, direct_member: {query.direct_member}")
         
-        # For DMs, use individual intelligence
-        if request.channel_type == 'dm':
-            # Map DM channel ID to council member key
-            dm_to_member_key_map = {
-                'dm-sarah': 'sarah',
-                'dm-sarah-chen': 'sarah',  # Handle both formats
-                'dm-marcus': 'marcus', 
-                'dm-marcus-rodriguez': 'marcus',  # Handle both formats
-                'dm-elena': 'elena',
-                'dm-elena-vasquez': 'elena',  # Handle both formats
-                'dm-david': 'david',
-                'dm-david-kim': 'david'  # Handle both formats
+        # Process query through Master Intelligence
+        response = await master_intelligence.process_query(query)
+        
+        # Handle different response types
+        if hasattr(response, 'is_direct_response') and response.is_direct_response:
+            # Individual member response
+            response_data = {
+                "query": request.get("message", ""),
+                "council_responses": [{
+                    "member_name": response.member_name,
+                    "role": response.role,
+                    "message": response.message,
+                    "confidence_level": response.confidence_level,
+                    "reasoning": response.reasoning,
+                    "suggested_actions": response.suggested_actions,
+                    "timestamp": response.timestamp
+                }],
+                "synthesis": response.message,  # For individual responses, synthesis is the message itself
+                "recommended_actions": response.suggested_actions,
+                "confidence_score": response.confidence_level,
+                "processing_time": response.conversation_context.get("processing_time", 0),
+                "timestamp": response.timestamp,
+                "response_type": "individual",
+                "direct_member": response.member_name
             }
-            member_key = dm_to_member_key_map.get(request.channel_id, 'sarah')  # Default fallback
-            agent_messages = await individual_intelligence.get_individual_response(member_key, query)
         else:
-            # For channels, we still need to implement multi-agent workflows
-            # For now, use single agent based on first requested member or default to Sarah
-            if request.requested_members:
-                member_key = request.requested_members[0]  # Use member_key instead of member_name
-            else:
-                member_key = "sarah"  # Default to product strategy lead
-            agent_messages = await individual_intelligence.get_individual_response(member_key, query)
-        
-        # Save agent messages to database as separate messages
-        conversation = await conversation_service.get_or_create_conversation(
-            db, request.channel_id, request.channel_type
-        )
-        
-        saved_messages = []
-        for agent_msg in agent_messages:
-            # Save each agent message as a separate database message
-            saved_msg = await conversation_service.save_message(
-                db, conversation, agent_msg.content, 
-                message_type=agent_msg.type,
-                agent_name=agent_msg.agent_name,
-                agent_role=agent_msg.agent_role,
-                workflow_step=agent_msg.workflow_step
-            )
-            saved_messages.append(saved_msg)
-        
-        return AIQueryResponse(
-            success=True,
-            response={
-                "type": "agent_messages",
-                "messages": [msg.to_dict() for msg in agent_messages],
-                "channel_id": request.channel_id,
-                "channel_type": request.channel_type,
-                "interaction_mode": request.interaction_mode
+            # Council response
+            response_data = {
+                "query": request.get("message", ""),
+                "council_responses": [
+                    {
+                        "member_name": cr.member_name,
+                        "role": cr.role.value,
+                        "message": cr.message,
+                        "confidence_level": cr.confidence_level,
+                        "reasoning": cr.reasoning,
+                        "suggested_actions": cr.suggested_actions,
+                        "timestamp": cr.timestamp
+                    }
+                    for cr in response.council_responses
+                ],
+                "synthesis": response.synthesis,
+                "recommended_actions": response.recommended_actions,
+                "confidence_score": response.confidence_score,
+                "processing_time": response.processing_time,
+                "timestamp": response.timestamp,
+                "response_type": "council"
             }
-        )
+        
+        return CouncilQueryResponse(success=True, response=response_data)
         
     except Exception as e:
-        print(f"❌ AI Query Error: {str(e)}")
-        return AIQueryResponse(success=False, error=f"AI processing failed: {str(e)}")
+        print(f"ERROR: {str(e)}")
+        return CouncilQueryResponse(
+            success=False,
+            error=f"Error processing council query: {str(e)}"
+        )
 
-@app.get("/api/v1/conversations/search")
-async def search_conversations(
-    q: str,
-    limit: int = 20,
-    db: AsyncSession = Depends(get_db)
-):
-    """Global message search"""
+@app.get("/api/v1/council/history")
+async def get_conversation_history(limit: int = 10):
+    """Get recent conversation history"""
+    history = master_intelligence.get_conversation_history(limit)
+    
+    return {
+        "history": [
+            {
+                "query": h.query.user_input,
+                "synthesis": h.synthesis,
+                "confidence_score": h.confidence_score,
+                "timestamp": h.timestamp,
+                "council_members": [cr.member_name for cr in h.council_responses]
+            }
+            for h in history
+        ],
+        "total_conversations": len(master_intelligence.conversation_history)
+    }
+
+# WebSocket endpoint for real-time communication
+@app.websocket("/ws/council")
+async def websocket_council(websocket: WebSocket):
+    """WebSocket endpoint for real-time council communication"""
+    await manager.connect(websocket)
+    
+    # Send welcome message
+    await websocket.send_json({
+        "type": "connection",
+        "message": "Connected to Intelligence Empire Council",
+        "timestamp": datetime.now().isoformat()
+    })
+    
     try:
-        results = await conversation_service.search_conversations(
-            db, q, limit=limit
-        )
-        
-        return {
-            "success": True,
-            "query": q,
-            "results": results,
-            "total_results": len(results)
-        }
-        
+        while True:
+            # Receive message from client
+            data = await websocket.receive_json()
+            
+            if data.get("type") == "query":
+                # Process council query
+                query = IntelligenceQuery(
+                    user_input=data.get("message", ""),
+                    requested_members=data.get("requested_members"),
+                    context=data.get("context", {})
+                )
+                
+                # Send processing status
+                await websocket.send_json({
+                    "type": "processing",
+                    "message": "Your council is analyzing your query...",
+                    "timestamp": datetime.now().isoformat()
+                })
+                
+                # Process query
+                response = await master_intelligence.process_query(query)
+                
+                # Send response
+                await websocket.send_json({
+                    "type": "response",
+                    "data": {
+                        "query": data.get("message"),
+                        "council_responses": [
+                            {
+                                "member_name": cr.member_name,
+                                "role": cr.role.value,
+                                "message": cr.message,
+                                "confidence_level": cr.confidence_level,
+                                "reasoning": cr.reasoning,
+                                "suggested_actions": cr.suggested_actions,
+                                "timestamp": cr.timestamp
+                            }
+                            for cr in response.council_responses
+                        ],
+                        "synthesis": response.synthesis,
+                        "recommended_actions": response.recommended_actions,
+                        "confidence_score": response.confidence_score,
+                        "processing_time": response.processing_time,
+                        "timestamp": response.timestamp
+                    }
+                })
+            
+            elif data.get("type") == "ping":
+                # Respond to ping
+                await websocket.send_json({
+                    "type": "pong",
+                    "timestamp": datetime.now().isoformat()
+                })
+                
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
     except Exception as e:
-        print(f"❌ Search Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        try:
+            await websocket.send_json({
+                "type": "error", 
+                "message": f"WebSocket error: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            })
+        except:
+            # WebSocket is already closed, ignore send error
+            print(f"WebSocket connection closed, couldn't send error: {str(e)}")
+        finally:
+            manager.disconnect(websocket)
 
+# Health check endpoint
 @app.get("/api/v1/health")
 async def health_check():
     """Health check endpoint"""
-    ollama_available = await ollama_service.is_available()
+    # Check Ollama health
+    ollama_health = await ollama_service.health_check()
+    
     return {
         "status": "healthy",
+        "service": "Intelligence Empire API",
         "timestamp": datetime.now().isoformat(),
-        "services": {
-            "master_intelligence": "online",
-            "database": "connected",
-            "ollama": "available" if ollama_available else "unavailable"
+        "components": {
+            "master_intelligence": "operational",
+            "council_members": "active",
+            "websocket": "available",
+            "ollama": ollama_health
         }
     }
 
 @app.get("/api/v1/ollama/status")
 async def get_ollama_status():
-    """Get Ollama service status"""
-    health_status = await ollama_service.health_check()
-    return health_status
+    """Get detailed Ollama service status"""
+    return await ollama_service.health_check()
 
+@app.get("/api/v1/ollama/models")
+async def get_ollama_models():
+    """Get list of available Ollama models"""
+    models = await ollama_service.list_models()
+    return {
+        "models": models,
+        "configured_model": ollama_service.config.model,
+        "host": ollama_service.config.host
+    }
+
+# Startup event
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database on startup"""
-    print("🚀 Intelligence Empire starting up...")
-    await init_database()
-    print("✅ Database initialized")
-    print("✅ Intelligence Empire ready!")
+    """Initialize services on startup"""
+    print("🚀 Intelligence Empire API starting up...")
+    print("🧠 Master Intelligence initialized")
+    
+    # Check Ollama status
+    ollama_health = await ollama_service.health_check()
+    if ollama_health["service_available"]:
+        print(f"🤖 Ollama service connected: {ollama_health['configured_model']}")
+        if ollama_health["model_available"]:
+            print(f"   ✅ Model '{ollama_health['configured_model']}' is ready!")
+        else:
+            print(f"   ⚠️  Model '{ollama_health['configured_model']}' not found")
+            if ollama_health.get("available_models"):
+                print(f"   📚 Available models: {', '.join(ollama_health['available_models'])}")
+    else:
+        print("❌ Ollama service not available - falling back to simulated responses")
+    
+    print("👥 AI Council members ready:")
+    council_status = master_intelligence.get_council_status()
+    for name, member in council_status.items():
+        print(f"   • {member['name']} - {member['role'].replace('_', ' ').title()}")
+    
+    print("🌐 WebSocket connections ready")
+    print("✅ Intelligence Empire API is ready to serve!")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True) 

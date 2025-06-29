@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Reply, Forward, Trash2, MoreHorizontal, Copy } from 'lucide-react';
-import { ChatMessage } from '../types/council';
+import { ChatMessage } from '../types/living-agents';
 
 interface MessageActionsProps {
   message: ChatMessage;

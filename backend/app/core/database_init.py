@@ -5,6 +5,10 @@ Database initialization for Intelligence Empire
 import asyncio
 from app.models.database import engine, Base
 from app.models.conversation import Conversation, Message, CouncilResponse, IntelligenceSession
+from app.models.living_agents import (
+    LivingAgent, AgentRelationship, AgentMemory, GrowthMilestone,
+    PersonalitySnapshot, AgentInteraction, SharedExperience, AgentLearningInsight
+)
 
 async def create_tables():
     """Create all database tables"""

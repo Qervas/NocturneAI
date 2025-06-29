@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Send, Hash, MessageCircle, Forward } from 'lucide-react';
-import { ChatMessage } from '../types/council';
+import { ChatMessage } from '../types/living-agents';
 import { CHANNELS, DIRECT_MESSAGES } from '../types/channels';
 
 interface ForwardMessageModalProps {

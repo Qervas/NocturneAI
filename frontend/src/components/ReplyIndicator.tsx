@@ -1,6 +1,6 @@
 import React from 'react';
 import { Reply, X } from 'lucide-react';
-import { ChatMessage } from '../types/council';
+import { ChatMessage } from '../types/living-agents';
 
 interface ReplyIndicatorProps {
   replyingTo: ChatMessage;

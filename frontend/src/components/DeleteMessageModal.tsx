@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, Trash2, AlertTriangle } from 'lucide-react';
-import { ChatMessage } from '../types/council';
+import { ChatMessage } from '../types/living-agents';
 
 interface DeleteMessageModalProps {
   isOpen: boolean;

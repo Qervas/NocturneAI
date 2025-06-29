@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Clock, MessageCircle, Hash, ChevronUp } from 'lucide-react';
-import { ChatMessage } from '../types/council';
+import { ChatMessage } from '../types/living-agents';
 import { ActiveView } from '../types/channels';
 
 interface ConversationHistoryProps {

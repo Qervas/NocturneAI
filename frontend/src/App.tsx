@@ -1,1182 +1,305 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Crown, Users, Zap, Hash, MessageCircle, Search, Terminal, CheckSquare } from 'lucide-react';
 import { 
-  ChatMessage, 
-  IntelligenceResponse, 
-  ConnectionState
-} from './types/council';
-import { CHANNELS, DIRECT_MESSAGES, ActiveView } from './types/channels';
-import Sidebar from './components/Sidebar';
-import ChatInterface from './components/ChatInterface';
-import ChannelSwitchIndicator from './components/ChannelSwitchIndicator';
-import InteractionModeSelector from './components/InteractionModeSelector';
-import ConversationHistory from './components/ConversationHistory';
-import AIProviderIndicator from './components/Chat/AIProviderIndicator';
-import GlobalSearch from './components/GlobalSearch';
-import DebugConsole from './components/DebugConsole';
-import ForwardMessageModal from './components/ForwardMessageModal';
-import ReplyIndicator from './components/ReplyIndicator';
-import { usePersistedMessages } from './hooks/usePersistedState';
-import DeleteMessageModal from './components/DeleteMessageModal';
-import BatchDeleteModal from './components/BatchDeleteModal';
-import BatchForwardModal from './components/BatchForwardModal';
-import BatchActionsToolbar from './components/BatchActionsToolbar';
-import './App.css';
-import './styles/scrollbar.css';
+  LayoutDashboard, 
+  Users, 
+  Brain, 
+  MessageSquare,
+  Settings,
+  Bell,
+  Search,
+  Menu,
+  X,
+  Zap,
+  Activity,
+  TrendingUp
+} from 'lucide-react';
 
-interface DebugLogEntry {
-  id: string;
-  timestamp: string;
-  level: 'info' | 'warning' | 'error' | 'debug';
-  source: string;
-  message: string;
+// Import dashboard components
+import AutonomousDashboard from './components/Dashboard/AutonomousDashboard';
+import LivingAgentDashboard from './components/Dashboard/LivingAgentDashboard';
+import AgentNetworkDashboard from './components/Dashboard/AgentNetworkDashboard';
+import IntelligenceCenter from './components/Dashboard/IntelligenceCenter';
+import ChatWrapper from './components/ChatWrapper';
+
+// Types
+type ActiveTab = 'dashboard' | 'network' | 'intelligence' | 'agents' | 'chat';
+
+interface SystemStatus {
+  status: 'operational' | 'degraded' | 'critical';
+  lastUpdated: string;
+  activeAgents: number;
+  processingQueue: number;
+  uptime: string;
 }
 
 const App: React.FC = () => {
-  // Channel-specific message history with localStorage persistence
-  const [channelMessages, setChannelMessages] = usePersistedMessages();
-  const [inputMessage, setInputMessage] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [connectionState, setConnectionState] = useState<ConnectionState>({
-    status: 'connecting',
-    reconnectAttempts: 0
+  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [systemStatus, setSystemStatus] = useState<SystemStatus>({
+    status: 'operational',
+    lastUpdated: new Date().toLocaleTimeString(),
+    activeAgents: 5,
+    processingQueue: 0,
+    uptime: '2h 45m'
   });
-  const [activeView, setActiveView] = useState<ActiveView>(() => {
-    // Restore last active channel from localStorage
-    try {
-      const saved = localStorage.getItem('ie-active-view');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (error) {
-      console.warn('Failed to restore active view:', error);
-    }
-    // Default to general channel
-    return {
-    type: 'channel',
-    id: 'general',
-    name: '# general'
-    };
-  });
-  const [previousView, setPreviousView] = useState<ActiveView | undefined>(undefined);
-  const [interactionProfile, setInteractionProfile] = useState<string>('auto_mode');
-  const [enabledAbilities, setEnabledAbilities] = useState<string[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [showDebugConsole, setShowDebugConsole] = useState(false);
-  const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
-  const [showForwardModal, setShowForwardModal] = useState(false);
-  const [messageToForward, setMessageToForward] = useState<ChatMessage | null>(null);
-  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [messageToDelete, setMessageToDelete] = useState<ChatMessage | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  
-  // Multi-select functionality
-  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
-  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
-  const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
-  const [showBatchForwardModal, setShowBatchForwardModal] = useState(false);
-  
-  // WebSocket removed - using REST API only
-  
-  // Add draft auto-save functionality
-  const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
+  const [notifications, setNotifications] = useState(3);
 
-  // Load saved drafts from localStorage on app start
+  // Update system status periodically
   useEffect(() => {
-    const savedDrafts = localStorage.getItem('messageDrafts');
-    if (savedDrafts) {
-      try {
-        setMessageDrafts(JSON.parse(savedDrafts));
-      } catch (error) {
-        console.error('Failed to load saved drafts:', error);
-      }
-    }
-  }, []);
-
-  // Save draft when input changes
-  useEffect(() => {
-    const currentChannelKey = getChannelKey(activeView.type, activeView.id);
-    if (inputMessage.trim()) {
-      const newDrafts = { ...messageDrafts, [currentChannelKey]: inputMessage };
-      setMessageDrafts(newDrafts);
-      localStorage.setItem('messageDrafts', JSON.stringify(newDrafts));
-    } else if (messageDrafts[currentChannelKey]) {
-      const newDrafts = { ...messageDrafts };
-      delete newDrafts[currentChannelKey];
-      setMessageDrafts(newDrafts);
-      localStorage.setItem('messageDrafts', JSON.stringify(newDrafts));
-    }
-  }, [inputMessage, activeView, messageDrafts]);
-
-  // Restore draft when switching channels
-  useEffect(() => {
-    const currentChannelKey = getChannelKey(activeView.type, activeView.id);
-    const savedDraft = messageDrafts[currentChannelKey];
-    if (savedDraft && savedDraft !== inputMessage) {
-      setInputMessage(savedDraft);
-    } else if (!savedDraft && inputMessage) {
-      setInputMessage('');
-    }
-  }, [activeView]);
-
-  // Debug logging functions
-  const addDebugLog = (level: DebugLogEntry['level'], source: string, message: string) => {
-    const logEntry: DebugLogEntry = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-      timestamp: new Date().toISOString(),
-      level,
-      source,
-      message
-    };
-    
-    setDebugLogs(prev => [...prev, logEntry]);
-    console.log(`[${source}] ${message}`);
-  };
-
-  const clearDebugLogs = () => {
-    setDebugLogs([]);
-  };
-
-  // Get messages for current active view (filter out system messages)
-  const getCurrentMessages = (): ChatMessage[] => {
-    const channelKey = getChannelKey(activeView.type, activeView.id);
-    const messages = channelMessages[channelKey] || [];
-    // Filter out system messages as they now go to debug console
-    return messages.filter(msg => msg.type !== 'system');
-  };
-  
-  // Generate consistent channel key
-  const getChannelKey = (type: string, id: string): string => {
-    return `${type}-${id}`;
-  };
-  
-  // Add message to specific channel
-  const addMessageToChannel = (message: ChatMessage, channelKey?: string) => {
-    const targetKey = channelKey || getChannelKey(activeView.type, activeView.id);
-    console.log(`Adding message to channel: ${targetKey}`, message.type);
-    setChannelMessages(prev => ({
-      ...prev,
-      [targetKey]: [...(prev[targetKey] || []), message]
-    }));
-  };
-  
-  // Handle view changes (channel switching)
-  const handleViewChange = (newView: ActiveView) => {
-    const oldKey = getChannelKey(activeView.type, activeView.id);
-    const newKey = getChannelKey(newView.type, newView.id);
-    console.log(`Switching from ${oldKey} to ${newKey}`);
-    setPreviousView(activeView);
-    setActiveView(newView);
-    setIsProcessing(false); // Reset processing state when switching channels
-    
-    // Clear multi-select state when switching channels
-    setSelectedMessages(new Set());
-    setIsMultiSelectMode(false);
-    
-    // Save current channel to localStorage
-    try {
-      localStorage.setItem('ie-active-view', JSON.stringify(newView));
-    } catch (error) {
-      console.warn('Failed to save active view:', error);
-    }
-  };
-
-  // Auto-load conversation history when switching channels
-  useEffect(() => {
-    const loadChannelHistory = async () => {
-      const channelKey = getChannelKey(activeView.type, activeView.id);
-      
-      // Only load if we don't have messages for this channel
-      if (!channelMessages[channelKey] || channelMessages[channelKey].length === 0) {
-        try {
-          addDebugLog('info', 'History', `📚 LOADING HISTORY for ${channelKey}`);
-          
-          // Use unified chat API endpoint
-          const response = await fetch(
-            `/api/v1/channels/${activeView.type}/${activeView.id}/messages?limit=100`
-          );
-          
-          addDebugLog('info', 'History', `📡 History API response: ${response.status} ${response.statusText}`);
-          
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.messages && data.messages.length > 0) {
-              const historyMessages: ChatMessage[] = data.messages.map((msg: any) => ({
-                id: msg.id,
-                type: msg.type,
-                content: msg.content,
-                timestamp: msg.timestamp,
-                sender: msg.sender,
-                agent_name: msg.agent_name,
-                agent_role: msg.agent_role,
-                workflow_step: msg.workflow_step,
-                council_response: msg.council_response
-              }));
-              
-              setChannelMessages(prev => ({
-                ...prev,
-                [channelKey]: historyMessages
-              }));
-              
-              addDebugLog('info', 'History', `✅ LOADED ${historyMessages.length} messages for ${channelKey}`);
-              const messageIds = historyMessages.map(m => m.id.substring(0, 8)).join(', ');
-              addDebugLog('debug', 'History', `📋 Message IDs: ${messageIds}`);
-            } else {
-              addDebugLog('info', 'History', `📭 No messages found for ${channelKey}`);
-            }
-          } else {
-            addDebugLog('error', 'History', `❌ Failed to load history: ${response.status} ${response.statusText}`);
-          }
-        } catch (error) {
-          addDebugLog('error', 'History', `🚨 History loading error: ${error}`);
-        }
-      } else {
-        addDebugLog('debug', 'History', `💾 Using cached messages for ${channelKey} (${channelMessages[channelKey].length} messages)`);
-      }
-    };
-
-    loadChannelHistory();
-  }, [activeView]);
-
-        // Initialize app and load all conversations on startup
-  useEffect(() => {
-    cleanupOldSystemMessages();
-    loadAllConversationsOnStartup();
-    checkBackendHealth(); // Check if backend is available
-    
-    // No WebSocket cleanup needed
-  }, []);
-
-  // Clean up old system messages from localStorage
-  const cleanupOldSystemMessages = () => {
-    setChannelMessages(prev => {
-      const cleaned: Record<string, ChatMessage[]> = {};
-      Object.keys(prev).forEach(channelKey => {
-        // Remove system messages from all channels
-        cleaned[channelKey] = prev[channelKey].filter(msg => msg.type !== 'system');
-      });
-      addDebugLog('info', 'Cleanup', 'Removed old system messages from chat history');
-      return cleaned;
-    });
-  };
-
-  // Load all conversations on app startup for offline availability
-  const loadAllConversationsOnStartup = async () => {
-    console.log('🔄 Loading all conversations on startup...');
-    setIsInitialLoading(true);
-    
-    try {
-      // Load all known channels and DMs
-      const allChannels = [
-        ...Object.values(CHANNELS).map(ch => ({ type: 'channel' as const, id: ch.id, name: ch.name })),
-        ...Object.values(DIRECT_MESSAGES).map(dm => ({ type: 'dm' as const, id: dm.id, name: dm.memberName }))
-      ];
-
-      // Load each channel's history in parallel
-      const loadPromises = allChannels.map(async (channel) => {
-        const channelKey = getChannelKey(channel.type, channel.id);
-        
-        // Skip if we already have messages for this channel
-        if (channelMessages[channelKey] && channelMessages[channelKey].length > 0) {
-          return;
-        }
-
-        try {
-          const response = await fetch(
-            `/api/v1/channels/${channel.type}/${channel.id}/messages?limit=100`
-          );
-          
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success && data.messages && data.messages.length > 0) {
-              const historyMessages: ChatMessage[] = data.messages.map((msg: any) => ({
-                id: msg.id,
-                type: msg.type,
-                content: msg.content,
-                timestamp: msg.timestamp,
-                sender: msg.sender,
-                agent_name: msg.agent_name,
-                agent_role: msg.agent_role,
-                workflow_step: msg.workflow_step,
-                council_response: msg.council_response
-              }));
-              
-              setChannelMessages(prev => ({
-                ...prev,
-                [channelKey]: historyMessages
-              }));
-              
-              console.log(`✅ Loaded ${historyMessages.length} messages for ${channelKey}`);
-            }
-          }
-        } catch (error) {
-          console.warn(`❌ Failed to load ${channelKey}:`, error);
-        }
-      });
-
-      await Promise.all(loadPromises);
-      console.log('✅ All conversations loaded on startup');
-      
-    } catch (error) {
-      console.error('❌ Failed to load conversations on startup:', error);
-    } finally {
-      setIsInitialLoading(false);
-    }
-  };
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+K or Cmd+K to open search
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        setShowSearch(true);
-      }
-      
-      // Escape to close search
-      if (e.key === 'Escape' && showSearch) {
-        setShowSearch(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showSearch]);
-
-  // WebSocket removed - using REST API only
-  const checkBackendHealth = async () => {
-    try {
-      const response = await fetch('/api/v1/health');
-      if (response.ok) {
-      setConnectionState({
-        status: 'connected',
-        lastConnected: new Date().toISOString(),
-        reconnectAttempts: 0
-      });
-        addDebugLog('info', 'Health', 'Backend API is healthy');
-      } else {
-        throw new Error(`Health check failed: ${response.status}`);
-      }
-    } catch (error) {
-      setConnectionState(prev => ({ 
-        ...prev, 
-        status: 'error',
-        reconnectAttempts: prev.reconnectAttempts + 1
+    const interval = setInterval(() => {
+      setSystemStatus(prev => ({
+        ...prev,
+        lastUpdated: new Date().toLocaleTimeString(),
+        activeAgents: Math.floor(Math.random() * 3) + 4, // 4-6 agents
+        processingQueue: Math.floor(Math.random() * 3), // 0-2 items
       }));
-      addDebugLog('error', 'Health', `Backend health check failed: ${error}`);
+    }, 30000); // Update every 30 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const navigationItems = [
+    {
+      id: 'dashboard',
+      label: 'Dashboard',
+      icon: LayoutDashboard,
+      description: 'Overview & Quick Actions'
+    },
+    {
+      id: 'network',
+      label: 'Agent Network',
+      icon: Users,
+      description: 'Interactive Agent Graph'
+    },
+    {
+      id: 'intelligence',
+      label: 'Intelligence Center',
+      icon: Brain,
+      description: 'Decisions, Goals & Analytics'
+    },
+    {
+      id: 'agents',
+      label: 'Living Agents',
+      icon: Activity,
+      description: 'Agent Management'
+    },
+    {
+      id: 'chat',
+      label: 'Chat',
+      icon: MessageSquare,
+      description: 'Communication Interface'
+    }
+  ];
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'operational': return 'text-green-400';
+      case 'degraded': return 'text-yellow-400';
+      case 'critical': return 'text-red-400';
+      default: return 'text-gray-400';
     }
   };
 
-  // WebSocket message handling removed - using direct REST API calls
-
-  // Get target channel key from response data
-  const getTargetChannelKey = (response: IntelligenceResponse): string => {
-    if (response.channel_id && response.channel_type) {
-      // Use the exact channel info from backend
-      return getChannelKey(response.channel_type, response.channel_id);
-    }
-    // Fallback to current active view
-    return getChannelKey(activeView.type, activeView.id);
-  };
-
-  // Process NEW agent message format (replaces addCouncilResponseToChannel)
-  const addAgentMessagesToChannel = (agentMessages: any[], channelKey?: string) => {
-    const targetKey = channelKey || getChannelKey(activeView.type, activeView.id);
-    
-    agentMessages.forEach(agentMsg => {
-      const chatMessage: ChatMessage = {
-        id: agentMsg.id,
-        type: agentMsg.type, // 'agent', 'synthesis', or 'actions'
-        content: agentMsg.content,
-        timestamp: agentMsg.timestamp,
-        agent_name: agentMsg.agent_name,
-        agent_role: agentMsg.agent_role,
-        workflow_step: agentMsg.workflow_step
-      };
-      
-      addMessageToChannel(chatMessage, targetKey);
-      addDebugLog('info', 'AI', `✅ Added ${agentMsg.type} message from ${agentMsg.agent_name}`);
-    });
-  };
-
-  // System messages now go to debug console instead of chat
-
-  const addCouncilResponseToChannel = (response: IntelligenceResponse, channelKey?: string) => {
-    const councilMessage: ChatMessage = {
-      id: (response as any).council_message_id || Date.now().toString(), // Use database ID if available
-      type: 'council',
-      content: response.synthesis,
-      timestamp: response.timestamp,
-      council_response: response
-    };
-    
-    // Use specified channel or current active view
-    const targetKey = channelKey || getChannelKey(activeView.type, activeView.id);
-    console.log(`Adding council response to: ${targetKey}`);
-    addMessageToChannel(councilMessage, targetKey);
-  };
-
-  const sendMessage = async () => {
-    if (!inputMessage.trim() || isProcessing) return;
-
-    const messageContent = inputMessage;
-    
-    // Clear input immediately (modern chat style)
-    setInputMessage('');
-    setReplyingTo(null);
-    
-    // Clear draft
-    const currentChannelKey = getChannelKey(activeView.type, activeView.id);
-    const newDrafts = { ...messageDrafts };
-    delete newDrafts[currentChannelKey];
-    setMessageDrafts(newDrafts);
-    localStorage.setItem('messageDrafts', JSON.stringify(newDrafts));
-
-    addDebugLog('info', 'Messages', `📤 SENDING MESSAGE: "${messageContent}" to ${activeView.type}:${activeView.id}`);
-    
-    try {
-      // Create message using unified chat API
-      const response = await fetch(`/api/v1/messages/${activeView.type}/${activeView.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: messageContent,
-          message_type: 'user',
-          interaction_mode: interactionProfile,
-          metadata: replyingTo ? {
-            reply_to: {
-              id: replyingTo.id,
-              content: replyingTo.content,
-              sender: replyingTo.type === 'user' ? 'You' : replyingTo.sender || 'Council'
-            }
-          } : {}
-        })
-      });
-
-      const data = await response.json();
-      
-      if (data.success && data.message) {
-        // Add message to UI with real database ID
-        const userMessage: ChatMessage = {
-          id: data.message.id,
-          type: 'user',
-          content: data.message.content,
-          timestamp: data.message.timestamp,
-          reply_to: replyingTo ? {
-            id: replyingTo.id,
-            content: replyingTo.content,
-            sender: replyingTo.type === 'user' ? 'You' : replyingTo.sender || 'Council'
-          } : undefined
-        };
-        
-        addMessageToChannel(userMessage);
-        addDebugLog('info', 'Messages', `✅ MESSAGE SAVED: ${data.message.id} - "${messageContent}"`);
-        
-        // Trigger AI response if needed
-        if (activeView.type === 'dm' || (activeView.type === 'channel' && activeView.id !== 'general')) {
-          setIsProcessing(true);
-          await triggerAIResponse(messageContent, data.message.id);
-    }
-    
-      } else {
-        addDebugLog('error', 'Messages', `❌ MESSAGE SAVE FAILED: ${data.error || 'Unknown error'}`);
-        throw new Error(data.error || 'Failed to save message');
-      }
-      
-    } catch (error) {
-      addDebugLog('error', 'Messages', `🚨 MESSAGE SEND ERROR: ${error}`);
-      // Restore input on error
-      setInputMessage(messageContent);
-    }
-  };
-
-  // Clean AI response trigger function
-  const triggerAIResponse = async (messageContent: string, messageId: string) => {
-    try {
-    // Determine target members based on active view
-    let requestedMembers: string[] | undefined;
-    
-    if (activeView.type === 'channel') {
-      const channel = CHANNELS[activeView.id];
-      if (channel) {
-        requestedMembers = channel.primaryMembers;
-      }
-    } else if (activeView.type === 'dm') {
-      // For DMs, extract member key from DM id
-      const memberKey = activeView.id.replace('dm-', '');
-      requestedMembers = [memberKey];
-    }
-
-      addDebugLog('info', 'AI', `🤖 TRIGGERING AI RESPONSE for message ${messageId}`);
-
-    const queryData = {
-      message: messageContent,
-      requested_members: requestedMembers,
-      interaction_mode: interactionProfile,
-      enabled_abilities: enabledAbilities,
-      channel_id: activeView.id,
-        channel_type: activeView.type,
-        user_message_id: messageId
-    };
-
-      const response = await fetch('/api/v1/council/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(queryData),
-      });
-
-      const data = await response.json();
-      
-      if (data.success && data.response) {
-        // NEW: Handle agent messages format
-        if (data.response.type === 'agent_messages' && data.response.messages) {
-          addDebugLog('info', 'AI', `✅ AI RESPONSE RECEIVED: ${data.response.messages.length} agent messages`);
-          addAgentMessagesToChannel(data.response.messages);
-        } else if (data.response.council_responses) {
-          // LEGACY: Handle old council response format
-          addDebugLog('info', 'AI', `✅ AI RESPONSE RECEIVED: ${data.response.council_responses?.length || 0} members responded`);
-        const targetChannelKey = getTargetChannelKey(data.response);
-        addCouncilResponseToChannel(data.response, targetChannelKey);
-        }
-      } else {
-        addDebugLog('error', 'AI', `❌ AI RESPONSE FAILED: ${data.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      addDebugLog('error', 'AI', `🚨 AI TRIGGER ERROR: ${error}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Handle loading history from ConversationHistory component
-  const handleLoadHistory = (historyMessages: ChatMessage[]) => {
-    const channelKey = getChannelKey(activeView.type, activeView.id);
-    
-    // Replace current messages with history
-    setChannelMessages(prev => ({
-      ...prev,
-      [channelKey]: historyMessages
-    }));
-    
-    console.log(`Loaded ${historyMessages.length} messages from history for ${channelKey}`);
-  };
-
-  // Navigate to specific message in search results
-  const handleNavigateToMessage = (channelType: string, channelId: string, messageId: string) => {
-    console.log(`Navigating to message ${messageId} in ${channelType}/${channelId}`);
-    
-    // Switch to the target channel
-    const newView: ActiveView = {
-      type: channelType as 'channel' | 'dm',
-      id: channelId,
-      name: channelType === 'dm' ? 
-        Object.values(DIRECT_MESSAGES).find(dm => dm.id === channelId)?.memberName || channelId :
-        Object.values(CHANNELS).find(ch => ch.id === channelId)?.displayName || `# ${channelId}`
-    };
-    
-    handleViewChange(newView);
-    
-    // After switching channels, verify the message still exists (not deleted)
-    // The channel history will automatically load and filter out deleted messages
-    // If the message was deleted, it won't appear in the loaded history
-    addDebugLog('info', 'Navigation', `Navigated to ${channelType}/${channelId} for message ${messageId}`);
-    
-    // TODO: Scroll to specific message when message highlighting is implemented
-    // For now, just switching to the channel is sufficient
-  };
-
-  // Message action handlers
-  const handleReplyToMessage = (message: ChatMessage) => {
-    setReplyingTo(message);
-    addDebugLog('debug', 'UI', `Replying to message: ${message.content.substring(0, 50)}...`);
-  };
-
-  const handleForwardMessage = (message: ChatMessage) => {
-    setMessageToForward(message);
-    setShowForwardModal(true);
-    addDebugLog('debug', 'UI', `Opening forward modal for message: ${message.content.substring(0, 50)}...`);
-  };
-
-  const handleDeleteMessage = (message: ChatMessage) => {
-    setMessageToDelete(message);
-    setShowDeleteModal(true);
-    addDebugLog('debug', 'UI', `Opening delete modal for message: ${message.content.substring(0, 50)}...`);
-  };
-
-  const confirmDeleteMessage = async () => {
-    if (!messageToDelete) return;
-
-    setIsDeleting(true);
-    
-    try {
-      // Remove message from UI immediately (modern chat style deletion)
-      setChannelMessages(prev => {
-        const updated = { ...prev };
-        Object.keys(updated).forEach(channelKey => {
-          updated[channelKey] = updated[channelKey].filter(msg => msg.id !== messageToDelete.id);
-        });
-        return updated;
-      });
-      
-      addDebugLog('info', 'Messages', `Message ${messageToDelete.id} removed from UI`);
-      
-      // Call backend API to delete message
-      addDebugLog('info', 'Messages', `🗑️ CALLING DELETE API for message ${messageToDelete.id}`);
-      
-      const response = await fetch(`/api/v1/messages/${messageToDelete.id}`, { 
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        }
-      });
-      
-      addDebugLog('info', 'Messages', `📡 DELETE API response: ${response.status} ${response.statusText}`);
-      
-      if (!response.ok) {
-        if (response.status === 404) {
-          // Message not found in database - likely a temporary message that wasn't saved yet
-          // Just keep the UI deletion and log a warning
-          addDebugLog('warning', 'Messages', `⚠️ Message ${messageToDelete.id} not found in database - treating as temporary message`);
-        } else {
-          const errorText = await response.text();
-          addDebugLog('error', 'Messages', `❌ DELETE API failed: ${response.status} ${response.statusText} - ${errorText}`);
-          throw new Error(`Failed to delete message: ${response.statusText}`);
-        }
-      } else {
-        const result = await response.json();
-        addDebugLog('info', 'Messages', `✅ DELETE API succeeded: ${result.message}`);
-        addDebugLog('info', 'Messages', `🔄 Message ${messageToDelete.id} marked as deleted in database`);
-      }
-      
-      // Close modal and reset state (whether backend deletion succeeded or message was temporary)
-      setShowDeleteModal(false);
-      setMessageToDelete(null);
-      
-    } catch (error) {
-      // Restore message to UI if backend deletion failed
-      addDebugLog('error', 'Messages', `🚨 DELETE OPERATION FAILED: ${error}`);
-      addDebugLog('warning', 'Messages', `🔄 Restoring message ${messageToDelete.id} to UI since deletion failed`);
-      
-      setChannelMessages(prev => {
-        const updated = { ...prev };
-        Object.keys(updated).forEach(channelKey => {
-          // Only restore if the message isn't already there
-          const messageExists = updated[channelKey].some(msg => msg.id === messageToDelete.id);
-          if (!messageExists) {
-            // Find the original position and restore the message
-            updated[channelKey].push(messageToDelete);
-            // Sort by timestamp to maintain order
-            updated[channelKey].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-          }
-        });
-        return updated;
-      });
-      
-      addDebugLog('info', 'Messages', `✅ Message ${messageToDelete.id} restored to UI after failed deletion`);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const cancelDeleteMessage = () => {
-    setShowDeleteModal(false);
-    setMessageToDelete(null);
-    addDebugLog('debug', 'UI', 'Delete cancelled');
-  };
-
-  const handleCopyMessage = (content: string) => {
-    navigator.clipboard.writeText(content).then(() => {
-      addDebugLog('info', 'UI', `Message copied to clipboard (${content.length} chars)`);
-    }).catch(() => {
-      addDebugLog('error', 'UI', 'Failed to copy message to clipboard');
-    });
-  };
-
-  const handleForwardToChannel = (targetChannelType: string, targetChannelId: string, message: ChatMessage) => {
-    if (!message) return;
-    
-    // Create forwarded message with 'forwarded' type to prevent AI responses
-    const forwardedMessage: ChatMessage = {
-      id: Date.now().toString() + '_forwarded',
-      type: 'forwarded', // Changed from 'user' to 'forwarded' to prevent AI responses
-      content: message.content,
-      timestamp: new Date().toISOString(),
-      forwarded_from: {
-        channel_id: activeView.id,
-        channel_name: activeView.name,
-        original_sender: message.type === 'user' ? 'You' : message.sender || 'Council'
-      }
-    };
-    
-    // Add to target channel
-    const targetChannelKey = getChannelKey(targetChannelType, targetChannelId);
-    addMessageToChannel(forwardedMessage, targetChannelKey);
-    
-    // Get target channel name for logging
-    const targetName = targetChannelType === 'dm' ? 
-      Object.values(DIRECT_MESSAGES).find(dm => dm.id === targetChannelId)?.memberName :
-      Object.values(CHANNELS).find(ch => ch.id === targetChannelId)?.displayName;
-    
-    addDebugLog('info', 'Messages', `Message forwarded to ${targetName}`);
-  };
-
-  const handleCancelReply = () => {
-    setReplyingTo(null);
-    addDebugLog('debug', 'UI', 'Reply cancelled');
-  };
-
-  // Multi-select functions
-  const toggleMultiSelectMode = () => {
-    setIsMultiSelectMode(!isMultiSelectMode);
-    if (isMultiSelectMode) {
-      // Exiting multi-select mode, clear selections
-      setSelectedMessages(new Set());
-    }
-    addDebugLog('info', 'UI', `Multi-select mode ${!isMultiSelectMode ? 'enabled' : 'disabled'}`);
-  };
-
-  const toggleMessageSelection = (messageId: string) => {
-    setSelectedMessages(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(messageId)) {
-        newSet.delete(messageId);
-      } else {
-        newSet.add(messageId);
-      }
-      addDebugLog('debug', 'UI', `Message ${messageId} ${newSet.has(messageId) ? 'selected' : 'deselected'}`);
-      return newSet;
-    });
-  };
-
-  const selectAllMessages = () => {
-    const currentMessages = getCurrentMessages();
-    const allMessageIds = new Set(currentMessages.map(msg => msg.id));
-    setSelectedMessages(allMessageIds);
-    addDebugLog('info', 'UI', `Selected all ${allMessageIds.size} messages`);
-  };
-
-  const deselectAllMessages = () => {
-    setSelectedMessages(new Set());
-    addDebugLog('info', 'UI', 'Deselected all messages');
-  };
-
-  const handleBatchDelete = () => {
-    if (selectedMessages.size === 0) return;
-    setShowBatchDeleteModal(true);
-    addDebugLog('info', 'UI', `Opening batch delete modal for ${selectedMessages.size} messages`);
-  };
-
-  const handleBatchForward = () => {
-    if (selectedMessages.size === 0) return;
-    setShowBatchForwardModal(true);
-    addDebugLog('info', 'UI', `Opening batch forward modal for ${selectedMessages.size} messages`);
-  };
-
-  const confirmBatchDelete = async () => {
-    const messagesToDelete = Array.from(selectedMessages);
-    setIsDeleting(true);
-    
-    try {
-      // Remove messages from UI immediately
-      setChannelMessages(prev => {
-        const updated = { ...prev };
-        Object.keys(updated).forEach(channelKey => {
-          updated[channelKey] = updated[channelKey].filter(msg => !selectedMessages.has(msg.id));
-        });
-        return updated;
-      });
-
-      addDebugLog('info', 'Messages', `Batch deleted ${messagesToDelete.length} messages from UI`);
-
-      // Call backend API for each message
-      const deletePromises = messagesToDelete.map(async (messageId) => {
-        try {
-          const response = await fetch(`/api/v1/messages/${messageId}`, { 
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' }
-          });
-          
-          if (!response.ok && response.status !== 404) {
-            throw new Error(`Failed to delete message ${messageId}: ${response.statusText}`);
-          }
-          return { messageId, success: true };
-        } catch (error) {
-          addDebugLog('error', 'Messages', `Failed to delete message ${messageId}: ${error}`);
-          return { messageId, success: false };
-        }
-      });
-
-      const results = await Promise.all(deletePromises);
-      const successCount = results.filter(r => r.success).length;
-      const failCount = results.length - successCount;
-
-      addDebugLog('info', 'Messages', `Batch delete completed: ${successCount} succeeded, ${failCount} failed`);
-
-      // Clear selections and exit multi-select mode
-      setSelectedMessages(new Set());
-      setIsMultiSelectMode(false);
-      setShowBatchDeleteModal(false);
-
-    } catch (error) {
-      addDebugLog('error', 'Messages', `Batch delete failed: ${error}`);
-      // Restore messages on error
-      // Note: In a real app, you'd want to restore only the messages that failed to delete
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const cancelBatchDelete = () => {
-    setShowBatchDeleteModal(false);
-    addDebugLog('debug', 'UI', 'Batch delete cancelled');
-  };
-
-  const handleBatchForwardToChannel = (targetChannelType: string, targetChannelId: string) => {
-    const currentMessages = getCurrentMessages();
-    const messagesToForward = currentMessages.filter(msg => selectedMessages.has(msg.id));
-    
-    messagesToForward.forEach(message => {
-      const forwardedMessage: ChatMessage = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        type: 'forwarded',
-        content: message.content,
-        timestamp: new Date().toISOString(),
-        sender: 'You',
-        forwarded_from: {
-          channel_id: activeView.id,
-          channel_name: activeView.name,
-          original_sender: message.type === 'user' ? 'You' : message.sender || 'Council'
-        }
-      };
-
-      // Add to target channel
-      const targetChannelKey = getChannelKey(targetChannelType, targetChannelId);
-      addMessageToChannel(forwardedMessage, targetChannelKey);
-    });
-
-    // Get target channel name for logging
-    const targetName = targetChannelType === 'dm' ? 
-      Object.values(DIRECT_MESSAGES).find(dm => dm.id === targetChannelId)?.memberName || targetChannelId :
-      Object.values(CHANNELS).find(ch => ch.id === targetChannelId)?.displayName || `# ${targetChannelId}`;
-
-    addDebugLog('info', 'Messages', `Batch forwarded ${messagesToForward.length} messages to ${targetName}`);
-
-    // Clear selections and close modal
-    setSelectedMessages(new Set());
-    setIsMultiSelectMode(false);
-    setShowBatchForwardModal(false);
-  };
-
-  const cancelBatchForward = () => {
-    setShowBatchForwardModal(false);
-    addDebugLog('debug', 'UI', 'Batch forward cancelled');
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
-  const getConnectionStatusColor = () => {
-    switch (connectionState.status) {
-      case 'connected': return 'text-green-500';
-      case 'connecting': return 'text-yellow-500';
-      case 'error': return 'text-red-500';
-      default: return 'text-gray-500';
+  const renderActiveComponent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return <AutonomousDashboard />;
+      case 'network':
+        return <AgentNetworkDashboard />;
+      case 'intelligence':
+        return <IntelligenceCenter />;
+      case 'agents':
+        return <LivingAgentDashboard userId="user-1" />;
+      case 'chat':
+        return <ChatWrapper />;
+      default:
+        return <AutonomousDashboard />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
-      {/* Header */}
-      <header className="border-b border-slate-700 bg-slate-900/50 backdrop-blur-sm">
-        <div className="max-w-[95vw] mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <Crown className="h-8 w-8 text-yellow-400" />
-              <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">
-                  Intelligence Empire
-                </h1>
-                <p className="text-sm text-slate-400">Your Personal AI Council</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              {/* Search Button */}
-              <button
-                onClick={() => setShowSearch(true)}
-                className="flex items-center space-x-2 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"
-                title="Search all conversations (Ctrl+K)"
-              >
-                <Search className="h-4 w-4" />
-                <span className="text-sm">Search</span>
-                <kbd className="ml-2 px-1.5 py-0.5 text-xs text-slate-500 bg-slate-700 border border-slate-600 rounded">
-                  ⌘K
-                </kbd>
-              </button>
-
-              {/* Debug Console Button */}
-              <button
-                onClick={() => setShowDebugConsole(!showDebugConsole)}
-                className="flex items-center space-x-2 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-lg transition-colors"
-                title="Toggle debug console"
-              >
-                <Terminal className="h-4 w-4" />
-                <span className="text-sm">Debug</span>
-                {debugLogs.length > 0 && (
-                  <span className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full">
-                    {debugLogs.length}
-                  </span>
-                )}
-              </button>
-
-              <AIProviderIndicator 
-                provider="ollama"
-                isProcessing={isProcessing}
-              />
-              
-              <div className={`flex items-center space-x-2 ${getConnectionStatusColor()}`}>
-                <Zap className="h-4 w-4" />
-                <span className="text-sm font-medium">
-                  {connectionState.status.charAt(0).toUpperCase() + connectionState.status.slice(1)}
-                </span>
-              </div>
-              
-              <div className="flex items-center space-x-2 text-slate-400">
-                <Users className="h-4 w-4" />
-                <span className="text-sm">4 Council Members</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Modern Chat Layout */}
-      <div className="flex h-[calc(100vh-80px)]">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
+      <div className="flex h-screen">
         {/* Sidebar */}
-                 <Sidebar 
-           activeView={activeView}
-           onViewChange={handleViewChange}
-           connectionStatus={connectionState.status}
-           channelMessages={channelMessages}
-         />
-
-        {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col bg-slate-800/30">
-          {/* Channel/DM Header */}
-          <div className="h-12 border-b border-slate-700 flex items-center px-4 bg-slate-800/50">
-            <div className="flex items-center space-x-2">
-              {activeView.type === 'channel' ? (
-                <>
-                  <Hash className="h-4 w-4 text-slate-400" />
-                  <span className="font-semibold text-white">{activeView.name.replace('# ', '')}</span>
-                  <span className="text-xs text-slate-400 ml-2">
-                    {CHANNELS[activeView.id]?.description}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <MessageCircle className="h-4 w-4 text-slate-400" />
-                  <span className="font-semibold text-white">{activeView.name}</span>
-                  <div className="w-2 h-2 bg-green-400 rounded-full ml-2" />
-                  <span className="text-xs text-slate-400">Online</span>
-                </>
-              )}
-            </div>
-            
-            <div className="ml-auto flex items-center space-x-4">
-              {/* Multi-select toggle button */}
-              <button
-                onClick={toggleMultiSelectMode}
-                className={`flex items-center px-3 py-1 rounded-md text-xs transition-colors ${
-                  isMultiSelectMode 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                }`}
-              >
-                <CheckSquare className="h-3 w-3 mr-1" />
-                {isMultiSelectMode ? 'Exit Select' : 'Select'}
-              </button>
-              
-              <div className={`flex items-center space-x-2 ${getConnectionStatusColor()}`}>
-                <Zap className="h-3 w-3" />
-                <span className="text-xs font-medium">
-                  {connectionState.status.charAt(0).toUpperCase() + connectionState.status.slice(1)}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Chat Messages */}
-                        <ChatInterface
-              messages={getCurrentMessages()}
-              isProcessing={isProcessing}
-              activeView={activeView}
-              interactionMode={interactionProfile}
-              isMultiSelectMode={isMultiSelectMode}
-              selectedMessages={selectedMessages}
-              onSelect={toggleMessageSelection}
-            onReply={handleReplyToMessage}
-            onForward={handleForwardMessage}
-            onDelete={handleDeleteMessage}
-            onCopy={handleCopyMessage}
-          />
-
-          {/* Batch Actions Toolbar */}
-          <BatchActionsToolbar
-            isVisible={isMultiSelectMode}
-            selectedCount={selectedMessages.size}
-            totalCount={getCurrentMessages().length}
-            onToggleMultiSelect={toggleMultiSelectMode}
-            onSelectAll={selectAllMessages}
-            onDeselectAll={deselectAllMessages}
-            onBatchDelete={handleBatchDelete}
-            onBatchForward={handleBatchForward}
-          />
-
-          {/* Reply Indicator */}
-          {replyingTo && (
-            <ReplyIndicator
-              replyingTo={replyingTo}
-              onCancelReply={handleCancelReply}
-            />
-          )}
-
-          {/* Input Area */}
-          <div className="border-t border-slate-700 p-4 bg-slate-800/50">
-            <div className="flex space-x-3">
-              <div className="flex-1">
-                <textarea
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder={
-                    activeView.type === 'channel' 
-                      ? `Message #${activeView.name.replace('# ', '')}...`
-                      : `Message @${activeView.name}...`
-                  }
-                  className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
-                  rows={1}
-                  disabled={isProcessing}
-                />
+        <div className={`fixed inset-y-0 left-0 z-50 w-80 bg-slate-900/95 backdrop-blur-xl border-r border-slate-700/50 transform transition-transform duration-300 ease-in-out ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } lg:translate-x-0 lg:static lg:inset-0`}>
+          <div className="flex flex-col h-full">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-700/50">
+              <div>
+                <h1 className="text-xl font-bold text-gradient-primary">Intelligence Empire</h1>
+                <p className="text-sm text-slate-400">Autonomous AI Council</p>
               </div>
               <button
-                onClick={sendMessage}
-                disabled={!inputMessage.trim() || isProcessing}
-                className="px-4 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                onClick={() => setSidebarOpen(false)}
+                className="lg:hidden p-2 rounded-lg hover:bg-slate-800/50 transition-colors"
               >
-                <Send className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
-            
-            <div className="mt-2 flex items-center justify-between">
-              <div className="text-xs text-slate-400">
-                Press Enter to send • Shift+Enter for new line
+
+            {/* System Status */}
+            <div className="p-4 border-b border-slate-700/50">
+              <div className="bg-slate-800/50 rounded-xl p-4 backdrop-blur-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-white">System Status</span>
+                  <div className={`flex items-center space-x-2 ${getStatusColor(systemStatus.status)}`}>
+                    <div className="w-2 h-2 rounded-full bg-current animate-pulse"></div>
+                    <span className="text-xs font-medium capitalize">{systemStatus.status}</span>
+                  </div>
+                </div>
+                <div className="text-xs text-slate-400 space-y-1">
+                  <div>Last updated: {systemStatus.lastUpdated}</div>
+                  <div className="flex justify-between">
+                    <span>Active Agents</span>
+                    <span className="text-cyan-400">{systemStatus.activeAgents}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Processing Queue</span>
+                    <span className="text-slate-300">{systemStatus.processingQueue}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Uptime</span>
+                    <span className="text-green-400">{systemStatus.uptime}</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center space-x-3">
-                {/* Compact Interaction Mode Selector */}
-                <InteractionModeSelector
-                  selectedProfile={interactionProfile}
-                  enabledAbilities={enabledAbilities}
-                  onProfileChange={setInteractionProfile}
-                  onAbilitiesChange={setEnabledAbilities}
-                  compact={true}
-                />
+            </div>
+
+            {/* Navigation */}
+            <nav className="flex-1 p-4 space-y-2">
+              {navigationItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveTab(item.id as ActiveTab);
+                    setSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-4 p-4 rounded-xl transition-all duration-200 group ${
+                    activeTab === item.id
+                      ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 text-white shadow-lg'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                  }`}
+                >
+                  <div className={`p-2 rounded-lg transition-colors ${
+                    activeTab === item.id
+                      ? 'bg-cyan-500/20 text-cyan-400'
+                      : 'bg-slate-700/50 text-slate-400 group-hover:text-white group-hover:bg-slate-600/50'
+                  }`}>
+                    <item.icon className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="font-medium">{item.label}</div>
+                    <div className="text-xs opacity-75">{item.description}</div>
+                  </div>
+                  {item.id === 'intelligence' && notifications > 0 && (
+                    <div className="w-6 h-6 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                      {notifications}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </nav>
+
+            {/* System Overview */}
+            <div className="p-4 border-t border-slate-700/50">
+              <div className="text-xs text-slate-500 mb-3">System Overview</div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Activity className="h-4 w-4 text-green-400" />
+                    <span className="text-sm text-slate-300">Active Sessions</span>
+                  </div>
+                  <span className="text-sm font-medium text-white">3</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Zap className="h-4 w-4 text-yellow-400" />
+                    <span className="text-sm text-slate-300">Processing Queue</span>
+                  </div>
+                  <span className="text-sm font-medium text-white">{systemStatus.processingQueue}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <TrendingUp className="h-4 w-4 text-cyan-400" />
+                    <span className="text-sm text-slate-300">Uptime</span>
+                  </div>
+                  <span className="text-sm font-medium text-white">{systemStatus.uptime}</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
-        
-        {/* Channel Switch Indicator */}
-        <ChannelSwitchIndicator
-          activeView={activeView}
-          previousView={previousView}
-          connectionStatus={connectionState.status}
-        />
-        
-        {/* Conversation History Panel */}
-        <ConversationHistory
-          activeView={activeView}
-          onLoadHistory={handleLoadHistory}
-          isVisible={showHistory}
-          onToggleVisibility={() => setShowHistory(!showHistory)}
-        />
+
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col lg:ml-0">
+          {/* Top Bar */}
+          <header className="bg-slate-900/50 backdrop-blur-xl border-b border-slate-700/50 p-4 lg:p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="lg:hidden p-2 rounded-lg hover:bg-slate-800/50 transition-colors"
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+                
+                <div>
+                  <h2 className="text-xl font-semibold text-white">
+                    {navigationItems.find(item => item.id === activeTab)?.label}
+                  </h2>
+                  <p className="text-sm text-slate-400">
+                    {navigationItems.find(item => item.id === activeTab)?.description}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-4">
+                {/* Search */}
+                <div className="hidden md:flex relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search..."
+                    className="w-64 pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all duration-200"
+                  />
+                </div>
+
+                {/* Notifications */}
+                <button className="relative p-2 rounded-lg hover:bg-slate-800/50 transition-colors">
+                  <Bell className="h-5 w-5 text-slate-400" />
+                  {notifications > 0 && (
+                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                      {notifications}
+                    </div>
+                  )}
+                </button>
+
+                {/* Settings */}
+                <button className="p-2 rounded-lg hover:bg-slate-800/50 transition-colors">
+                  <Settings className="h-5 w-5 text-slate-400" />
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* Main Content Area */}
+          <main className="flex-1 overflow-auto">
+            {renderActiveComponent()}
+          </main>
+        </div>
       </div>
 
-      {/* Global Search Modal */}
-      <GlobalSearch 
-        isOpen={showSearch}
-        onClose={() => setShowSearch(false)}
-        onNavigateToMessage={handleNavigateToMessage}
-      />
-
-      {/* Debug Console */}
-      <DebugConsole
-        isVisible={showDebugConsole}
-        onToggle={() => setShowDebugConsole(!showDebugConsole)}
-        logs={debugLogs}
-        onClearLogs={clearDebugLogs}
-      />
-
-      {/* Forward Message Modal */}
-      {messageToForward && (
-        <ForwardMessageModal
-          isOpen={showForwardModal}
-          onClose={() => {
-            setShowForwardModal(false);
-            setMessageToForward(null);
-          }}
-          message={messageToForward}
-          onForward={handleForwardToChannel}
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
         />
-      )}
-
-      {/* Delete Message Modal */}
-      {messageToDelete && (
-        <DeleteMessageModal
-          isOpen={showDeleteModal}
-          onClose={cancelDeleteMessage}
-          onConfirm={confirmDeleteMessage}
-          message={messageToDelete}
-          isDeleting={isDeleting}
-        />
-      )}
-
-      {/* Batch Delete Modal */}
-      <BatchDeleteModal
-        isOpen={showBatchDeleteModal}
-        messageCount={selectedMessages.size}
-        isDeleting={isDeleting}
-        onConfirm={confirmBatchDelete}
-        onCancel={cancelBatchDelete}
-      />
-
-      {/* Batch Forward Modal */}
-      <BatchForwardModal
-        isOpen={showBatchForwardModal}
-        messageCount={selectedMessages.size}
-        onForward={handleBatchForwardToChannel}
-        onCancel={cancelBatchForward}
-      />
-
-      {/* Initial Loading Overlay */}
-      {isInitialLoading && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-slate-800 rounded-lg p-8 max-w-md text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-            <h3 className="text-lg font-semibold text-white mb-2">Loading Intelligence Empire</h3>
-            <p className="text-slate-400">Synchronizing all conversations...</p>
-          </div>
-        </div>
       )}
     </div>
   );
 };
 
-export default App; 
+export default App;
