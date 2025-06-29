@@ -7,6 +7,13 @@ export interface Channel {
   color: string;
   primaryAgents: string[]; // Which living agents are most active in this channel
   type: 'channel' | 'dm' | 'group';
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  member_count: number;
+  is_private: boolean;
+  auto_assign_agents: boolean; // Whether to auto-assign agents based on context
+  allowed_agents: string[]; // Specific agents allowed in this channel (empty = all allowed)
 }
 
 export interface DirectMessage {
@@ -17,6 +24,7 @@ export interface DirectMessage {
   lastMessage?: string;
   lastActivity?: string;
   unreadCount: number;
+  agent?: any; // Full agent object from livingAgentService
 }
 
 export interface ChannelMessage {
@@ -33,79 +41,65 @@ export interface ChannelMessage {
   agent_name?: string;
 }
 
-// Channel definitions for living agent system
-export const CHANNELS: Record<string, Channel> = {
-  'general': {
-    id: 'general',
+export interface ChannelCreateRequest {
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  is_private: boolean;
+  auto_assign_agents: boolean;
+  allowed_agents: string[];
+}
+
+export interface ChannelUpdateRequest {
+  name?: string;
+  description?: string;
+  icon?: string;
+  color?: string;
+  is_private?: boolean;
+  auto_assign_agents?: boolean;
+  allowed_agents?: string[];
+}
+
+// Default channels that are created for new users
+export const DEFAULT_CHANNELS: Omit<Channel, 'id' | 'created_by' | 'created_at' | 'updated_at' | 'member_count'>[] = [
+  {
     name: 'general',
     displayName: '# general',
-    description: 'General discussions with living agents',
-    icon: '🏛️',
+    description: 'General discussions with your living agents',
+    icon: '💬',
     color: 'text-purple-400',
-    primaryAgents: [], // Auto-assign based on context and agent availability
-    type: 'channel'
+    primaryAgents: [],
+    type: 'channel',
+    is_private: false,
+    auto_assign_agents: true,
+    allowed_agents: []
   },
-  'living-agents': {
-    id: 'living-agents',
+  {
     name: 'living-agents',
     displayName: '# living-agents',
-    description: 'Collaborate with all your living agents',
+    description: 'Direct collaboration with all your agents',
     icon: '🧠',
-    color: 'text-gold-400',
-    primaryAgents: [], // All available living agents
-    type: 'channel'
-  },
-  'strategy': {
-    id: 'strategy',
-    name: 'strategy',
-    displayName: '# strategy',
-    description: 'High-level strategic planning with expert agents',
-    icon: '🎯',
     color: 'text-blue-400',
-    primaryAgents: [], // Strategy-focused agents
-    type: 'channel'
-  },
-  'product': {
-    id: 'product',
-    name: 'product',
-    displayName: '# product',
-    description: 'Product strategy, roadmaps, and user insights',
-    icon: '📱',
-    color: 'text-green-400',
-    primaryAgents: [], // Product and UX agents
-    type: 'channel'
-  },
-  'market-intel': {
-    id: 'market-intel',
-    name: 'market-intel',
-    displayName: '# market-intel',
-    description: 'Market analysis and competitive intelligence',
-    icon: '📊',
-    color: 'text-orange-400',
-    primaryAgents: [], // Market intelligence agents
-    type: 'channel'
-  },
-  'design': {
-    id: 'design',
-    name: 'design',
-    displayName: '# design',
-    description: 'UX design, user experience, interface decisions',
-    icon: '🎨',
-    color: 'text-pink-400',
-    primaryAgents: [], // Design-focused agents
-    type: 'channel'
-  },
-  'operations': {
-    id: 'operations',
-    name: 'operations',
-    displayName: '# operations', 
-    description: 'Implementation, processes, technical planning',
-    icon: '⚙️',
-    color: 'text-cyan-400',
-    primaryAgents: [], // Operations agents
-    type: 'channel'
+    primaryAgents: [],
+    type: 'channel',
+    is_private: false,
+    auto_assign_agents: true,
+    allowed_agents: []
   }
-};
+];
+
+// Available channel icons and colors
+export const CHANNEL_ICONS = [
+  '💬', '🧠', '🎯', '📱', '📊', '🎨', '⚙️', '🚀', '💡', '🔬', 
+  '📈', '🎪', '🎮', '🌟', '🔥', '⚡', '🎵', '📚', '🎭', '🎨'
+];
+
+export const CHANNEL_COLORS = [
+  'text-purple-400', 'text-blue-400', 'text-green-400', 'text-yellow-400',
+  'text-red-400', 'text-pink-400', 'text-indigo-400', 'text-cyan-400',
+  'text-orange-400', 'text-teal-400', 'text-lime-400', 'text-rose-400'
+];
 
 // Direct message setup - will be populated dynamically with living agents
 export const DIRECT_MESSAGES: Record<string, DirectMessage> = {};
@@ -114,4 +108,6 @@ export type ActiveView = {
   type: 'channel' | 'dm';
   id: string;
   name: string;
+  agentId?: string; // For DMs
+  channelData?: Channel; // For channels
 }; 

@@ -34,7 +34,7 @@ interface ChatInterfaceProps {
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isProcessing, activeView, interactionMode }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [agents, setAgents] = useState<LivingAgent[]>([]);
+  const [contextAgents, setContextAgents] = useState<LivingAgent[]>([]);
   const [userFeedback, setUserFeedback] = useState<{[messageId: string]: 'positive' | 'negative' | null}>({});
 
   useEffect(() => {
@@ -42,16 +42,38 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isProcessing, a
   }, [messages]);
 
   useEffect(() => {
-    loadAgents();
-  }, []);
+    loadContextAgents();
+  }, [activeView]);
 
-  const loadAgents = async () => {
+  const loadContextAgents = async () => {
     try {
-      const userAgents = await livingAgentService.getUserAgents('user-1'); // TODO: Get actual user ID
-      setAgents(userAgents);
+      if (activeView.type === 'dm' && activeView.agentId) {
+        // For DM, load only the specific agent
+        const agent = await livingAgentService.getAgent(activeView.agentId);
+        setContextAgents(agent ? [agent] : []);
+      } else if (activeView.type === 'channel') {
+        // For channels, load agents that recently participated in this channel
+        const recentAgents = getRecentChannelAgents();
+        setContextAgents(recentAgents);
+      }
     } catch (error) {
-      console.error('Failed to load agents:', error);
+      console.error('Failed to load context agents:', error);
     }
+  };
+
+  const getRecentChannelAgents = (): LivingAgent[] => {
+    // Get agents from recent messages in this channel
+    const recentAgentIds = new Set<string>();
+    const recentMessages = messages.slice(-10); // Last 10 messages
+    
+    recentMessages.forEach(message => {
+      if (message.type === 'agent' && message.agent_id) {
+        recentAgentIds.add(message.agent_id);
+      }
+    });
+
+    // For now, return empty array - will be populated by mock data or API
+    return [];
   };
 
   const formatTime = (timestamp: string) => {
@@ -302,16 +324,30 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isProcessing, a
 
   return (
     <div className="flex flex-col h-full">
-      {/* Agent Status Bar - Sims-like interface */}
-      {agents.length > 0 && (
+      {/* Context Agent Status - Individual for current chat */}
+      {contextAgents.length > 0 && (
         <div className="p-4 border-b border-slate-700/50 bg-slate-900/50">
           <div className="flex items-center space-x-2 mb-3">
-            <Users className="h-4 w-4 text-purple-400" />
-            <span className="text-sm font-medium text-slate-300">Living Agents Status</span>
-            <span className="text-xs text-slate-500">Real-time mood & capabilities</span>
+            {activeView.type === 'dm' ? (
+              <>
+                <MessageCircle className="h-4 w-4 text-blue-400" />
+                <span className="text-sm font-medium text-slate-300">Agent Status</span>
+                <span className="text-xs text-slate-500">Direct conversation</span>
+              </>
+            ) : (
+              <>
+                <Hash className="h-4 w-4 text-purple-400" />
+                <span className="text-sm font-medium text-slate-300">Active Agents</span>
+                <span className="text-xs text-slate-500">Channel participants</span>
+              </>
+            )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {agents.slice(0, 3).map(agent => renderAgentMoodBar(agent))}
+          <div className={`grid gap-3 ${
+            activeView.type === 'dm' 
+              ? 'grid-cols-1' 
+              : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'
+          }`}>
+            {contextAgents.map((agent: any) => renderAgentMoodBar(agent))}
           </div>
         </div>
       )}

@@ -11,6 +11,8 @@ import ConversationHistory from './ConversationHistory';
 import { ChatMessage } from '../types/living-agents';
 import { ActiveView } from '../types/channels';
 import { livingAgentService } from '../services/livingAgentService';
+import { channelService } from '../services/channelService';
+import Sidebar from './Sidebar';
 
 interface ChatWrapperProps {
   className?: string;
@@ -33,8 +35,8 @@ export const ChatWrapper: React.FC<ChatWrapperProps> = ({ className = '' }) => {
   const [inputMessage, setInputMessage] = useState('');
   const [activeView, setActiveView] = useState<ActiveView>({
     type: 'channel',
-    id: 'general',
-    name: 'Council Discussion'
+    id: '',
+    name: 'Loading...'
   });
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
@@ -45,7 +47,21 @@ export const ChatWrapper: React.FC<ChatWrapperProps> = ({ className = '' }) => {
   useEffect(() => {
     loadAllAgents();
     loadConversationHistory();
+    initializeActiveView();
   }, []);
+
+  const initializeActiveView = () => {
+    // Load the first available channel as default
+    const channels = channelService.getChannels();
+    if (channels.length > 0) {
+      setActiveView({
+        type: 'channel',
+        id: channels[0].id,
+        name: channels[0].displayName,
+        channelData: channels[0]
+      });
+    }
+  };
 
   const loadAllAgents = async () => {
     try {
@@ -342,70 +358,46 @@ export const ChatWrapper: React.FC<ChatWrapperProps> = ({ className = '' }) => {
   };
 
   return (
-    <div className={`flex flex-col h-full ${className} bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative`}>
-      {/* Futuristic Chat Header */}
-      <div className="flex-shrink-0 bg-slate-800/50 backdrop-blur-xl border-b border-slate-700/50 shadow-lg">
-        <div className="flex items-center justify-between p-4">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-xl flex items-center justify-center shadow-lg">
-                <Sparkles className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold text-white">
-                  {activeView.type === 'channel' ? '🏛️ Council Discussion' : `💬 ${activeView.name}`}
-            </h2>
-                <p className="text-sm text-slate-400">
-                  {activeView.type === 'channel' ? 'Collaborative Intelligence Network' : 'Direct Agent Communication'}
-                </p>
-              </div>
-            </div>
-            
-            {/* Futuristic View Switcher */}
-            <div className="flex space-x-2 bg-slate-700/30 rounded-xl p-1 backdrop-blur-sm">
-              <button
-                onClick={switchToCouncil}
-                className={`px-4 py-2 text-sm rounded-lg transition-all duration-200 flex items-center space-x-2 ${
-                  activeView.type === 'channel'
-                    ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-600/50'
-                }`}
-              >
-                <span>🏛️</span>
-                <span>Council</span>
-              </button>
-              
-              {allAgents.map(agent => (
-                <button
-                  key={agent.id}
-                  onClick={() => switchToAgent(agent.name)}
-                  className={`px-3 py-2 text-sm rounded-lg transition-all duration-200 flex items-center space-x-1 ${
-                    activeView.type === 'dm' && activeView.name === agent.name
-                      ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-600/50'
-                  }`}
-                  title={`${agent.name} (${agent.role})${agent.mood ? ` - ${agent.mood}` : ''}`}
-                >
-                  <span>{agent.avatar}</span>
-                  <span>{agent.name.split(' ')[0]}</span>
-                  <span className="text-xs bg-cyan-400/20 text-cyan-300 px-1 rounded">AI</span>
-                </button>
-              ))}
-            </div>
-          </div>
+    <div className={`flex h-full ${className} bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900`}>
+      {/* Chat Sidebar for Channels/DMs */}
+      <Sidebar
+        activeView={activeView}
+        onViewChange={setActiveView}
+        connectionStatus="connected"
+      />
 
-          {/* Chat Controls */}
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={toggleHistory}
-              className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
-              title="View conversation history"
-            >
-              <History className="h-5 w-5 text-slate-400 hover:text-white" />
-            </button>
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Chat Header */}
+        <div className="flex-shrink-0 bg-slate-800/50 backdrop-blur-xl border-b border-slate-700/50 shadow-lg">
+          <div className="flex items-center justify-between p-4">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-xl flex items-center justify-center shadow-lg">
+                  <Sparkles className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-white">
+                    {activeView.name}
+                  </h2>
+                  <p className="text-sm text-slate-400">
+                    {activeView.type === 'channel' ? 'Channel Discussion' : 'Direct Agent Communication'}
+                  </p>
+                </div>
+              </div>
+            </div>
+            {/* Chat Controls */}
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={toggleHistory}
+                className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
+                title="View conversation history"
+              >
+                <History className="h-5 w-5 text-slate-400 hover:text-white" />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
       {/* Chat Interface */}
       <div className="flex-1 overflow-hidden">
@@ -539,6 +531,7 @@ export const ChatWrapper: React.FC<ChatWrapperProps> = ({ className = '' }) => {
             </div>
           </div>
         )}
+      </div>
     </div>
   );
 }; 

@@ -129,7 +129,7 @@ const App: React.FC = () => {
             <div className="flex items-center justify-between p-6 border-b border-slate-700/50">
               <div>
                 <h1 className="text-xl font-bold text-gradient-primary">Intelligence Empire</h1>
-                <p className="text-sm text-slate-400">Autonomous AI Council</p>
+                <p className="text-sm text-slate-400">Living Agent Network</p>
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
