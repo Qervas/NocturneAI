@@ -15,11 +15,10 @@ import {
 import AutonomousDashboard from './components/Dashboard/AutonomousDashboard';
 import LivingAgentDashboard from './components/Dashboard/LivingAgentDashboard';
 import AgentNetworkDashboard from './components/Dashboard/AgentNetworkDashboard';
-import IntelligenceCenter from './components/Dashboard/IntelligenceCenter';
 import ChatWrapper from './components/ChatWrapper';
 
 // Types
-type ActiveTab = 'dashboard' | 'network' | 'intelligence' | 'agents' | 'chat';
+type ActiveTab = 'dashboard' | 'network' | 'agents' | 'chat';
 
 interface SystemStatus {
   status: 'operational' | 'degraded' | 'critical';
@@ -45,8 +44,7 @@ const App: React.FC = () => {
   const navigationItems = [
     { id: 'dashboard', label: 'Dashboard', description: 'Overview & Quick Actions', icon: LayoutDashboard },
     { id: 'network', label: 'Agent Network', description: 'Interactive Agent Graph', icon: Users },
-    { id: 'intelligence', label: 'Intelligence Center', description: 'Decisions, Goals & Analytics', icon: Brain },
-    { id: 'agents', label: 'Living Agents', description: 'Agent Management', icon: Zap },
+    { id: 'agents', label: 'Agent Management', description: 'Create & Configure Agents', icon: Zap },
     { id: 'chat', label: 'Chat', description: 'Communication Interface', icon: MessageSquare }
   ];
 
@@ -145,8 +143,6 @@ const App: React.FC = () => {
         return <AutonomousDashboard />;
       case 'network':
         return <AgentNetworkDashboard />;
-      case 'intelligence':
-        return <IntelligenceCenter />;
       case 'agents':
         return <LivingAgentDashboard />;
       case 'chat':
