@@ -1,296 +1,193 @@
 /**
- * Chat Wrapper - Complete Chat Experience
- * Integrates ChatInterface with input controls and state management
- * Supports both Fixed Council Members and Living Agents
+ * Chat System - Clean & Simple
+ * Group chat with all agents and direct messages
  */
 
-import React, { useState, useEffect } from 'react';
-import { Send, Paperclip, Smile, Mic, Sparkles, History, X } from 'lucide-react';
-import ChatInterface from './ChatInterface';
-import ConversationHistory from './ConversationHistory';
-import { ChatMessage } from '../types/living-agents';
-import { ActiveView } from '../types/channels';
-import { livingAgentService } from '../services/livingAgentService';
-import { channelService } from '../services/channelService';
-import Sidebar from './Sidebar';
+import React, { useState, useEffect, useRef } from 'react';
+import { Send, Users, MessageCircle, Brain, User, Bot, Sparkles, Plus, Hash, X } from 'lucide-react';
+import { dynamicAgentService, DynamicAgent } from '../services/dynamicAgentService';
 
-interface ChatWrapperProps {
-  className?: string;
+interface ChatMessage {
+  id: string;
+  content: string;
+  sender: 'user' | 'agent' | 'system';
+  agentName?: string;
+  agentRole?: string;
+  agentId?: string;
+  timestamp: string;
+  isGroupChat?: boolean;
 }
 
-interface AgentInfo {
+interface ChatView {
+  type: 'group' | 'dm';
   id: string;
   name: string;
-  role: string;
-  color: string;
-  avatar?: string;
-  type: 'council' | 'living';
-  status: 'active' | 'inactive';
-  mood?: string;
+  agentId?: string;
 }
 
-export const ChatWrapper: React.FC<ChatWrapperProps> = ({ className = '' }) => {
+export const ChatWrapper: React.FC = () => {
+  const [agents, setAgents] = useState<DynamicAgent[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
-  const [activeView, setActiveView] = useState<ActiveView>({
-    type: 'channel',
-    id: '',
-    name: 'Loading...'
-  });
-  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
-  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
-  const [allAgents, setAllAgents] = useState<AgentInfo[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [currentView, setCurrentView] = useState<ChatView>({ type: 'group', id: 'council', name: 'Council Chat' });
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Load agents and conversation history on mount
   useEffect(() => {
-    loadAllAgents();
-    loadConversationHistory();
-    initializeActiveView();
+    loadAgents();
+    loadMessages();
   }, []);
 
-  const initializeActiveView = () => {
-    // Load the first available channel as default
-    const channels = channelService.getChannels();
-    if (channels.length > 0) {
-      setActiveView({
-        type: 'channel',
-        id: channels[0].id,
-        name: channels[0].displayName,
-        channelData: channels[0]
-      });
-    }
-  };
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
-  const loadAllAgents = async () => {
+  useEffect(() => {
+    loadMessages();
+  }, [currentView]);
+
+  const loadAgents = async () => {
     try {
-      // Load living agents
-      const livingAgentsData = await livingAgentService.getUserAgents('user-1');
-      
-      // Convert living agents to AgentInfo format with specialized colors/avatars
-      const livingAgentInfos: AgentInfo[] = livingAgentsData.map(agent => {
-        // Assign colors and avatars based on role
-        let color = 'indigo';
-        let avatar = '🤖';
-        
-        if (agent.role.includes('Product Strategy')) {
-          color = 'purple';
-          avatar = '👩‍💼';
-        } else if (agent.role.includes('Market Intelligence')) {
-          color = 'blue';
-          avatar = '👨‍💼';
-        } else if (agent.role.includes('UX Design')) {
-          color = 'pink';
-          avatar = '👩‍🎨';
-        } else if (agent.role.includes('Operations')) {
-          color = 'green';
-          avatar = '👨‍💻';
-        }
-        
-        return {
-          id: agent.agent_id,
-          name: agent.name,
-          role: agent.role,
-          color: color,
-          avatar: avatar,
-          type: 'living',
-          status: 'active',
-          mood: agent.current_mood.mood_description
-        };
-      });
-
-      // All agents are now living agents
-      setAllAgents(livingAgentInfos);
-      
+      const agentList = await dynamicAgentService.getAllAgents();
+      setAgents(agentList);
     } catch (error) {
       console.error('Failed to load agents:', error);
-      // Fallback to empty array if living agents fail to load
-      setAllAgents([]);
     }
   };
 
-  const loadConversationHistory = async () => {
-    try {
-      // Try to load from localStorage or API
-      const savedMessages = localStorage.getItem('intelligence-empire-chat-history');
-      if (savedMessages) {
-        const parsedMessages: ChatMessage[] = JSON.parse(savedMessages);
-        setMessages(parsedMessages);
+  const loadMessages = () => {
+    const storageKey = `chat_messages_${currentView.type}_${currentView.id}`;
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      try {
+        setMessages(JSON.parse(saved));
+      } catch (error) {
+        console.error('Failed to load messages:', error);
+        setMessages([]);
       }
-    } catch (error) {
-      console.error('Failed to load conversation history:', error);
+    } else {
+      setMessages([]);
     }
   };
 
-  const saveMessageToHistory = (message: ChatMessage) => {
-    const updatedMessages = [...messages, message];
-    setMessages(updatedMessages);
-    
-    // Save to localStorage
-    try {
-      localStorage.setItem('intelligence-empire-chat-history', JSON.stringify(updatedMessages));
-    } catch (error) {
-      console.error('Failed to save message to history:', error);
-    }
+  const saveMessages = (newMessages: ChatMessage[]) => {
+    const storageKey = `chat_messages_${currentView.type}_${currentView.id}`;
+    localStorage.setItem(storageKey, JSON.stringify(newMessages));
   };
 
-  const handleSendMessageDirect = async (content: string) => {
-    if (!content.trim() || isProcessing) return;
+  const addMessage = (message: ChatMessage) => {
+    const newMessages = [...messages, message];
+    setMessages(newMessages);
+    saveMessages(newMessages);
+  };
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleSendMessage = async () => {
+    if (!inputMessage.trim() || isProcessing) return;
 
     const userMessage: ChatMessage = {
-      id: `msg-${Date.now()}-user`,
-      content: content.trim(),
-      timestamp: new Date().toISOString(),
+      id: `user_${Date.now()}`,
+      content: inputMessage.trim(),
       sender: 'user',
-      agent_name: 'You',
-      type: 'user'
+      timestamp: new Date().toISOString(),
+      isGroupChat: currentView.type === 'group'
     };
 
-    // Add user message immediately
-    saveMessageToHistory(userMessage);
+    addMessage(userMessage);
+    const messageContent = inputMessage.trim();
+    setInputMessage('');
     setIsProcessing(true);
 
     try {
-      if (activeView.type === 'channel') {
-        // Council Discussion - use mock responses for now
-        await handleCouncilMessage(content.trim());
-      } else if (activeView.type === 'dm' && activeView.name) {
-        // Direct Message - route based on agent type
-        await handleDirectMessage(activeView.name, content.trim());
+      if (currentView.type === 'group') {
+        await handleGroupMessage(messageContent);
       } else {
-        throw new Error('Invalid active view configuration');
+        await handleDirectMessage(messageContent);
       }
-
     } catch (error) {
-      console.error('Failed to send message:', error);
-      
-      // Add error message with better UX
+      console.error('Error sending message:', error);
       const errorMessage: ChatMessage = {
-        id: `msg-${Date.now()}-error`,
-        content: 'I apologize, but I encountered a temporary issue processing your message. I\'m working on a response using my backup systems.',
-        timestamp: new Date().toISOString(),
+        id: `error_${Date.now()}`,
+        content: 'Sorry, there was an error processing your message. Please try again.',
         sender: 'system',
-        agent_name: 'System',
-        type: 'system'
+        timestamp: new Date().toISOString()
       };
-      saveMessageToHistory(errorMessage);
-      
-      // Provide a mock response as fallback
-      setTimeout(() => {
-        const fallbackResponse = getMockResponse(content.trim());
-        const fallbackMessage: ChatMessage = {
-          id: `msg-${Date.now()}-fallback`,
-          content: fallbackResponse,
-          timestamp: new Date().toISOString(),
-          sender: 'agent',
-          agent_name: activeView.type === 'dm' ? activeView.name : 'AI Council',
-          agent_role: activeView.type === 'dm' ? 'AI Assistant' : 'Collaborative Intelligence',
-          type: 'agent'
-        };
-        saveMessageToHistory(fallbackMessage);
-      }, 1500);
+      addMessage(errorMessage);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleSendMessage = async () => {
-    await handleSendMessageDirect(inputMessage);
-    setInputMessage('');
-  };
-
-  const handleCouncilMessage = async (message: string) => {
-    // Mock council response for now - will be replaced with actual API
-    setTimeout(() => {
-      const councilResponse = getCouncilMockResponse(message);
-      const agentMessage: ChatMessage = {
-        id: `msg-${Date.now()}-council`,
-        content: councilResponse,
-        timestamp: new Date().toISOString(),
-        sender: 'agent',
-        agent_name: 'AI Council',
-        agent_role: 'Collaborative Intelligence',
-        type: 'agent'
-      };
-      saveMessageToHistory(agentMessage);
-    }, 1000);
-  };
-
-  const handleDirectMessage = async (agentName: string, message: string) => {
-    // Find the agent to determine if it's living or council
-    const agent = allAgents.find(a => a.name === agentName);
-    
+  const handleGroupMessage = async (content: string) => {
     try {
-      if (agent?.type === 'living') {
-        // Try Living Agent API call first
-        const response = await livingAgentService.interactWithAgent(agent.id, 'user-1', {
-          user_input: message,
-          context: {}
-        });
-        
-        if (response.success && response.response) {
-          const agentMessage: ChatMessage = {
-            id: `msg-${Date.now()}-${agentName}`,
-            content: response.response,
-            timestamp: new Date().toISOString(),
+      const response = await dynamicAgentService.multiAgentInteraction({
+        message: content,
+        context: { channel: 'group_chat' }
+      });
+
+      if (response.success) {
+        // Add synthesis message
+        const synthesisMessage: ChatMessage = {
+          id: `synthesis_${Date.now()}`,
+          content: response.result.synthesis,
+          sender: 'agent',
+          agentName: 'Council',
+          agentRole: 'Collective Intelligence',
+          timestamp: new Date().toISOString(),
+          isGroupChat: true
+        };
+        addMessage(synthesisMessage);
+
+        // Add individual responses
+        response.result.individual_responses.forEach((resp, index) => {
+          const responseMessage: ChatMessage = {
+            id: `agent_${Date.now()}_${index}`,
+            content: resp.response,
             sender: 'agent',
-            agent_name: agentName,
-            agent_role: agent.role,
-            type: 'agent'
+            agentName: resp.agent_name,
+            agentRole: resp.agent_role,
+            timestamp: new Date().toISOString(),
+            isGroupChat: true
           };
-          saveMessageToHistory(agentMessage);
-          return; // Success, exit early
-        }
+          addMessage(responseMessage);
+        });
       }
     } catch (error) {
-      console.log('Living agent API unavailable, using mock response');
+      console.error('Group chat error:', error);
+      throw error;
     }
-    
-    // Fallback to mock response
-    setTimeout(() => {
-      const mockResponse = getMockAgentResponse(agentName, message);
-      const agentMessage: ChatMessage = {
-        id: `msg-${Date.now()}-${agentName}`,
-        content: mockResponse,
-        timestamp: new Date().toISOString(),
-        sender: 'agent',
-        agent_name: agentName,
-        agent_role: agent?.role || 'AI Assistant',
-        type: 'agent'
-      };
-      saveMessageToHistory(agentMessage);
-    }, 1000);
   };
 
-  const getMockResponse = (message: string): string => {
-    const responses = [
-      `That's an interesting perspective on "${message.substring(0, 30)}...". Let me analyze this from multiple angles and provide you with strategic insights.`,
-      `I understand you're asking about "${message.substring(0, 30)}...". Based on current trends and best practices, here's my recommendation.`,
-      `Great question about "${message.substring(0, 30)}...". I'll help you explore the possibilities and identify the best path forward.`
-    ];
-    return responses[Math.floor(Math.random() * responses.length)];
-  };
+  const handleDirectMessage = async (content: string) => {
+    if (!currentView.agentId) return;
 
-  const getCouncilMockResponse = (message: string): string => {
-    const responses = [
-      `🤝 **Council Consensus**: After collaborative analysis of your question about "${message.substring(0, 40)}...", we've reached a strategic recommendation. Our combined expertise suggests focusing on user-centric solutions with data-driven validation.`,
-      `💡 **Strategic Synthesis**: The council has deliberated on "${message.substring(0, 40)}..." and identified key opportunities. We recommend a multi-phase approach that balances innovation with risk management.`,
-      `🎯 **Unified Response**: Your inquiry about "${message.substring(0, 40)}..." has been analyzed from product, market, design, and operational perspectives. Here's our consolidated strategic guidance.`
-    ];
-    return responses[Math.floor(Math.random() * responses.length)];
-  };
+    try {
+      const response = await dynamicAgentService.interactWithAgent(currentView.agentId, {
+        message: content,
+        context: { channel: 'direct_message' }
+      });
 
-  const getMockAgentResponse = (agentName: string, message: string): string => {
-    const responses = {
-      'Sarah Chen': `🎯 **Product Strategy Insight**: Regarding "${message.substring(0, 40)}...", I recommend focusing on user value and data-driven frameworks. Let's prioritize features based on impact metrics and business objectives. Consider conducting user interviews to validate assumptions.`,
-      'Marcus Rodriguez': `📊 **Market Intelligence**: About "${message.substring(0, 40)}...", I see significant market opportunities. Current trends show 23% growth in this sector. Key competitors are focusing on automation, but there's a gap in personalized experiences we could exploit.`,
-      'Elena Vasquez': `🎨 **UX Design Perspective**: For "${message.substring(0, 40)}...", I'm thinking user-centered design. Let's create intuitive interfaces with accessibility at the core. I suggest prototyping with real users and iterating based on behavioral insights.`,
-      'David Kim': `⚙️ **Operations Analysis**: Regarding "${message.substring(0, 40)}...", I love systematic approaches. Let's build scalable processes with proper monitoring. I recommend starting with MVP, measuring key metrics, and optimizing based on performance data.`,
-      'Alex Thompson': `🤖 **Personal Assistant**: About "${message.substring(0, 40)}...", I'm here to coordinate and synthesize insights. Based on team discussions, I suggest a balanced approach that considers all stakeholder perspectives while maintaining focus on your core objectives.`
-    };
-    
-    return responses[agentName as keyof typeof responses] || `🤖 Hello! I'm ${agentName}. Thanks for your message about "${message.substring(0, 40)}...". I'm here to help with my expertise. How can I assist you further?`;
+      if (response.success) {
+        const agentMessage: ChatMessage = {
+          id: `agent_${Date.now()}`,
+          content: response.response,
+          sender: 'agent',
+          agentName: response.agent_name,
+          agentRole: response.agent_role,
+          agentId: currentView.agentId,
+          timestamp: new Date().toISOString(),
+          isGroupChat: false
+        };
+        addMessage(agentMessage);
+      }
+    } catch (error) {
+      console.error('Direct message error:', error);
+      throw error;
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -300,240 +197,243 @@ export const ChatWrapper: React.FC<ChatWrapperProps> = ({ className = '' }) => {
     }
   };
 
-  const handleMessageSelect = (messageId: string) => {
-    if (isMultiSelectMode) {
-      const newSelected = new Set(selectedMessages);
-      if (newSelected.has(messageId)) {
-        newSelected.delete(messageId);
-      } else {
-        newSelected.add(messageId);
-      }
-      setSelectedMessages(newSelected);
-    }
+  const switchToGroup = () => {
+    setCurrentView({ type: 'group', id: 'council', name: 'Council Chat' });
   };
 
-  const handleReply = (message: ChatMessage) => {
-    setInputMessage(`@${message.agent_name} `);
-  };
-
-  const handleForward = (message: ChatMessage) => {
-    console.log('Forward message:', message);
-  };
-
-  const handleDelete = (message: ChatMessage) => {
-    const updatedMessages = messages.filter(msg => msg.id !== message.id);
-    setMessages(updatedMessages);
-    localStorage.setItem('intelligence-empire-chat-history', JSON.stringify(updatedMessages));
-  };
-
-  const handleCopy = (content: string) => {
-    navigator.clipboard.writeText(content).then(() => {
-      console.log('Message copied to clipboard');
-    });
-  };
-
-  const switchToAgent = (agentName: string) => {
-    setActiveView({
+  const switchToAgent = (agent: DynamicAgent) => {
+    setCurrentView({
       type: 'dm',
-      id: agentName.toLowerCase().replace(' ', '-'),
-      name: agentName
+      id: agent.profile.agent_id,
+      name: agent.profile.name,
+      agentId: agent.profile.agent_id
     });
   };
 
-  const switchToCouncil = () => {
-    setActiveView({
-      type: 'channel',
-      id: 'general',
-      name: 'Council Discussion'
-    });
+  const formatTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const toggleHistory = () => {
-    setShowHistory(!showHistory);
+  const getAgentColor = (agentName: string) => {
+    const colors = ['from-purple-500 to-pink-500', 'from-blue-500 to-cyan-500', 'from-green-500 to-teal-500', 'from-orange-500 to-red-500'];
+    const hash = agentName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return colors[hash % colors.length];
   };
 
-  const handleLoadHistory = () => {
-    // Reload conversation history
-    loadConversationHistory();
+  const renderMessage = (message: ChatMessage) => {
+    if (message.sender === 'user') {
+      return (
+        <div className="flex items-start space-x-3 justify-end">
+          <div className="max-w-2xl">
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl px-4 py-3 shadow-lg">
+              <p className="text-white whitespace-pre-wrap">{message.content}</p>
+            </div>
+            <div className="flex items-center justify-end mt-1">
+              <span className="text-xs text-slate-400">{formatTime(message.timestamp)}</span>
+            </div>
+          </div>
+          <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+            <User className="h-4 w-4 text-white" />
+          </div>
+        </div>
+      );
+    }
+
+    if (message.sender === 'agent') {
+      return (
+        <div className="flex items-start space-x-3">
+          <div className={`w-8 h-8 bg-gradient-to-r ${getAgentColor(message.agentName || 'Agent')} rounded-full flex items-center justify-center flex-shrink-0`}>
+            <Bot className="h-4 w-4 text-white" />
+          </div>
+          <div className="flex-1 max-w-2xl">
+            <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl px-4 py-3 border border-slate-700/50 shadow-lg">
+              <div className="flex items-center space-x-2 mb-2">
+                <span className="font-semibold text-white">{message.agentName}</span>
+                {message.agentRole && (
+                  <span className="text-xs bg-slate-700/50 text-slate-300 px-2 py-1 rounded-full">
+                    {message.agentRole}
+                  </span>
+                )}
+              </div>
+              <p className="text-slate-200 whitespace-pre-wrap">{message.content}</p>
+            </div>
+            <div className="flex items-center mt-1">
+              <span className="text-xs text-slate-400">{formatTime(message.timestamp)}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (message.sender === 'system') {
+      return (
+        <div className="flex justify-center">
+          <div className="bg-slate-700/30 rounded-full px-4 py-2 border border-slate-600/50">
+            <span className="text-sm text-slate-300">{message.content}</span>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
   };
 
   return (
-    <div className={`flex h-full ${className} bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900`}>
-      {/* Chat Sidebar for Channels/DMs */}
-      <Sidebar
-        activeView={activeView}
-        onViewChange={setActiveView}
-        connectionStatus="connected"
-      />
+    <div className="flex h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Sidebar */}
+      <div className={`${sidebarOpen ? 'w-80' : 'w-16'} transition-all duration-300 bg-slate-900/50 backdrop-blur-xl border-r border-slate-700/50 flex flex-col`}>
+        <div className="p-4 border-b border-slate-700/50">
+          <div className="flex items-center justify-between">
+            <h2 className={`font-semibold text-white ${sidebarOpen ? 'block' : 'hidden'}`}>Chats</h2>
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
+            >
+              {sidebarOpen ? <X className="h-5 w-5 text-slate-400" /> : <Plus className="h-5 w-5 text-slate-400" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {/* Group Chat */}
+          <div className="p-2">
+            <button
+              onClick={switchToGroup}
+              className={`w-full flex items-center space-x-3 p-3 rounded-lg transition-colors ${
+                currentView.type === 'group' ? 'bg-purple-600/20 border border-purple-500/30' : 'hover:bg-slate-700/30'
+              }`}
+            >
+              <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center flex-shrink-0">
+                <Users className="h-5 w-5 text-white" />
+              </div>
+              {sidebarOpen && (
+                <div className="flex-1 text-left">
+                  <div className="font-medium text-white">Council Chat</div>
+                  <div className="text-xs text-slate-400">All agents</div>
+                </div>
+              )}
+            </button>
+          </div>
+
+          {/* Direct Messages */}
+          {sidebarOpen && (
+            <div className="px-4 py-2 text-xs font-medium text-slate-400 uppercase tracking-wide">
+              Direct Messages
+            </div>
+          )}
+          <div className="p-2 space-y-1">
+            {agents.map(agent => (
+              <button
+                key={agent.profile.agent_id}
+                onClick={() => switchToAgent(agent)}
+                className={`w-full flex items-center space-x-3 p-3 rounded-lg transition-colors ${
+                  currentView.agentId === agent.profile.agent_id ? 'bg-blue-600/20 border border-blue-500/30' : 'hover:bg-slate-700/30'
+                }`}
+              >
+                <div className={`w-10 h-10 bg-gradient-to-r ${getAgentColor(agent.profile.name)} rounded-full flex items-center justify-center flex-shrink-0`}>
+                  <span className="text-white font-medium">{agent.profile.avatar_emoji || '🤖'}</span>
+                </div>
+                {sidebarOpen && (
+                  <div className="flex-1 text-left">
+                    <div className="font-medium text-white">{agent.profile.name}</div>
+                    <div className="text-xs text-slate-400 truncate">{agent.profile.role}</div>
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
         {/* Chat Header */}
-        <div className="flex-shrink-0 bg-slate-800/50 backdrop-blur-xl border-b border-slate-700/50 shadow-lg">
-          <div className="flex items-center justify-between p-4">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-xl flex items-center justify-center shadow-lg">
-                  <Sparkles className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-white">
-                    {activeView.name}
-                  </h2>
-                  <p className="text-sm text-slate-400">
-                    {activeView.type === 'channel' ? 'Channel Discussion' : 'Direct Agent Communication'}
-                  </p>
-                </div>
-              </div>
+        <div className="bg-slate-800/50 backdrop-blur-xl border-b border-slate-700/50 p-4">
+          <div className="flex items-center space-x-3">
+            <div className={`w-10 h-10 bg-gradient-to-r ${
+              currentView.type === 'group' ? 'from-purple-500 to-pink-500' : getAgentColor(currentView.name)
+            } rounded-full flex items-center justify-center`}>
+              {currentView.type === 'group' ? (
+                <Users className="h-5 w-5 text-white" />
+              ) : (
+                <MessageCircle className="h-5 w-5 text-white" />
+              )}
             </div>
-            {/* Chat Controls */}
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={toggleHistory}
-                className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
-                title="View conversation history"
-              >
-                <History className="h-5 w-5 text-slate-400 hover:text-white" />
-              </button>
+            <div>
+              <h2 className="text-lg font-semibold text-white">{currentView.name}</h2>
+              <p className="text-sm text-slate-400">
+                {currentView.type === 'group' ? 'Group conversation with all agents' : 'Direct message'}
+              </p>
             </div>
           </div>
         </div>
 
-      {/* Chat Interface */}
-      <div className="flex-1 overflow-hidden">
-        <ChatInterface
-          messages={messages}
-          isProcessing={isProcessing}
-          activeView={activeView}
-          interactionMode="enhanced"
-          isMultiSelectMode={isMultiSelectMode}
-          selectedMessages={selectedMessages}
-          onSelect={handleMessageSelect}
-          onReply={handleReply}
-          onForward={handleForward}
-          onDelete={handleDelete}
-          onCopy={handleCopy}
-        />
-      </div>
-
-      {/* Futuristic Input Area */}
-      <div className="flex-shrink-0 bg-slate-800/50 backdrop-blur-xl border-t border-slate-700/50 p-4">
-        {/* Quick Actions */}
-        <div className="flex space-x-2 mb-3 overflow-x-auto">
-          <button
-            onClick={() => setInputMessage('What are the biggest opportunities for our product?')}
-            className="px-3 py-1 text-xs bg-slate-700/50 text-slate-300 rounded-full hover:bg-slate-600/50 transition-colors whitespace-nowrap"
-          >
-            💡 Opportunities
-          </button>
-          <button
-            onClick={() => setInputMessage('What risks should we be aware of?')}
-            className="px-3 py-1 text-xs bg-slate-700/50 text-slate-300 rounded-full hover:bg-slate-600/50 transition-colors whitespace-nowrap"
-          >
-            ⚠️ Risk Analysis
-          </button>
-          <button
-            onClick={() => setInputMessage('How should we prioritize our next features?')}
-            className="px-3 py-1 text-xs bg-slate-700/50 text-slate-300 rounded-full hover:bg-slate-600/50 transition-colors whitespace-nowrap"
-          >
-            🎯 Prioritization
-          </button>
-          <button
-            onClick={() => setInputMessage(`What's your expert opinion on...`)}
-            className="px-3 py-1 text-xs bg-slate-700/50 text-slate-300 rounded-full hover:bg-slate-600/50 transition-colors whitespace-nowrap"
-          >
-            🧠 Expert Opinion
-          </button>
-          <button
-            onClick={() => setInputMessage(`Can you analyze...`)}
-            className="px-3 py-1 text-xs bg-slate-700/50 text-slate-300 rounded-full hover:bg-slate-600/50 transition-colors whitespace-nowrap"
-          >
-            📊 Analysis
-          </button>
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <div className={`w-16 h-16 bg-gradient-to-r ${
+                  currentView.type === 'group' ? 'from-purple-500 to-pink-500' : 'from-blue-500 to-cyan-500'
+                } rounded-full flex items-center justify-center mx-auto mb-4`}>
+                  <Sparkles className="h-8 w-8 text-white" />
+                </div>
+                <h3 className="text-xl font-semibold text-white mb-2">
+                  {currentView.type === 'group' ? 'Start a Council Discussion' : `Chat with ${currentView.name}`}
+                </h3>
+                <p className="text-slate-400 max-w-md">
+                  {currentView.type === 'group' 
+                    ? 'Get insights from all your agents working together'
+                    : 'Have a focused conversation with your specialist'
+                  }
+                </p>
+              </div>
+            </div>
+          ) : (
+            messages.map(message => (
+              <div key={message.id}>
+                {renderMessage(message)}
+              </div>
+            ))
+          )}
+          {isProcessing && (
+            <div className="flex items-center space-x-2 text-slate-400">
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse"></div>
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse animation-delay-200"></div>
+              <div className="w-2 h-2 bg-slate-400 rounded-full animate-pulse animation-delay-400"></div>
+              <span className="text-sm">Thinking...</span>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input Area */}
-        <div className="flex items-end space-x-3">
-          <div className="flex-1 relative">
-            <textarea
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder={`Message ${activeView.type === 'channel' ? 'Council' : activeView.name}...`}
-              className="w-full p-4 bg-slate-700/50 border border-slate-600/50 rounded-2xl text-white placeholder-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all duration-200 backdrop-blur-sm"
-              rows={1}
-              style={{ minHeight: '56px', maxHeight: '120px' }}
-            />
-            
-            {/* Input Actions */}
-            <div className="absolute right-3 bottom-3 flex items-center space-x-2">
-              <button className="p-1.5 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-slate-600/50">
-                <Paperclip className="h-4 w-4" />
-                  </button>
-              <button className="p-1.5 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-slate-600/50">
-                <Smile className="h-4 w-4" />
-                  </button>
-              <button className="p-1.5 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-slate-600/50">
-                <Mic className="h-4 w-4" />
-                  </button>
-            </div>
-          </div>
-          
-          <button
-            onClick={handleSendMessage}
-            disabled={!inputMessage.trim() || isProcessing}
-            className="p-4 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-2xl hover:from-cyan-600 hover:to-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl disabled:hover:shadow-lg"
-          >
-            <Send className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* Keyboard Shortcut Hint */}
-        <div className="mt-2 text-xs text-slate-500 text-center">
-          Press Enter to send • Shift + Enter for new line • Click <History className="inline h-3 w-3" /> for history
-        </div>
-      </div>
-
-      {/* Floating History Overlay */}
-      {showHistory && (
-        <div className="absolute inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl h-full max-h-[90vh] bg-slate-800/95 backdrop-blur-xl rounded-2xl border border-slate-700/50 shadow-2xl flex flex-col">
-            {/* History Header */}
-            <div className="flex-shrink-0 bg-slate-800/50 backdrop-blur-xl border-b border-slate-700/50 rounded-t-2xl">
-              <div className="flex items-center justify-between p-4">
-                <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl flex items-center justify-center shadow-lg">
-                    <History className="h-5 w-5 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold text-white">📚 Conversation History</h2>
-                    <p className="text-sm text-slate-400">Browse past conversations and interactions</p>
-                  </div>
-                </div>
-                <button
-                  onClick={toggleHistory}
-                  className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
-                >
-                  <X className="h-5 w-5 text-slate-400 hover:text-white" />
-              </button>
-              </div>
-            </div>
-
-            {/* History Content */}
-            <div className="flex-1 overflow-hidden">
-              <ConversationHistory 
-                activeView={activeView}
-                onLoadHistory={handleLoadHistory}
-                isVisible={true}
-                onToggleVisibility={toggleHistory}
+        <div className="bg-slate-800/50 backdrop-blur-xl border-t border-slate-700/50 p-4">
+          <div className="flex items-end space-x-3">
+            <div className="flex-1 relative">
+              <textarea
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder={`Message ${currentView.type === 'group' ? 'council' : currentView.name}...`}
+                className="w-full p-4 bg-slate-700/50 border border-slate-600/50 rounded-2xl text-white placeholder-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all"
+                rows={1}
+                style={{ minHeight: '56px', maxHeight: '120px' }}
+                disabled={isProcessing}
               />
             </div>
-            </div>
+            <button
+              onClick={handleSendMessage}
+              disabled={!inputMessage.trim() || isProcessing}
+              className="p-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:from-slate-600 disabled:to-slate-600 rounded-2xl transition-all duration-200 flex items-center justify-center min-w-[56px] h-14"
+            >
+              <Send className="h-5 w-5 text-white" />
+            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
-}; 
+};
 
 export default ChatWrapper; 

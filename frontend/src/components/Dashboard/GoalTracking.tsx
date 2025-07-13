@@ -1,509 +1,417 @@
 /**
- * Goal Tracking - Autonomous Goal Management Interface
- * Visual progress tracking, milestone completion, and goal performance analytics
+ * Goal Tracking - Simplified Agent Goal Management Interface
+ * Visual progress tracking and goal management for dynamic agents
  */
 
 import React, { useState, useEffect } from 'react';
-import { autonomousAgentService, AgentGoal } from '../../services/autonomousAgentService';
+import { dynamicAgentService, DynamicAgent } from '../../services/dynamicAgentService';
+import { 
+  Target, 
+  CheckCircle, 
+  Clock, 
+  AlertTriangle, 
+  Calendar,
+  TrendingUp,
+  User,
+  Filter,
+  RefreshCw,
+  Plus,
+  ChevronDown,
+  ChevronUp
+} from 'lucide-react';
 
 interface GoalTrackingProps {
   className?: string;
 }
 
-interface FilterState {
-  agent: string;
-  status: string;
-  priority: string;
-  type: string;
-  timeframe: string;
+interface MockGoal {
+  id: string;
+  title: string;
+  description: string;
+  agentId: string;
+  agentName: string;
+  status: 'active' | 'completed' | 'paused' | 'cancelled';
+  priority: 'low' | 'medium' | 'high';
+  progress: number;
+  targetDate: string;
+  category: string;
+  milestones: Array<{
+    id: string;
+    title: string;
+    completed: boolean;
+    dueDate: string;
+  }>;
+  createdAt: string;
 }
 
 interface GoalStats {
   total: number;
   active: number;
   completed: number;
-  suspended: number;
+  paused: number;
   averageProgress: number;
 }
 
 export const GoalTracking: React.FC<GoalTrackingProps> = ({ className = '' }) => {
-  const [goals, setGoals] = useState<AgentGoal[]>([]);
-  const [filteredGoals, setFilteredGoals] = useState<AgentGoal[]>([]);
+  const [agents, setAgents] = useState<DynamicAgent[]>([]);
+  const [goals, setGoals] = useState<MockGoal[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [expandedGoal, setExpandedGoal] = useState<string | null>(null);
+  const [filterAgent, setFilterAgent] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [stats, setStats] = useState<GoalStats>({
     total: 0,
     active: 0,
     completed: 0,
-    suspended: 0,
+    paused: 0,
     averageProgress: 0
   });
 
-  const [filters, setFilters] = useState<FilterState>({
-    agent: 'all',
-    status: 'all',
-    priority: 'all',
-    type: 'all',
-    timeframe: '30d'
-  });
-
-  const [expandedGoal, setExpandedGoal] = useState<string | null>(null);
-  const [updatingGoal, setUpdatingGoal] = useState<string | null>(null);
-
-  const agents = ['Sarah Chen', 'Marcus Rodriguez', 'Elena Vasquez', 'David Kim'];
-
   useEffect(() => {
-    loadGoals();
+    loadData();
   }, []);
 
-  useEffect(() => {
-    filterGoals();
-  }, [goals, filters]);
-
-  const loadGoals = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      const result = await autonomousAgentService.getGoals({});
-      setGoals(result.goals);
+      const agentsData = await dynamicAgentService.getAllAgents();
+      setAgents(agentsData);
       
-      // Calculate stats
-      const newStats = {
-        total: result.goals.length,
-        active: result.goals.filter(g => g.status === 'active').length,
-        completed: result.goals.filter(g => g.status === 'completed').length,
-        suspended: result.goals.filter(g => g.status === 'suspended' || g.status === 'failed').length,
-        averageProgress: result.goals.length > 0 
-          ? Math.round(result.goals.reduce((sum, g) => sum + g.progress, 0) / result.goals.length * 100)
-          : 0
-      };
-      setStats(newStats);
+      // Generate mock goals based on real agents
+      const mockGoals: MockGoal[] = agentsData.flatMap((agent, index) => 
+        agent.autonomous_goals.map((goal, goalIndex) => ({
+          id: `goal-${agent.profile.agent_id}-${goalIndex}`,
+          title: goal,
+          description: `Agent ${agent.profile.name} is working on: ${goal}`,
+          agentId: agent.profile.agent_id,
+          agentName: agent.profile.name,
+          status: (['active', 'completed', 'paused'] as const)[goalIndex % 3],
+          priority: (['low', 'medium', 'high'] as const)[goalIndex % 3],
+          progress: Math.floor(Math.random() * 100),
+          targetDate: new Date(Date.now() + (goalIndex + 1) * 30 * 24 * 60 * 60 * 1000).toISOString(),
+          category: agent.profile.role,
+          milestones: [
+            {
+              id: `milestone-1-${goalIndex}`,
+              title: 'Initial planning',
+              completed: true,
+              dueDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+            },
+            {
+              id: `milestone-2-${goalIndex}`,
+              title: 'Implementation phase',
+              completed: goalIndex % 2 === 0,
+              dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+            },
+            {
+              id: `milestone-3-${goalIndex}`,
+              title: 'Review and completion',
+              completed: false,
+              dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+            }
+          ],
+          createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
+        }))
+      );
 
+      setGoals(mockGoals);
+      updateStats(mockGoals);
     } catch (error) {
-      console.error('Error loading goals:', error);
+      console.error('Error loading data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const refreshData = async () => {
-    setRefreshing(true);
-    await loadGoals();
-    setRefreshing(false);
+  const updateStats = (goals: MockGoal[]) => {
+    const stats = {
+      total: goals.length,
+      active: goals.filter(g => g.status === 'active').length,
+      completed: goals.filter(g => g.status === 'completed').length,
+      paused: goals.filter(g => g.status === 'paused').length,
+      averageProgress: goals.length > 0 
+        ? Math.round(goals.reduce((sum, g) => sum + g.progress, 0) / goals.length)
+        : 0
+    };
+    setStats(stats);
   };
 
-  const filterGoals = () => {
-    let filtered = [...goals];
+  const filteredGoals = goals.filter(goal => {
+    const matchesAgent = filterAgent === 'all' || goal.agentId === filterAgent;
+    const matchesStatus = filterStatus === 'all' || goal.status === filterStatus;
+    return matchesAgent && matchesStatus;
+  });
 
-    // Apply filters
-    if (filters.agent !== 'all') {
-      filtered = filtered.filter(g => g.agent_name === filters.agent);
-    }
-    if (filters.status !== 'all') {
-      filtered = filtered.filter(g => g.status === filters.status);
-    }
-    if (filters.priority !== 'all') {
-      filtered = filtered.filter(g => g.priority === filters.priority);
-    }
-    if (filters.type !== 'all') {
-      filtered = filtered.filter(g => g.goal_type === filters.type);
-    }
-
-    // Apply timeframe filter
-    if (filters.timeframe !== 'all') {
-      const now = new Date();
-      const timeLimit = new Date();
-      
-      switch (filters.timeframe) {
-        case '7d':
-          timeLimit.setDate(now.getDate() - 7);
-          break;
-        case '30d':
-          timeLimit.setDate(now.getDate() - 30);
-          break;
-        case '90d':
-          timeLimit.setDate(now.getDate() - 90);
-          break;
-      }
-      
-      filtered = filtered.filter(g => new Date(g.created_at) >= timeLimit);
-    }
-
-    // Sort by priority and progress
-    filtered.sort((a, b) => {
-      const priorityOrder = { high: 3, medium: 2, low: 1 };
-      const aPriority = typeof a.priority === 'string' ? a.priority : 'medium';
-      const bPriority = typeof b.priority === 'string' ? b.priority : 'medium';
-      
-      if (aPriority !== bPriority) {
-        return priorityOrder[bPriority as keyof typeof priorityOrder] - priorityOrder[aPriority as keyof typeof priorityOrder];
-      }
-      
-      // Active goals first, then by progress
-      if (a.status === 'active' && b.status !== 'active') return -1;
-      if (b.status === 'active' && a.status !== 'active') return 1;
-      
-      return b.progress - a.progress;
-    });
-
-    setFilteredGoals(filtered);
-  };
-
-  const handleFilterChange = (key: keyof FilterState, value: string) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
-  };
-
-  const completeMilestone = async (goalId: string, milestoneIndex: number) => {
-    setUpdatingGoal(goalId);
-    try {
-      await autonomousAgentService.completeMilestone(goalId, milestoneIndex);
-      await loadGoals();
-    } catch (error) {
-      console.error('Error completing milestone:', error);
-    } finally {
-      setUpdatingGoal(null);
-    }
-  };
-
-  const updateGoalProgress = async (goalId: string) => {
-    setUpdatingGoal(goalId);
-    try {
-      await autonomousAgentService.updateGoalProgress(goalId);
-      await loadGoals();
-    } catch (error) {
-      console.error('Error updating goal progress:', error);
-    } finally {
-      setUpdatingGoal(null);
-    }
+  const handleMilestoneToggle = (goalId: string, milestoneId: string) => {
+    setGoals(prev => 
+      prev.map(goal => 
+        goal.id === goalId 
+          ? {
+              ...goal,
+              milestones: goal.milestones.map(milestone =>
+                milestone.id === milestoneId
+                  ? { ...milestone, completed: !milestone.completed }
+                  : milestone
+              )
+            }
+          : goal
+      )
+    );
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return 'text-blue-600 bg-blue-100 border-blue-200';
-      case 'completed': return 'text-green-600 bg-green-100 border-green-200';
-      case 'planned': return 'text-gray-600 bg-gray-100 border-gray-200';
-      case 'suspended': return 'text-orange-600 bg-orange-100 border-orange-200';
-      case 'failed': return 'text-red-600 bg-red-100 border-red-200';
-      default: return 'text-gray-600 bg-gray-100 border-gray-200';
+      case 'active': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'completed': return 'bg-green-100 text-green-800 border-green-200';
+      case 'paused': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'cancelled': return 'bg-red-100 text-red-800 border-red-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
-  const getPriorityColor = (priority: string | number) => {
-    const priorityStr = typeof priority === 'string' ? priority : 'medium';
-    switch (priorityStr) {
-      case 'high': return 'text-red-700 bg-red-50 border-red-200';
-      case 'medium': return 'text-yellow-700 bg-yellow-50 border-yellow-200';
-      case 'low': return 'text-green-700 bg-green-50 border-green-200';
-      default: return 'text-gray-700 bg-gray-50 border-gray-200';
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'high': return 'bg-red-100 text-red-800 border-red-200';
+      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'low': return 'bg-green-100 text-green-800 border-green-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
-  const getAgentColor = (agent: string) => {
+  const getAgentColor = (agentId: string) => {
+    const agent = agents.find(a => a.profile.agent_id === agentId);
+    if (!agent) return 'bg-gray-500';
+    
     const colors = {
-      'Sarah Chen': 'bg-purple-500',
-      'Marcus Rodriguez': 'bg-blue-500',
-      'Elena Vasquez': 'bg-pink-500',
-      'David Kim': 'bg-green-500'
+      'purple': 'bg-purple-500',
+      'blue': 'bg-blue-500',
+      'pink': 'bg-pink-500',
+      'green': 'bg-green-500',
+      'orange': 'bg-orange-500',
+      'red': 'bg-red-500'
     };
-    return colors[agent as keyof typeof colors] || 'bg-gray-500';
+    return colors[agent.profile.color_theme as keyof typeof colors] || 'bg-gray-500';
   };
 
   const formatTime = (timestamp: string) => {
-    const now = new Date();
-    const time = new Date(timestamp);
-    const diffMs = now.getTime() - time.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
-    return time.toLocaleDateString();
+    const date = new Date(timestamp);
+    return date.toLocaleDateString();
   };
 
   const getProgressColor = (progress: number) => {
     if (progress >= 80) return 'bg-green-500';
-    if (progress >= 60) return 'bg-blue-500';
-    if (progress >= 40) return 'bg-yellow-500';
-    if (progress >= 20) return 'bg-orange-500';
+    if (progress >= 50) return 'bg-yellow-500';
     return 'bg-red-500';
   };
 
   if (loading) {
     return (
-      <div className={`p-6 ${className}`}>
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-24 bg-gray-200 rounded"></div>
-            ))}
-          </div>
-          <div className="space-y-4">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-40 bg-gray-200 rounded"></div>
-            ))}
-          </div>
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
   return (
-    <div className={`p-6 space-y-6 ${className}`}>
+    <div className={`space-y-6 ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Goal Tracking</h1>
-          <p className="text-gray-600 mt-1">Monitor and manage autonomous agent goals and milestones</p>
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Goal Tracking</h1>
+            <p className="text-gray-600">Monitor and manage agent goals and progress</p>
+          </div>
+          <button
+            onClick={loadData}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Refresh</span>
+          </button>
         </div>
-        <button
-          onClick={refreshData}
-          disabled={refreshing}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-        >
-          {refreshing ? '🔄' : '↻'} Refresh
-        </button>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="bg-white rounded-lg shadow p-4 text-center">
-          <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
-          <div className="text-sm text-gray-600">Total Goals</div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Total Goals</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+            </div>
+            <Target className="w-8 h-8 text-gray-500" />
+          </div>
         </div>
-        <div className="bg-white rounded-lg shadow p-4 text-center">
-          <div className="text-2xl font-bold text-blue-600">{stats.active}</div>
-          <div className="text-sm text-gray-600">Active Goals</div>
+
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Active</p>
+              <p className="text-2xl font-bold text-blue-600">{stats.active}</p>
+            </div>
+            <Clock className="w-8 h-8 text-blue-500" />
+          </div>
         </div>
-        <div className="bg-white rounded-lg shadow p-4 text-center">
-          <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
-          <div className="text-sm text-gray-600">Completed</div>
+
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Completed</p>
+              <p className="text-2xl font-bold text-green-600">{stats.completed}</p>
+            </div>
+            <CheckCircle className="w-8 h-8 text-green-500" />
+          </div>
         </div>
-        <div className="bg-white rounded-lg shadow p-4 text-center">
-          <div className="text-2xl font-bold text-orange-600">{stats.suspended}</div>
-          <div className="text-sm text-gray-600">Suspended/Failed</div>
+
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Paused</p>
+              <p className="text-2xl font-bold text-yellow-600">{stats.paused}</p>
+            </div>
+            <AlertTriangle className="w-8 h-8 text-yellow-500" />
+          </div>
         </div>
-        <div className="bg-white rounded-lg shadow p-4 text-center">
-          <div className="text-2xl font-bold text-purple-600">{stats.averageProgress}%</div>
-          <div className="text-sm text-gray-600">Avg Progress</div>
+
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Avg Progress</p>
+              <p className="text-2xl font-bold text-purple-600">{stats.averageProgress}%</p>
+            </div>
+            <TrendingUp className="w-8 h-8 text-purple-500" />
+          </div>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Filters</h3>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Agent</label>
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="flex flex-wrap items-center space-x-4 space-y-2">
+          <div className="flex items-center space-x-2">
+            <Filter className="w-4 h-4 text-gray-400" />
+            <span className="text-sm text-gray-600">Agent:</span>
             <select
-              value={filters.agent}
-              onChange={(e) => handleFilterChange('agent', e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={filterAgent}
+              onChange={(e) => setFilterAgent(e.target.value)}
+              className="border rounded px-3 py-1 text-sm"
             >
               <option value="all">All Agents</option>
               {agents.map(agent => (
-                <option key={agent} value={agent}>{agent}</option>
+                <option key={agent.profile.agent_id} value={agent.profile.agent_id}>
+                  {agent.profile.name}
+                </option>
               ))}
             </select>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-600">Status:</span>
             <select
-              value={filters.status}
-              onChange={(e) => handleFilterChange('status', e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="border rounded px-3 py-1 text-sm"
             >
-              <option value="all">All Status</option>
+              <option value="all">All Statuses</option>
               <option value="active">Active</option>
               <option value="completed">Completed</option>
-              <option value="planned">Planned</option>
-              <option value="suspended">Suspended</option>
-              <option value="failed">Failed</option>
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
-            <select
-              value={filters.priority}
-              onChange={(e) => handleFilterChange('priority', e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Priority</option>
-              <option value="high">High Priority</option>
-              <option value="medium">Medium Priority</option>
-              <option value="low">Low Priority</option>
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
-            <select
-              value={filters.type}
-              onChange={(e) => handleFilterChange('type', e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Types</option>
-              <option value="research">Research</option>
-              <option value="development">Development</option>
-              <option value="optimization">Optimization</option>
-              <option value="analysis">Analysis</option>
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Timeframe</label>
-            <select
-              value={filters.timeframe}
-              onChange={(e) => handleFilterChange('timeframe', e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="7d">Last 7 Days</option>
-              <option value="30d">Last 30 Days</option>
-              <option value="90d">Last 90 Days</option>
-              <option value="all">All Time</option>
+              <option value="paused">Paused</option>
             </select>
           </div>
         </div>
       </div>
 
       {/* Goals List */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">
-            Goals ({filteredGoals.length})
-          </h2>
-        </div>
-
-        <div className="divide-y divide-gray-200">
-          {filteredGoals.length === 0 ? (
-            <div className="p-12 text-center text-gray-500">
-              <div className="text-6xl mb-4">🎯</div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No goals found</h3>
-              <p>No goals match your current filter criteria.</p>
-            </div>
-          ) : (
-            filteredGoals.map((goal) => (
-              <div key={goal.id} className="p-6 hover:bg-gray-50 transition-colors">
-                <div className="flex items-start space-x-4">
-                  {/* Agent Avatar */}
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white ${getAgentColor(goal.agent_name || '')}`}>
-                    {(goal.agent_name || '').split(' ').map(n => n[0]).join('')}
-                  </div>
-
-                  {/* Goal Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center space-x-3">
-                        <h3 className="font-semibold text-gray-900">{goal.agent_name}</h3>
-                        <span className={`px-2 py-1 text-xs rounded-full border ${getStatusColor(goal.status)}`}>
-                          {goal.status}
-                        </span>
-                        <span className={`px-2 py-1 text-xs rounded-full border ${getPriorityColor(goal.priority)}`}>
-                          {typeof goal.priority === 'string' ? goal.priority : 'medium'} priority
-                        </span>
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Goals</h2>
+        
+        {filteredGoals.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <Target className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            <p>No goals found matching your criteria</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredGoals.map(goal => (
+              <div key={goal.id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <h3 className="text-lg font-semibold text-gray-900">{goal.title}</h3>
+                      <span className={`px-3 py-1 text-xs font-medium rounded-full border ${getStatusColor(goal.status)}`}>
+                        {goal.status}
+                      </span>
+                      <span className={`px-3 py-1 text-xs font-medium rounded-full border ${getPriorityColor(goal.priority)}`}>
+                        {goal.priority}
+                      </span>
+                    </div>
+                    <p className="text-gray-600 mb-3">{goal.description}</p>
+                    
+                    <div className="flex items-center space-x-6 text-sm text-gray-500 mb-3">
+                      <div className="flex items-center space-x-2">
+                        <div className={`w-6 h-6 rounded-full ${getAgentColor(goal.agentId)} flex items-center justify-center text-white text-xs`}>
+                          {goal.agentName.split(' ').map(n => n[0]).join('')}
+                        </div>
+                        <span>{goal.agentName}</span>
                       </div>
-                      <div className="flex items-center space-x-2 text-sm text-gray-500">
-                        <span>{formatTime(goal.created_at)}</span>
-                        {goal.deadline && (
-                          <>
-                            <span>•</span>
-                            <span>Due: {new Date(goal.deadline).toLocaleDateString()}</span>
-                          </>
-                        )}
+                      <div className="flex items-center space-x-1">
+                        <Calendar className="w-4 h-4" />
+                        <span>Due: {formatTime(goal.targetDate)}</span>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <span>Category: {goal.category}</span>
                       </div>
                     </div>
-
+                    
                     <div className="mb-3">
-                      <h4 className="font-medium text-gray-900 mb-1">{goal.title}</h4>
-                      <p className="text-gray-700 text-sm">{goal.description}</p>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="mb-4">
-                      <div className="flex justify-between text-sm text-gray-600 mb-2">
+                      <div className="flex items-center justify-between text-sm text-gray-700 mb-1">
                         <span>Progress</span>
-                        <span>{Math.round(goal.progress * 100)}%</span>
+                        <span>{goal.progress}%</span>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div className="w-full bg-gray-200 rounded-full h-2">
                         <div 
-                          className={`h-3 rounded-full transition-all duration-500 ${getProgressColor(goal.progress * 100)}`}
-                          style={{ width: `${goal.progress * 100}%` }}
+                          className={`h-2 rounded-full transition-all duration-500 ${getProgressColor(goal.progress)}`}
+                          style={{ width: `${goal.progress}%` }}
                         ></div>
                       </div>
                     </div>
-
-                    {/* Milestones */}
-                    {goal.milestones && goal.milestones.length > 0 && (
-                      <div className="mb-4">
-                        <h5 className="text-sm font-medium text-gray-700 mb-2">
-                          Milestones ({goal.milestones.filter(m => m.completed).length}/{goal.milestones.length})
-                        </h5>
-                        <div className="space-y-2">
-                          {goal.milestones.slice(0, expandedGoal === goal.id ? undefined : 3).map((milestone, index) => (
-                            <div key={index} className="flex items-center space-x-3 text-sm">
-                              <button
-                                onClick={() => !milestone.completed && completeMilestone(goal.id, index)}
-                                disabled={milestone.completed || updatingGoal === goal.id}
-                                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                                  milestone.completed 
-                                    ? 'bg-green-500 border-green-500 text-white' 
-                                    : 'border-gray-300 hover:border-blue-500'
-                                } disabled:opacity-50`}
-                              >
-                                {milestone.completed && '✓'}
-                              </button>
-                              <span className={`flex-1 ${milestone.completed ? 'text-gray-500 line-through' : 'text-gray-700'}`}>
-                                {milestone.title || `Milestone ${index + 1}`}
-                              </span>
-                              {milestone.deadline && (
-                                <span className="text-xs text-gray-500">
-                                  {new Date(milestone.deadline).toLocaleDateString()}
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                          {goal.milestones.length > 3 && (
-                            <button
-                              onClick={() => setExpandedGoal(expandedGoal === goal.id ? null : goal.id)}
-                              className="text-blue-600 text-sm hover:text-blue-800"
-                            >
-                              {expandedGoal === goal.id ? 'Show less' : `Show ${goal.milestones.length - 3} more milestones`}
-                            </button>
-                          )}
+                  </div>
+                  
+                  <button
+                    onClick={() => setExpandedGoal(expandedGoal === goal.id ? null : goal.id)}
+                    className="px-2 py-1 text-gray-500 hover:text-gray-700 ml-4"
+                  >
+                    {expandedGoal === goal.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  </button>
+                </div>
+                
+                {expandedGoal === goal.id && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <h4 className="font-semibold text-gray-900 mb-3">Milestones</h4>
+                    <div className="space-y-2">
+                      {goal.milestones.map(milestone => (
+                        <div key={milestone.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={milestone.completed}
+                              onChange={() => handleMilestoneToggle(goal.id, milestone.id)}
+                              className="rounded"
+                            />
+                            <span className={`text-sm ${milestone.completed ? 'line-through text-gray-500' : 'text-gray-700'}`}>
+                              {milestone.title}
+                            </span>
+                          </div>
+                          <span className="text-xs text-gray-500">
+                            Due: {formatTime(milestone.dueDate)}
+                          </span>
                         </div>
-                      </div>
-                    )}
-
-                    {/* Action Buttons */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2 text-xs text-gray-500">
-                        <span className="capitalize">{goal.goal_type}</span>
-                        {goal.success_metrics && Object.keys(goal.success_metrics).length > 0 && (
-                          <>
-                            <span>•</span>
-                            <span>{Object.keys(goal.success_metrics).length} metrics</span>
-                          </>
-                        )}
-                      </div>
-
-                      {goal.status === 'active' && (
-                        <button
-                          onClick={() => updateGoalProgress(goal.id)}
-                          disabled={updatingGoal === goal.id}
-                          className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-                        >
-                          {updatingGoal === goal.id ? 'Updating...' : '↻ Update Progress'}
-                        </button>
-                      )}
+                      ))}
                     </div>
                   </div>
-                </div>
+                )}
               </div>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

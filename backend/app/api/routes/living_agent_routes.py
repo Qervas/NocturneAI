@@ -135,10 +135,10 @@ async def delete_agent(
         result = await living_service.delete_agent(db, agent_id)
         
         if result["success"]:
-        return {
+            return {
                 "success": True,
                 "message": result["message"]
-        }
+            }
         else:
             raise HTTPException(status_code=400, detail=result["message"])
         
@@ -210,7 +210,7 @@ async def create_relationship(
         )
         
         if result["success"]:
-        return {
+            return {
                 "success": True,
                 "relationship_id": result["relationship_id"],
                 "message": result["message"]

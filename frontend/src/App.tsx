@@ -4,9 +4,6 @@ import {
   Users, 
   Brain, 
   MessageSquare,
-  Settings,
-  Bell,
-  Search,
   Menu,
   X,
   Zap,
@@ -30,6 +27,7 @@ interface SystemStatus {
   activeAgents: number;
   processingQueue: number;
   uptime: string;
+  systemHealth: string;
 }
 
 const App: React.FC = () => {
@@ -38,65 +36,106 @@ const App: React.FC = () => {
   const [systemStatus, setSystemStatus] = useState<SystemStatus>({
     status: 'operational',
     lastUpdated: new Date().toLocaleTimeString(),
-    activeAgents: 5,
+    activeAgents: 0,
     processingQueue: 0,
-    uptime: '2h 45m'
+    uptime: 'Loading...',
+    systemHealth: 'unknown'
   });
-  const [notifications, setNotifications] = useState(3);
 
-  // Update system status periodically
+  const navigationItems = [
+    { id: 'dashboard', label: 'Dashboard', description: 'Overview & Quick Actions', icon: LayoutDashboard },
+    { id: 'network', label: 'Agent Network', description: 'Interactive Agent Graph', icon: Users },
+    { id: 'intelligence', label: 'Intelligence Center', description: 'Decisions, Goals & Analytics', icon: Brain },
+    { id: 'agents', label: 'Living Agents', description: 'Agent Management', icon: Zap },
+    { id: 'chat', label: 'Chat', description: 'Communication Interface', icon: MessageSquare }
+  ];
+
+  // Fetch real system data
   useEffect(() => {
-    const interval = setInterval(() => {
-      setSystemStatus(prev => ({
-        ...prev,
-        lastUpdated: new Date().toLocaleTimeString(),
-        activeAgents: Math.floor(Math.random() * 3) + 4, // 4-6 agents
-        processingQueue: Math.floor(Math.random() * 3), // 0-2 items
-      }));
-    }, 30000); // Update every 30 seconds
+    const fetchSystemStatus = async () => {
+      try {
+        // Try multiple endpoints to get real data
+        const responses = await Promise.allSettled([
+          fetch('/api/v1/status'),
+          fetch('/api/dynamic/system/status'),
+          fetch('/api/v1/health')
+        ]);
 
+        let realData: Partial<SystemStatus> = {};
+
+        // Process each response
+        for (const response of responses) {
+          if (response.status === 'fulfilled' && response.value.ok) {
+            const data = await response.value.json();
+            
+            // Extract data from different API formats
+            if (data.agents !== undefined) {
+              realData.activeAgents = data.agents;
+            }
+            if (data.system_health) {
+              realData.systemHealth = data.system_health;
+            }
+            if (data.status && data.status.total_agents !== undefined) {
+              realData.activeAgents = data.status.total_agents;
+            }
+            if (data.components && data.components.unified_ai_engine) {
+              realData.status = data.components.unified_ai_engine === 'operational' ? 'operational' : 'degraded';
+            }
+          }
+        }
+
+        // Calculate uptime (basic implementation)
+        const startTime = localStorage.getItem('app_start_time');
+        if (!startTime) {
+          localStorage.setItem('app_start_time', Date.now().toString());
+        }
+        const uptime = calculateUptime(startTime ? parseInt(startTime) : Date.now());
+
+        setSystemStatus(prev => ({
+          ...prev,
+          ...realData,
+          lastUpdated: new Date().toLocaleTimeString(),
+          uptime: uptime,
+          processingQueue: Math.floor(Math.random() * 3) // Simple queue simulation
+        }));
+
+      } catch (error) {
+        console.error('Failed to fetch system status:', error);
+        // Keep showing loading state or fallback data
+      }
+    };
+
+    // Initial fetch
+    fetchSystemStatus();
+
+    // Update every 30 seconds
+    const interval = setInterval(fetchSystemStatus, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const navigationItems = [
-    {
-      id: 'dashboard',
-      label: 'Dashboard',
-      icon: LayoutDashboard,
-      description: 'Overview & Quick Actions'
-    },
-    {
-      id: 'network',
-      label: 'Agent Network',
-      icon: Users,
-      description: 'Interactive Agent Graph'
-    },
-    {
-      id: 'intelligence',
-      label: 'Intelligence Center',
-      icon: Brain,
-      description: 'Decisions, Goals & Analytics'
-    },
-    {
-      id: 'agents',
-      label: 'Living Agents',
-      icon: Activity,
-      description: 'Agent Management'
-    },
-    {
-      id: 'chat',
-      label: 'Chat',
-      icon: MessageSquare,
-      description: 'Communication Interface'
+  const calculateUptime = (startTime: number): string => {
+    const now = Date.now();
+    const diffMs = now - startTime;
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (diffHours > 0) {
+      return `${diffHours}h ${diffMinutes}m`;
+    } else {
+      return `${diffMinutes}m`;
     }
-  ];
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'operational': return 'text-green-400';
-      case 'degraded': return 'text-yellow-400';
-      case 'critical': return 'text-red-400';
-      default: return 'text-gray-400';
+      case 'operational':
+        return 'text-green-400';
+      case 'degraded':
+        return 'text-yellow-400';
+      case 'critical':
+        return 'text-red-400';
+      default:
+        return 'text-slate-400';
     }
   };
 
@@ -109,7 +148,7 @@ const App: React.FC = () => {
       case 'intelligence':
         return <IntelligenceCenter />;
       case 'agents':
-        return <LivingAgentDashboard userId="user-1" />;
+        return <LivingAgentDashboard />;
       case 'chat':
         return <ChatWrapper />;
       default:
@@ -128,8 +167,10 @@ const App: React.FC = () => {
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-slate-700/50">
               <div>
-                <h1 className="text-xl font-bold text-gradient-primary">Intelligence Empire</h1>
-                <p className="text-sm text-slate-400">Living Agent Network</p>
+                <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
+                  Intelligence Empire
+                </h1>
+                <p className="text-sm text-slate-400">Autonomous Agent Network</p>
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
@@ -139,29 +180,35 @@ const App: React.FC = () => {
               </button>
             </div>
 
-            {/* System Status */}
+            {/* Real System Status */}
             <div className="p-4 border-b border-slate-700/50">
               <div className="bg-slate-800/50 rounded-xl p-4 backdrop-blur-sm">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-medium text-white">System Status</span>
                   <div className={`flex items-center space-x-2 ${getStatusColor(systemStatus.status)}`}>
                     <div className="w-2 h-2 rounded-full bg-current animate-pulse"></div>
                     <span className="text-xs font-medium capitalize">{systemStatus.status}</span>
                   </div>
                 </div>
-                <div className="text-xs text-slate-400 space-y-1">
-                  <div>Last updated: {systemStatus.lastUpdated}</div>
+                <div className="text-xs text-slate-400 space-y-2">
+                  <div>Updated: {systemStatus.lastUpdated}</div>
                   <div className="flex justify-between">
                     <span>Active Agents</span>
-                    <span className="text-cyan-400">{systemStatus.activeAgents}</span>
+                    <span className="text-cyan-400 font-medium">{systemStatus.activeAgents}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Processing Queue</span>
-                    <span className="text-slate-300">{systemStatus.processingQueue}</span>
+                    <span className="text-slate-300 font-medium">{systemStatus.processingQueue}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Uptime</span>
-                    <span className="text-green-400">{systemStatus.uptime}</span>
+                    <span className="text-green-400 font-medium">{systemStatus.uptime}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Health</span>
+                    <span className={`font-medium ${getStatusColor(systemStatus.systemHealth)}`}>
+                      {systemStatus.systemHealth}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -178,55 +225,36 @@ const App: React.FC = () => {
                   }}
                   className={`w-full flex items-center space-x-4 p-4 rounded-xl transition-all duration-200 group ${
                     activeTab === item.id
-                      ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 text-white shadow-lg'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                      ? 'bg-gradient-to-r from-purple-600/20 to-cyan-600/20 border border-purple-500/30 text-white'
+                      : 'hover:bg-slate-800/50 text-slate-300 hover:text-white'
                   }`}
                 >
-                  <div className={`p-2 rounded-lg transition-colors ${
+                  <div className={`p-2 rounded-lg ${
                     activeTab === item.id
-                      ? 'bg-cyan-500/20 text-cyan-400'
-                      : 'bg-slate-700/50 text-slate-400 group-hover:text-white group-hover:bg-slate-600/50'
+                      ? 'bg-gradient-to-r from-purple-500 to-cyan-500 text-white'
+                      : 'bg-slate-700/50 text-slate-400 group-hover:text-white'
                   }`}>
                     <item.icon className="h-5 w-5" />
                   </div>
                   <div className="flex-1 text-left">
                     <div className="font-medium">{item.label}</div>
-                    <div className="text-xs opacity-75">{item.description}</div>
+                    <div className="text-xs text-slate-400">{item.description}</div>
                   </div>
-                  {item.id === 'intelligence' && notifications > 0 && (
-                    <div className="w-6 h-6 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                      {notifications}
-                    </div>
-                  )}
                 </button>
               ))}
             </nav>
 
-            {/* System Overview */}
+            {/* Core Mission Statement */}
             <div className="p-4 border-t border-slate-700/50">
-              <div className="text-xs text-slate-500 mb-3">System Overview</div>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Activity className="h-4 w-4 text-green-400" />
-                    <span className="text-sm text-slate-300">Active Sessions</span>
-                  </div>
-                  <span className="text-sm font-medium text-white">3</span>
+              <div className="bg-gradient-to-r from-purple-900/20 to-cyan-900/20 rounded-xl p-4 border border-purple-500/20">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Brain className="h-4 w-4 text-purple-400" />
+                  <span className="text-sm font-medium text-purple-300">Core Mission</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Zap className="h-4 w-4 text-yellow-400" />
-                    <span className="text-sm text-slate-300">Processing Queue</span>
-                  </div>
-                  <span className="text-sm font-medium text-white">{systemStatus.processingQueue}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <TrendingUp className="h-4 w-4 text-cyan-400" />
-                    <span className="text-sm text-slate-300">Uptime</span>
-                  </div>
-                  <span className="text-sm font-medium text-white">{systemStatus.uptime}</span>
-                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Flexible autonomous agents working together as a network to serve your needs, 
+                  learning and adapting like real humans.
+                </p>
               </div>
             </div>
           </div>
@@ -234,7 +262,7 @@ const App: React.FC = () => {
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col lg:ml-0">
-          {/* Top Bar */}
+          {/* Simplified Top Bar */}
           <header className="bg-slate-900/50 backdrop-blur-xl border-b border-slate-700/50 p-4 lg:p-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
@@ -255,31 +283,12 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center space-x-4">
-                {/* Search */}
-                <div className="hidden md:flex relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Search..."
-                    className="w-64 pl-10 pr-4 py-2 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all duration-200"
-                  />
-                </div>
-
-                {/* Notifications */}
-                <button className="relative p-2 rounded-lg hover:bg-slate-800/50 transition-colors">
-                  <Bell className="h-5 w-5 text-slate-400" />
-                  {notifications > 0 && (
-                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                      {notifications}
-                    </div>
-                  )}
-                </button>
-
-                {/* Settings */}
-                <button className="p-2 rounded-lg hover:bg-slate-800/50 transition-colors">
-                  <Settings className="h-5 w-5 text-slate-400" />
-                </button>
+              {/* Simple Status Indicator */}
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${getStatusColor(systemStatus.status)} animate-pulse`}></div>
+                <span className="text-sm text-slate-400">
+                  {systemStatus.activeAgents} agents active
+                </span>
               </div>
             </div>
           </header>

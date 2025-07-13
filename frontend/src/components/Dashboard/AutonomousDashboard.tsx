@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { autonomousAgentService, SystemStatus, AgentStatus } from '../../services/autonomousAgentService';
+import { dynamicAgentService, DynamicAgent, SystemStatus } from '../../services/dynamicAgentService';
 
 interface QuickAction {
   id: string;
@@ -39,7 +39,7 @@ interface SystemMetrics {
 
 export const AutonomousDashboard: React.FC<DashboardProps> = ({ className = '', quickActions = [] }) => {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
-  const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentStatus>>({});
+  const [agents, setAgents] = useState<DynamicAgent[]>([]);
   const [recentActivities, setRecentActivities] = useState<AgentActivity[]>([]);
   const [systemMetrics, setSystemMetrics] = useState<SystemMetrics>({
     autonomyLevel: 85,
@@ -51,8 +51,6 @@ export const AutonomousDashboard: React.FC<DashboardProps> = ({ className = '', 
   const [, setRefreshInterval] = useState<number | null>(null);
   const [selectedTimeframe, setSelectedTimeframe] = useState<'1h' | '24h' | '7d' | '30d'>('24h');
   const [alertCount] = useState(3);
-
-  const agents = ['Sarah Chen', 'Marcus Rodriguez', 'Elena Vasquez', 'David Kim'];
 
   useEffect(() => {
     loadDashboardData();
@@ -69,24 +67,18 @@ export const AutonomousDashboard: React.FC<DashboardProps> = ({ className = '', 
   const loadDashboardData = async () => {
     try {
       // Load system status
-      const systemResult = await autonomousAgentService.getSystemStatus();
-      setSystemStatus(systemResult.status);
+      const systemResult = await dynamicAgentService.getSystemStatus();
+      setSystemStatus(systemResult);
 
-      // Load agent statuses
-      const agentPromises = agents.map(async (agent) => {
-        const result = await autonomousAgentService.getAgentStatus(agent);
-        return [agent, result.status] as [string, AgentStatus];
-      });
-      
-      const agentResults = await Promise.all(agentPromises);
-      const agentStatusMap = Object.fromEntries(agentResults);
-      setAgentStatuses(agentStatusMap);
+      // Load all agents
+      const agentResults = await dynamicAgentService.getAllAgents();
+      setAgents(agentResults);
 
       // Generate enhanced activities
-      generateEnhancedActivities(agentStatusMap);
+      generateEnhancedActivities(agentResults);
 
       // Update system metrics
-      updateSystemMetrics(agentStatusMap);
+      updateSystemMetrics(agentResults);
 
     } catch (error) {
       console.error('Error loading dashboard data:', error);
@@ -95,29 +87,29 @@ export const AutonomousDashboard: React.FC<DashboardProps> = ({ className = '', 
     }
   };
 
-  const generateEnhancedActivities = (statuses: Record<string, AgentStatus>) => {
+  const generateEnhancedActivities = (agents: DynamicAgent[]) => {
     const activities: AgentActivity[] = [];
     const now = Date.now();
     
-    Object.entries(statuses).forEach(([agent, status]) => {
+    agents.forEach((agent) => {
       // Add goal activities with priorities
-      status.goal_details.forEach((goal, index) => {
+      agent.autonomous_goals.forEach((goal, index) => {
         activities.push({
-          agent,
-          activity: `${goal.status === 'active' ? 'Working on' : 'Completed'}: ${goal.title}`,
+          agent: agent.profile.name,
+          activity: `Working on goal: ${goal}`,
           type: 'goal',
           timestamp: new Date(now - Math.random() * 3600000).toISOString(),
-          status: goal.status as any,
-          priority: typeof goal.priority === 'string' ? goal.priority as any : 'medium',
+          status: 'active',
+          priority: 'medium',
           impact: index % 3 === 0 ? 'high' : index % 2 === 0 ? 'medium' : 'low'
         });
       });
 
       // Add decision activities with enhanced metadata
-      if (status.recent_decisions > 0) {
-        for (let i = 0; i < Math.min(status.recent_decisions, 3); i++) {
+      if (agent.current_state.interaction_count > 0) {
+        for (let i = 0; i < Math.min(agent.current_state.interaction_count, 3); i++) {
           activities.push({
-            agent,
+            agent: agent.profile.name,
             activity: `Made autonomous decision: ${getRandomDecisionType()}`,
             type: 'decision',
             timestamp: new Date(now - Math.random() * 1800000).toISOString(),
@@ -129,10 +121,11 @@ export const AutonomousDashboard: React.FC<DashboardProps> = ({ className = '', 
       }
 
       // Add learning activities
-      if (status.learning_insights > 0) {
+      const totalMemories = agent.memory_counts.long_term + agent.memory_counts.episodic;
+      if (totalMemories > 0) {
         activities.push({
-          agent,
-          activity: `Generated ${Math.min(status.learning_insights, 5)} learning insights`,
+          agent: agent.profile.name,
+          activity: `Generated ${Math.min(totalMemories, 5)} learning insights`,
           type: 'learning',
           timestamp: new Date(now - Math.random() * 2700000).toISOString(),
           status: 'completed',
@@ -142,9 +135,9 @@ export const AutonomousDashboard: React.FC<DashboardProps> = ({ className = '', 
       }
 
       // Add collaboration activities
-      if (Math.random() > 0.6) {
+      if (Object.keys(agent.relationships).length > 0) {
         activities.push({
-          agent,
+          agent: agent.profile.name,
           activity: 'Collaborated on multi-agent workflow',
           type: 'collaboration',
           timestamp: new Date(now - Math.random() * 1800000).toISOString(),
@@ -167,14 +160,14 @@ export const AutonomousDashboard: React.FC<DashboardProps> = ({ className = '', 
     setRecentActivities(activities.slice(0, 25));
   };
 
-  const updateSystemMetrics = (statuses: Record<string, AgentStatus>) => {
-    const totalCapabilities = Object.values(statuses).reduce((sum, status) => sum + status.total_capabilities, 0);
-    const enabledCapabilities = Object.values(statuses).reduce((sum, status) => sum + status.enabled_capabilities, 0);
+  const updateSystemMetrics = (agents: DynamicAgent[]) => {
+    const totalAgents = agents.length;
+    const activeAgents = agents.filter(agent => agent.current_state.is_active).length;
     
-    const autonomyLevel = Math.round((enabledCapabilities / totalCapabilities) * 100);
+    const autonomyLevel = totalAgents > 0 ? Math.round((activeAgents / totalAgents) * 100) : 0;
     const efficiency = Math.round(75 + Math.random() * 20); // Simulated efficiency
     const trustScore = Math.round(80 + Math.random() * 15); // Simulated trust
-    const activeTasks = Object.values(statuses).reduce((sum, status) => sum + status.active_goals, 0);
+    const activeTasks = agents.reduce((sum, agent) => sum + agent.autonomous_goals.length, 0);
 
     setSystemMetrics({
       autonomyLevel,
@@ -186,12 +179,10 @@ export const AutonomousDashboard: React.FC<DashboardProps> = ({ className = '', 
 
   const getRandomDecisionType = () => {
     const types = [
-      'Market research analysis',
-      'Process optimization',
-      'Risk mitigation strategy',
-      'Opportunity identification',
-      'Resource allocation',
-      'Performance enhancement'
+      'Resource Allocation', 'Priority Adjustment', 'Workflow Optimization',
+      'Collaboration Initiative', 'Learning Strategy', 'Goal Refinement',
+      'Performance Enhancement', 'Risk Assessment', 'Knowledge Sharing',
+      'Task Delegation', 'Innovation Proposal', 'Efficiency Improvement'
     ];
     return types[Math.floor(Math.random() * types.length)];
   };
@@ -200,7 +191,7 @@ export const AutonomousDashboard: React.FC<DashboardProps> = ({ className = '', 
     switch (type) {
       case 'decision': return '🎯';
       case 'learning': return '🧠';
-      case 'goal': return '🚀';
+      case 'goal': return '🎯';
       case 'collaboration': return '🤝';
       default: return '⚡';
     }
@@ -208,19 +199,19 @@ export const AutonomousDashboard: React.FC<DashboardProps> = ({ className = '', 
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return 'text-blue-600 bg-blue-100 border-blue-200';
-      case 'completed': return 'text-green-600 bg-green-100 border-green-200';
-      case 'pending': return 'text-orange-600 bg-orange-100 border-orange-200';
-      default: return 'text-gray-600 bg-gray-100 border-gray-200';
+      case 'active': return 'bg-green-100 text-green-800 border-green-200';
+      case 'completed': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'high': return 'text-red-600 bg-red-50 border-red-200';
-      case 'medium': return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-      case 'low': return 'text-green-600 bg-green-50 border-green-200';
-      default: return 'text-gray-600 bg-gray-50 border-gray-200';
+      case 'high': return 'bg-red-100 text-red-800 border-red-200';
+      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'low': return 'bg-green-100 text-green-800 border-green-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
@@ -235,16 +226,15 @@ export const AutonomousDashboard: React.FC<DashboardProps> = ({ className = '', 
   };
 
   const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
     const now = new Date();
-    const time = new Date(timestamp);
-    const diffMs = now.getTime() - time.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(minutes / 60);
     
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return time.toLocaleDateString();
+    if (minutes < 60) return `${minutes}m ago`;
+    if (hours < 24) return `${hours}h ago`;
+    return date.toLocaleDateString();
   };
 
   const getMetricColor = (value: number, thresholds: { good: number; warning: number }) => {
@@ -255,332 +245,217 @@ export const AutonomousDashboard: React.FC<DashboardProps> = ({ className = '', 
 
   if (loading) {
     return (
-      <div className={`p-6 ${className}`}>
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-gray-200 rounded w-1/3"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-32 bg-gray-200 rounded"></div>
-            ))}
-          </div>
-          <div className="h-64 bg-gray-200 rounded"></div>
-        </div>
+      <div className={`flex items-center justify-center h-64 ${className}`}>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
   return (
-    <div className={`p-6 space-y-6 ${className}`}>
-      {/* Enhanced Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Autonomous Dashboard</h1>
-          <p className="text-gray-600 mt-1">Real-time monitoring of your AI council's autonomous activities</p>
-        </div>
-        <div className="flex items-center space-x-4">
-          {/* Alert Badge */}
-          {alertCount > 0 && (
-            <div className="flex items-center space-x-2 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">
-              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-              <span className="text-red-800 text-sm font-medium">{alertCount} alerts</span>
-            </div>
-          )}
-          
-          {/* Timeframe Selector */}
-          <select
-            value={selectedTimeframe}
-            onChange={(e) => setSelectedTimeframe(e.target.value as any)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="1h">Last Hour</option>
-            <option value="24h">Last 24 Hours</option>
-            <option value="7d">Last 7 Days</option>
-            <option value="30d">Last 30 Days</option>
-          </select>
-
-          {/* Live Status */}
-          <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-sm text-gray-600">Live updates</span>
+    <div className={`space-y-6 ${className}`}>
+      {/* Header */}
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Autonomous Dashboard</h1>
+            <p className="text-gray-600">Real-time monitoring and control of autonomous agent activities</p>
           </div>
-          
-          <button
-            onClick={loadDashboardData}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            🔄 Refresh
-          </button>
-        </div>
-      </div>
-
-      {/* Enhanced System Metrics */}
-      {systemStatus && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg shadow-lg p-6 border border-blue-200">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-blue-900">System Autonomy</h3>
-              <div className="text-2xl">🤖</div>
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600">Timeframe:</span>
+              <select 
+                value={selectedTimeframe} 
+                onChange={(e) => setSelectedTimeframe(e.target.value as any)}
+                className="border rounded px-3 py-1 text-sm"
+              >
+                <option value="1h">Last Hour</option>
+                <option value="24h">Last 24 Hours</option>
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">Last 30 Days</option>
+              </select>
             </div>
-            <div className="text-3xl font-bold text-blue-600 mb-2">{systemMetrics.autonomyLevel}%</div>
-            <div className="w-full bg-blue-200 rounded-full h-2">
-              <div 
-                className="bg-blue-600 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${systemMetrics.autonomyLevel}%` }}
-              ></div>
-            </div>
-            <p className="text-sm text-blue-700 mt-2">Capability utilization</p>
-          </div>
-
-          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg shadow-lg p-6 border border-green-200">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-green-900">Efficiency Score</h3>
-              <div className="text-2xl">⚡</div>
-            </div>
-            <div className={`text-3xl font-bold mb-2 ${getMetricColor(systemMetrics.efficiency, { good: 85, warning: 70 })}`}>
-              {systemMetrics.efficiency}%
-            </div>
-            <div className="w-full bg-green-200 rounded-full h-2">
-              <div 
-                className="bg-green-600 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${systemMetrics.efficiency}%` }}
-              ></div>
-            </div>
-            <p className="text-sm text-green-700 mt-2">Task completion rate</p>
-          </div>
-
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg shadow-lg p-6 border border-purple-200">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-purple-900">Trust Score</h3>
-              <div className="text-2xl">🛡️</div>
-            </div>
-            <div className={`text-3xl font-bold mb-2 ${getMetricColor(systemMetrics.trustScore, { good: 80, warning: 60 })}`}>
-              {systemMetrics.trustScore}%
-            </div>
-            <div className="w-full bg-purple-200 rounded-full h-2">
-              <div 
-                className="bg-purple-600 h-2 rounded-full transition-all duration-500"
-                style={{ width: `${systemMetrics.trustScore}%` }}
-              ></div>
-            </div>
-            <p className="text-sm text-purple-700 mt-2">Reliability index</p>
-          </div>
-
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg shadow-lg p-6 border border-orange-200">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-orange-900">Active Tasks</h3>
-              <div className="text-2xl">📋</div>
-            </div>
-            <div className="text-3xl font-bold text-orange-600 mb-2">{systemMetrics.activeTasks}</div>
-            <div className="flex items-center space-x-2 mt-2">
-              <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
-              <p className="text-sm text-orange-700">Currently processing</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Quick Actions Section */}
-      {quickActions.length > 0 && (
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">Quick Actions</h2>
-              <p className="text-gray-600 text-sm mt-1">Frequently used actions and system controls</p>
-            </div>
-            {quickActions.some(a => a.urgent) && (
-              <div className="flex items-center space-x-2 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">
-                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                <span className="text-red-800 text-sm font-medium">
-                  {quickActions.filter(a => a.urgent).length} urgent actions
-                </span>
+            {alertCount > 0 && (
+              <div className="flex items-center space-x-2 bg-red-100 text-red-800 px-3 py-1 rounded-full">
+                <span className="text-sm font-medium">🚨 {alertCount} alerts</span>
               </div>
             )}
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {quickActions.map(action => (
-              <button
-                key={action.id}
-                onClick={action.action}
-                className={`p-4 rounded-lg text-left transition-all duration-200 border-2 hover:shadow-lg ${
-                  action.urgent
-                    ? 'bg-red-50 border-red-200 hover:bg-red-100 hover:border-red-300'
-                    : 'bg-gray-50 border-gray-200 hover:bg-gray-100 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center space-x-3 mb-2">
-                  <span className="text-2xl">{action.icon}</span>
-                  <span className={`font-medium ${action.urgent ? 'text-red-900' : 'text-gray-900'}`}>
-                    {action.label}
-                  </span>
-                  {action.urgent && (
-                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                  )}
-                </div>
-                <p className={`text-sm ${action.urgent ? 'text-red-700' : 'text-gray-600'}`}>
-                  {action.description}
-                </p>
-              </button>
-            ))}
+        </div>
+      </div>
+
+      {/* System Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Autonomy Level</p>
+              <p className={`text-2xl font-bold ${getMetricColor(systemMetrics.autonomyLevel, { good: 80, warning: 60 })}`}>
+                {systemMetrics.autonomyLevel}%
+              </p>
+            </div>
+            <div className="text-3xl">🤖</div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Efficiency</p>
+              <p className={`text-2xl font-bold ${getMetricColor(systemMetrics.efficiency, { good: 85, warning: 70 })}`}>
+                {systemMetrics.efficiency}%
+              </p>
+            </div>
+            <div className="text-3xl">⚡</div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Trust Score</p>
+              <p className={`text-2xl font-bold ${getMetricColor(systemMetrics.trustScore, { good: 80, warning: 65 })}`}>
+                {systemMetrics.trustScore}%
+              </p>
+            </div>
+            <div className="text-3xl">🛡️</div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Active Tasks</p>
+              <p className="text-2xl font-bold text-blue-600">{systemMetrics.activeTasks}</p>
+            </div>
+            <div className="text-3xl">📋</div>
+          </div>
+        </div>
+      </div>
+
+      {/* System Status */}
+      {systemStatus && (
+        <div className="bg-white rounded-lg shadow-lg p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">System Status</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="text-center">
+              <p className="text-2xl font-bold text-blue-600">{systemStatus.total_agents}</p>
+              <p className="text-sm text-gray-600">Total Agents</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-green-600">{systemStatus.active_agents}</p>
+              <p className="text-sm text-gray-600">Active Agents</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-bold text-purple-600">{systemStatus.total_interactions}</p>
+              <p className="text-sm text-gray-600">Total Interactions</p>
+            </div>
           </div>
         </div>
       )}
 
       {/* Enhanced Agent Status Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {agents.map(agent => {
-          const status = agentStatuses[agent];
-          if (!status) return null;
-
-          const capabilityPercentage = (status.enabled_capabilities / status.total_capabilities) * 100;
-          
-          return (
-            <div key={agent} className="bg-white rounded-lg shadow-lg overflow-hidden border hover:shadow-xl transition-shadow">
-              <div className={`h-2 ${getAgentColor(agent)}`}></div>
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className={`w-12 h-12 rounded-full ${getAgentColor(agent)} flex items-center justify-center text-white text-lg font-bold`}>
-                      {agent.split(' ').map(n => n[0]).join('')}
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{agent.split(' ')[0]}</h3>
-                      <p className="text-sm text-gray-600">{agent.split(' ')[1]}</p>
-                    </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {agents.map(agent => (
+          <div key={agent.profile.agent_id} className="bg-white rounded-lg shadow-lg overflow-hidden border hover:shadow-xl transition-shadow">
+            <div className={`h-2 ${getAgentColor(agent.profile.name)}`}></div>
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-12 h-12 rounded-full ${getAgentColor(agent.profile.name)} flex items-center justify-center text-white text-lg font-bold`}>
+                    {agent.profile.name.split(' ').map(n => n[0]).join('')}
                   </div>
-                  <span className={`px-2 py-1 text-xs rounded-full border ${
-                    status.autonomy_level === 'advanced' ? 'bg-green-100 text-green-800 border-green-200' :
-                    status.autonomy_level === 'intermediate' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
-                    'bg-gray-100 text-gray-800 border-gray-200'
-                  }`}>
-                    {status.autonomy_level}
-                  </span>
-                </div>
-                
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Active Goals</span>
-                    <span className="font-medium text-blue-600">{status.active_goals}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Recent Decisions</span>
-                    <span className="font-medium text-green-600">{status.recent_decisions}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Learning Insights</span>
-                    <span className="font-medium text-purple-600">{status.learning_insights}</span>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{agent.profile.name}</h3>
+                    <p className="text-sm text-gray-600">{agent.profile.role}</p>
                   </div>
                 </div>
-
-                {/* Enhanced Capability Progress */}
-                <div className="mt-4">
-                  <div className="flex justify-between text-xs text-gray-600 mb-2">
-                    <span>Capabilities Enabled</span>
-                    <span>{status.enabled_capabilities}/{status.total_capabilities} ({Math.round(capabilityPercentage)}%)</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div 
-                      className={`h-3 rounded-full transition-all duration-500 ${getAgentColor(agent)}`}
-                      style={{ width: `${capabilityPercentage}%` }}
-                    ></div>
-                  </div>
-                </div>
-
-                {/* Recent Goals Preview */}
-                {status.goal_details.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="text-xs font-medium text-gray-700 mb-2">Current Focus</h4>
-                    <div className="space-y-2">
-                      {status.goal_details.slice(0, 2).map((goal, index) => (
-                        <div key={index} className="bg-gray-50 rounded-lg p-3 border">
-                          <div className="text-xs font-medium text-gray-900 truncate">{goal.title}</div>
-                          <div className="flex items-center mt-2">
-                            <div className="flex-1 bg-gray-200 rounded-full h-2">
-                              <div 
-                                className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
-                                style={{ width: `${goal.progress * 100}%` }}
-                              ></div>
-                            </div>
-                            <span className="text-xs text-gray-600 ml-2">{Math.round(goal.progress * 100)}%</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <span className={`px-2 py-1 text-xs rounded-full border ${
+                  agent.profile.autonomy_level === 'advanced' ? 'bg-green-100 text-green-800 border-green-200' :
+                  agent.profile.autonomy_level === 'intermediate' ? 'bg-yellow-100 text-yellow-800 border-yellow-200' :
+                  'bg-gray-100 text-gray-800 border-gray-200'
+                }`}>
+                  {agent.profile.autonomy_level}
+                </span>
               </div>
-            </div>
-          );
-        })}
-      </div>
 
-      {/* Enhanced Recent Activities */}
-      <div className="bg-white rounded-lg shadow-lg">
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">Recent Autonomous Activities</h2>
-              <p className="text-gray-600 text-sm mt-1">Real-time feed of agent activities and decisions</p>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button className="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-lg">All</button>
-              <button className="px-3 py-1 bg-gray-100 text-gray-600 text-sm rounded-lg">High Priority</button>
-              <button className="px-3 py-1 bg-gray-100 text-gray-600 text-sm rounded-lg">Decisions</button>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">Active Goals</span>
+                  <span className="font-medium text-blue-600">{agent.autonomous_goals.length}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">Interactions</span>
+                  <span className="font-medium text-green-600">{agent.current_state.interaction_count}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">Memories</span>
+                  <span className="font-medium text-purple-600">{agent.memory_counts.long_term + agent.memory_counts.episodic}</span>
+                </div>
+              </div>
+
+              {/* Enhanced Energy Progress */}
+              <div className="mt-4">
+                <div className="flex justify-between text-xs text-gray-600 mb-2">
+                  <span>Energy Level</span>
+                  <span>{Math.round(agent.current_state.energy)}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div 
+                    className={`h-3 rounded-full transition-all duration-500 ${getAgentColor(agent.profile.name)}`}
+                    style={{ width: `${agent.current_state.energy}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Recent Goals Preview */}
+              {agent.autonomous_goals.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-xs font-medium text-gray-700 mb-2">Current Focus</h4>
+                  <div className="space-y-2">
+                    {agent.autonomous_goals.slice(0, 2).map((goal, index) => (
+                      <div key={index} className="bg-gray-50 rounded-lg p-3 border">
+                        <div className="text-xs font-medium text-gray-900 truncate">{goal}</div>
+                        <div className="flex items-center mt-2">
+                          <div className="flex-1 bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
+                              style={{ width: `${Math.round(agent.current_state.confidence)}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-xs text-gray-600 ml-2">{Math.round(agent.current_state.confidence)}%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-        </div>
-        
-        <div className="max-h-96 overflow-y-auto">
-          {recentActivities.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">
-              <div className="text-4xl mb-2">🤖</div>
-              <p>No recent autonomous activities</p>
-              <p className="text-sm">Agents will appear here as they make decisions and complete tasks</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {recentActivities.map((activity, index) => (
-                <div key={index} className="p-4 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-start space-x-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm ${getAgentColor(activity.agent)}`}>
-                      {activity.agent.split(' ').map(n => n[0]).join('')}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center space-x-2 mb-1">
-                        <span className="text-sm font-medium text-gray-900">{activity.agent}</span>
-                        <span className="text-lg">{getActivityIcon(activity.type)}</span>
-                        <span className={`px-2 py-1 text-xs rounded-full border ${getStatusColor(activity.status)}`}>
-                          {activity.status}
-                        </span>
-                        <span className={`px-2 py-1 text-xs rounded-full border ${getPriorityColor(activity.priority)}`}>
-                          {activity.priority}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 mb-1">{activity.activity}</p>
-                      <div className="flex items-center space-x-3 text-xs text-gray-500">
-                        <span>{formatTime(activity.timestamp)}</span>
-                        <span>•</span>
-                        <span className="capitalize">{activity.type}</span>
-                        <span>•</span>
-                        <span className="capitalize">{activity.impact} impact</span>
-                      </div>
-                    </div>
-                    
-                    {activity.status === 'pending' && (
-                      <div className="flex space-x-2">
-                        <button className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">
-                          ✓
-                        </button>
-                        <button className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700">
-                          ✗
-                        </button>
-                      </div>
-                    )}
-                  </div>
+        ))}
+      </div>
+
+      {/* Recent Activities */}
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Recent Activities</h2>
+        <div className="space-y-3">
+          {recentActivities.map((activity, index) => (
+            <div key={index} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
+              <div className="text-2xl">{getActivityIcon(activity.type)}</div>
+              <div className="flex-1">
+                <div className="flex items-center space-x-2">
+                  <span className="font-medium text-gray-900">{activity.agent}</span>
+                  <span className={`px-2 py-1 text-xs rounded-full border ${getStatusColor(activity.status)}`}>
+                    {activity.status}
+                  </span>
+                  <span className={`px-2 py-1 text-xs rounded-full border ${getPriorityColor(activity.priority)}`}>
+                    {activity.priority}
+                  </span>
                 </div>
-              ))}
+                <p className="text-sm text-gray-600 mt-1">{activity.activity}</p>
+              </div>
+              <span className="text-xs text-gray-500">{formatTime(activity.timestamp)}</span>
             </div>
-          )}
+          ))}
         </div>
       </div>
     </div>

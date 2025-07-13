@@ -16,6 +16,7 @@ import {
   Search,
   RotateCcw
 } from 'lucide-react';
+import { dynamicAgentService, DynamicAgent } from '../../services/dynamicAgentService';
 
 interface AgentNode {
   id: string;
@@ -64,13 +65,20 @@ const AgentNetworkDashboard: React.FC = () => {
   const [showConnections, setShowConnections] = useState(true);
   const [showActivities, setShowActivities] = useState(true);
   const [filterType, setFilterType] = useState<string>('all');
+  const [loading, setLoading] = useState(true);
 
-  // Initialize mock network data
+  // Initialize network data
   useEffect(() => {
     initializeNetwork();
-    const interval = setInterval(updateNetwork, 2000 * timeSpeed);
-    return () => clearInterval(interval);
-  }, [timeSpeed]);
+  }, []);
+
+  // Update network periodically
+  useEffect(() => {
+    if (isPlaying) {
+      const interval = setInterval(updateNetwork, 2000 / timeSpeed);
+      return () => clearInterval(interval);
+    }
+  }, [timeSpeed, isPlaying]);
 
   // Canvas drawing
   useEffect(() => {
@@ -79,175 +87,146 @@ const AgentNetworkDashboard: React.FC = () => {
     }
   }, [agents, connections, selectedAgent, showConnections, showActivities]);
 
-  const initializeNetwork = () => {
-    const mockAgents: AgentNode[] = [
-      {
-        id: 'sarah',
-        name: 'Sarah Chen',
-        role: 'Product Strategy',
-        x: 300,
-        y: 200,
-        status: 'active',
-        currentTask: 'Analyzing market trends',
-        energy: 85,
-        connections: ['marcus', 'elena'],
-        avatar: '👩‍💼',
-        color: '#8b5cf6',
-        lastActivity: '2 min ago'
-      },
-      {
-        id: 'marcus',
-        name: 'Marcus Rodriguez',
-        role: 'Market Intelligence',
-        x: 500,
-        y: 150,
-        status: 'collaborating',
-        currentTask: 'Competitive analysis with Sarah',
-        energy: 92,
-        connections: ['sarah', 'david'],
-        avatar: '👨‍💼',
-        color: '#3b82f6',
-        lastActivity: 'now'
-      },
-      {
-        id: 'elena',
-        name: 'Elena Vasquez',
-        role: 'UX Design',
-        x: 200,
-        y: 350,
-        status: 'busy',
-        currentTask: 'Creating wireframes',
-        energy: 78,
-        connections: ['sarah', 'alex'],
-        avatar: '👩‍🎨',
-        color: '#ec4899',
-        lastActivity: '5 min ago'
-      },
-      {
-        id: 'david',
-        name: 'David Kim',
-        role: 'Operations',
-        x: 600,
-        y: 300,
-        status: 'active',
-        currentTask: 'Process optimization',
-        energy: 88,
-        connections: ['marcus', 'alex'],
-        avatar: '👨‍💻',
-        color: '#10b981',
-        lastActivity: '1 min ago'
-      },
-      {
-        id: 'alex',
-        name: 'Alex Thompson',
-        role: 'Coordinator',
-        x: 400,
-        y: 400,
-        status: 'idle',
-        currentTask: 'Monitoring network',
-        energy: 95,
-        connections: ['elena', 'david', 'sarah'],
-        avatar: '🤖',
-        color: '#f59e0b',
-        lastActivity: '3 min ago'
-      }
-    ];
+  const initializeNetwork = async () => {
+    setLoading(true);
+    try {
+      const dynamicAgents = await dynamicAgentService.getAllAgents();
+      
+      // Convert dynamic agents to network nodes
+      const networkNodes: AgentNode[] = dynamicAgents.map((agent, index) => ({
+        id: agent.profile.agent_id,
+        name: agent.profile.name,
+        role: agent.profile.role,
+        x: 300 + (index * 200) % 600,
+        y: 200 + (index * 150) % 400,
+        status: agent.current_state.is_active ? 'active' : 'idle',
+        currentTask: agent.autonomous_goals[0] || 'Available',
+        energy: Math.round(agent.current_state.energy),
+        connections: Object.keys(agent.relationships),
+        avatar: agent.profile.avatar_emoji,
+        color: getColorFromTheme(agent.profile.color_theme),
+        lastActivity: agent.current_state.last_interaction ? formatLastActivity(agent.current_state.last_interaction) : 'Never'
+      }));
 
-    const mockConnections: AgentConnection[] = [
-      {
-        id: 'sarah-marcus',
-        fromAgent: 'sarah',
-        toAgent: 'marcus',
-        type: 'collaboration',
-        strength: 0.9,
-        activity: 'Market strategy discussion',
-        timestamp: new Date().toISOString(),
-        isActive: true
-      },
-      {
-        id: 'elena-sarah',
-        fromAgent: 'elena',
-        toAgent: 'sarah',
-        type: 'communication',
-        strength: 0.7,
-        activity: 'Design feedback',
-        timestamp: new Date(Date.now() - 300000).toISOString(),
-        isActive: false
-      },
-      {
-        id: 'alex-all',
-        fromAgent: 'alex',
-        toAgent: 'david',
-        type: 'data_sharing',
-        strength: 0.6,
-        activity: 'Status updates',
-        timestamp: new Date(Date.now() - 180000).toISOString(),
-        isActive: false
-      }
-    ];
+      setAgents(networkNodes);
+      generateConnections(networkNodes);
+      generateInitialEvents(networkNodes);
+    } catch (error) {
+      console.error('Error initializing network:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const mockEvents: NetworkEvent[] = [
-      {
-        id: 'event-1',
-        timestamp: new Date().toISOString(),
-        type: 'collaboration',
-        agentId: 'sarah',
-        description: 'Started collaboration with Marcus on market analysis',
-        relatedAgents: ['marcus'],
-        priority: 'high'
-      },
-      {
-        id: 'event-2',
-        timestamp: new Date(Date.now() - 120000).toISOString(),
-        type: 'task_complete',
-        agentId: 'elena',
-        description: 'Completed user research synthesis',
-        priority: 'medium'
-      },
-      {
-        id: 'event-3',
-        timestamp: new Date(Date.now() - 300000).toISOString(),
-        type: 'decision',
-        agentId: 'david',
-        description: 'Approved process optimization proposal',
-        priority: 'high'
-      }
-    ];
+  const getColorFromTheme = (theme: string): string => {
+    const colors = {
+      'purple': '#8b5cf6',
+      'blue': '#3b82f6',
+      'pink': '#ec4899',
+      'green': '#10b981',
+      'orange': '#f59e0b',
+      'red': '#ef4444'
+    };
+    return colors[theme as keyof typeof colors] || '#6b7280';
+  };
 
-    setAgents(mockAgents);
+  const formatLastActivity = (timestamp: string): string => {
+    const now = new Date();
+    const lastActivity = new Date(timestamp);
+    const diffMs = now.getTime() - lastActivity.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'now';
+    if (diffMins < 60) return `${diffMins} min ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    return `${Math.floor(diffMins / 1440)}d ago`;
+  };
+
+  const generateConnections = (networkNodes: AgentNode[]) => {
+    const mockConnections: AgentConnection[] = [];
+    
+    networkNodes.forEach(agent => {
+      agent.connections.forEach(connectedId => {
+        const connectedAgent = networkNodes.find(a => a.id === connectedId);
+        if (connectedAgent && !mockConnections.find(c => 
+          (c.fromAgent === agent.id && c.toAgent === connectedId) ||
+          (c.fromAgent === connectedId && c.toAgent === agent.id)
+        )) {
+          mockConnections.push({
+            id: `${agent.id}-${connectedId}`,
+            fromAgent: agent.id,
+            toAgent: connectedId,
+            type: 'collaboration',
+            strength: Math.random() * 0.5 + 0.5,
+            activity: 'Information sharing',
+            timestamp: new Date().toISOString(),
+            isActive: Math.random() > 0.7
+          });
+        }
+      });
+    });
+
     setConnections(mockConnections);
-    setEvents(mockEvents);
+  };
+
+  const generateInitialEvents = (networkNodes: AgentNode[]) => {
+    const mockEvents: NetworkEvent[] = [];
+    
+    networkNodes.forEach((agent, index) => {
+      mockEvents.push({
+        id: `event-${index}`,
+        timestamp: new Date(Date.now() - Math.random() * 3600000).toISOString(),
+        type: 'task_start',
+        agentId: agent.id,
+        description: `${agent.name} started working on ${agent.currentTask}`,
+        priority: 'medium'
+      });
+    });
+
+    setEvents(mockEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
   };
 
   const updateNetwork = () => {
     if (!isPlaying) return;
 
-    setAgents(prev => prev.map(agent => ({
-      ...agent,
-      energy: Math.max(60, Math.min(100, agent.energy + (Math.random() - 0.5) * 10)),
-      status: Math.random() > 0.7 ? 
-        (['active', 'busy', 'collaborating', 'idle'][Math.floor(Math.random() * 4)] as any) : 
-        agent.status
-    })));
+    setAgents(prevAgents => 
+      prevAgents.map(agent => ({
+        ...agent,
+        energy: Math.max(0, Math.min(100, agent.energy + (Math.random() - 0.5) * 5)),
+        status: Math.random() > 0.8 ? 
+          (['active', 'busy', 'idle', 'collaborating'] as const)[Math.floor(Math.random() * 4)] : 
+          agent.status
+      }))
+    );
 
     // Add new events occasionally
-    if (Math.random() > 0.8) {
-      const newEvent: NetworkEvent = {
-        id: `event-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        type: ['task_start', 'communication', 'task_complete'][Math.floor(Math.random() * 3)] as any,
-        agentId: agents[Math.floor(Math.random() * agents.length)]?.id || 'sarah',
-        description: [
-          'Started new analysis task',
-          'Shared insights with team',
-          'Completed milestone',
-          'Initiated collaboration'
-        ][Math.floor(Math.random() * 4)],
-        priority: ['low', 'medium', 'high'][Math.floor(Math.random() * 3)] as any
-      };
+    if (Math.random() > 0.7) {
+      const randomAgent = agents[Math.floor(Math.random() * agents.length)];
+      if (randomAgent) {
+        const newEvent: NetworkEvent = {
+          id: `event-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          type: (['task_start', 'collaboration', 'communication', 'decision'] as const)[Math.floor(Math.random() * 4)],
+          agentId: randomAgent.id,
+          description: `${randomAgent.name} ${getRandomActivity()}`,
+          priority: (['low', 'medium', 'high'] as const)[Math.floor(Math.random() * 3)]
+        };
 
-      setEvents(prev => [newEvent, ...prev.slice(0, 19)]); // Keep last 20 events
+        setEvents(prev => [newEvent, ...prev.slice(0, 19)]);
+      }
     }
+  };
+
+  const getRandomActivity = () => {
+    const activities = [
+      'completed a task',
+      'started collaborating',
+      'shared insights',
+      'made a decision',
+      'requested assistance',
+      'provided feedback'
+    ];
+    return activities[Math.floor(Math.random() * activities.length)];
   };
 
   const drawNetwork = () => {
@@ -270,28 +249,9 @@ const AgentNetworkDashboard: React.FC = () => {
           ctx.beginPath();
           ctx.moveTo(fromAgent.x, fromAgent.y);
           ctx.lineTo(toAgent.x, toAgent.y);
-          
-          if (connection.isActive) {
-            ctx.strokeStyle = '#00d4ff';
-            ctx.lineWidth = 3;
-            ctx.setLineDash([5, 5]);
-          } else {
-            ctx.strokeStyle = '#475569';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([]);
-          }
-          
+          ctx.strokeStyle = connection.isActive ? '#3b82f6' : '#6b7280';
+          ctx.lineWidth = connection.strength * 3;
           ctx.stroke();
-          
-          // Draw connection label
-          const midX = (fromAgent.x + toAgent.x) / 2;
-          const midY = (fromAgent.y + toAgent.y) / 2;
-          
-          if (connection.isActive) {
-            ctx.fillStyle = '#00d4ff';
-            ctx.font = '12px Inter';
-            ctx.fillText(connection.activity, midX, midY - 10);
-          }
         }
       });
     }
@@ -299,76 +259,68 @@ const AgentNetworkDashboard: React.FC = () => {
     // Draw agents
     agents.forEach(agent => {
       const isSelected = selectedAgent?.id === agent.id;
-      
-      // Agent circle
+      const radius = isSelected ? 30 : 25;
+
+      // Draw agent circle
       ctx.beginPath();
-      ctx.arc(agent.x, agent.y, isSelected ? 35 : 30, 0, 2 * Math.PI);
+      ctx.arc(agent.x, agent.y, radius, 0, 2 * Math.PI);
       ctx.fillStyle = agent.color;
       ctx.fill();
-      
-      if (isSelected) {
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-      }
-      
-      // Status indicator
-      const statusColors = {
-        active: '#10b981',
-        busy: '#f59e0b',
-        idle: '#6b7280',
-        collaborating: '#ec4899'
-      };
-      
+
+      // Draw status ring
       ctx.beginPath();
-      ctx.arc(agent.x + 20, agent.y - 20, 6, 0, 2 * Math.PI);
-      ctx.fillStyle = statusColors[agent.status];
-      ctx.fill();
-      
-      // Agent name
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 14px Inter';
+      ctx.arc(agent.x, agent.y, radius + 3, 0, 2 * Math.PI);
+      ctx.strokeStyle = getStatusColor(agent.status);
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Draw avatar
+      ctx.font = '20px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText(agent.name.split(' ')[0], agent.x, agent.y + 50);
-      
-      // Current task bubble
-      if (showActivities && agent.currentTask) {
-        const taskText = agent.currentTask;
-        const textWidth = ctx.measureText(taskText).width;
-        const bubbleWidth = Math.min(textWidth + 20, 200);
-        const bubbleHeight = 30;
-        const bubbleX = agent.x - bubbleWidth / 2;
-        const bubbleY = agent.y - 80;
-        
-        // Task bubble
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        ctx.beginPath();
-        ctx.roundRect(bubbleX, bubbleY, bubbleWidth, bubbleHeight, 15);
-        ctx.fill();
-        
-        // Task text
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '12px Inter';
-        ctx.textAlign = 'center';
-        ctx.fillText(
-          taskText.length > 25 ? taskText.substring(0, 25) + '...' : taskText,
-          agent.x,
-          bubbleY + 20
-        );
-      }
-      
-      // Energy bar
+      ctx.fillStyle = 'white';
+      ctx.fillText(agent.avatar, agent.x, agent.y + 7);
+
+      // Draw name
+      ctx.font = '12px Arial';
+      ctx.fillStyle = '#374151';
+      ctx.fillText(agent.name, agent.x, agent.y + radius + 15);
+
+      // Draw energy bar
       const barWidth = 40;
       const barHeight = 4;
       const barX = agent.x - barWidth / 2;
-      const barY = agent.y + 60;
-      
-      ctx.fillStyle = '#374151';
+      const barY = agent.y + radius + 25;
+
+      ctx.fillStyle = '#e5e7eb';
       ctx.fillRect(barX, barY, barWidth, barHeight);
-      
-      ctx.fillStyle = agent.energy > 80 ? '#10b981' : agent.energy > 60 ? '#f59e0b' : '#ef4444';
-      ctx.fillRect(barX, barY, (barWidth * agent.energy) / 100, barHeight);
+
+      ctx.fillStyle = agent.energy > 60 ? '#10b981' : agent.energy > 30 ? '#f59e0b' : '#ef4444';
+      ctx.fillRect(barX, barY, (agent.energy / 100) * barWidth, barHeight);
     });
+
+    // Draw activity indicators
+    if (showActivities) {
+      agents.forEach(agent => {
+        if (agent.status === 'active' || agent.status === 'collaborating') {
+          const pulseRadius = 35 + Math.sin(Date.now() / 200) * 5;
+          ctx.beginPath();
+          ctx.arc(agent.x, agent.y, pulseRadius, 0, 2 * Math.PI);
+          ctx.strokeStyle = agent.color + '40';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      });
+    }
+  };
+
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'active': return '#10b981';
+      case 'busy': return '#f59e0b';
+      case 'idle': return '#6b7280';
+      case 'collaborating': return '#3b82f6';
+      default: return '#6b7280';
+    }
   };
 
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -379,10 +331,9 @@ const AgentNetworkDashboard: React.FC = () => {
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
-    // Find clicked agent
     const clickedAgent = agents.find(agent => {
-      const distance = Math.sqrt((x - agent.x) ** 2 + (y - agent.y) ** 2);
-      return distance <= 35;
+      const distance = Math.sqrt(Math.pow(x - agent.x, 2) + Math.pow(y - agent.y, 2));
+      return distance <= 30;
     });
 
     setSelectedAgent(clickedAgent || null);
@@ -390,230 +341,233 @@ const AgentNetworkDashboard: React.FC = () => {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'active': return <Activity className="h-4 w-4 text-green-400" />;
-      case 'busy': return <Clock className="h-4 w-4 text-yellow-400" />;
-      case 'collaborating': return <Users className="h-4 w-4 text-pink-400" />;
-      case 'idle': return <Pause className="h-4 w-4 text-gray-400" />;
-      default: return <Activity className="h-4 w-4" />;
+      case 'active': return <Activity className="w-4 h-4 text-green-500" />;
+      case 'busy': return <Clock className="w-4 h-4 text-yellow-500" />;
+      case 'idle': return <Pause className="w-4 h-4 text-gray-500" />;
+      case 'collaborating': return <Share2 className="w-4 h-4 text-blue-500" />;
+      default: return <Activity className="w-4 h-4 text-gray-500" />;
     }
   };
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'high': return 'text-red-400';
-      case 'medium': return 'text-yellow-400';
-      case 'low': return 'text-green-400';
-      default: return 'text-gray-400';
+      case 'high': return 'text-red-600 bg-red-50';
+      case 'medium': return 'text-yellow-600 bg-yellow-50';
+      case 'low': return 'text-green-600 bg-green-50';
+      default: return 'text-gray-600 bg-gray-50';
     }
   };
 
+  const filteredEvents = events.filter(event => 
+    filterType === 'all' || event.type === filterType
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6 p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 min-h-full">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600/80 to-purple-600/80 backdrop-blur-xl rounded-2xl p-6 text-white border border-blue-500/20 shadow-2xl">
+      <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold mb-2 text-gradient-primary">🕸️ Agent Network</h1>
-            <p className="text-blue-100">Interactive visualization of your AI agent ecosystem</p>
+            <h1 className="text-2xl font-bold text-gray-900">Agent Network Dashboard</h1>
+            <p className="text-gray-600">Real-time visualization of agent interactions and activities</p>
           </div>
-          
           <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 bg-slate-800/50 rounded-xl p-3">
-              <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-              <span className="text-sm">{agents.filter(a => a.status === 'active').length} Active</span>
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600">Speed:</span>
+              <select
+                value={timeSpeed}
+                onChange={(e) => setTimeSpeed(Number(e.target.value))}
+                className="border rounded px-2 py-1 text-sm"
+              >
+                <option value={0.5}>0.5x</option>
+                <option value={1}>1x</option>
+                <option value={2}>2x</option>
+                <option value={4}>4x</option>
+              </select>
             </div>
-            <div className="flex items-center space-x-2 bg-slate-800/50 rounded-xl p-3">
-              <div className="w-3 h-3 bg-pink-400 rounded-full animate-pulse"></div>
-              <span className="text-sm">{connections.filter(c => c.isActive).length} Collaborating</span>
-            </div>
+            <button
+              onClick={() => setIsPlaying(!isPlaying)}
+              className={`px-4 py-2 rounded-lg transition-colors ${
+                isPlaying ? 'bg-red-600 text-white' : 'bg-green-600 text-white'
+              }`}
+            >
+              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={initializeNetwork}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Network Canvas */}
-        <div className="lg:col-span-3">
-          <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-700/50 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-white">Network Graph</h2>
-              
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setIsPlaying(!isPlaying)}
-                  className={`p-2 rounded-lg transition-colors ${
-                    isPlaying ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                  }`}
-                >
-                  {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                </button>
-                
-                <button
-                  onClick={() => setShowConnections(!showConnections)}
-                  className={`p-2 rounded-lg transition-colors ${
-                    showConnections ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-700/50 text-slate-400'
-                  }`}
-                >
-                  <Share2 className="h-4 w-4" />
-                </button>
-                
-                <button
-                  onClick={() => setShowActivities(!showActivities)}
-                  className={`p-2 rounded-lg transition-colors ${
-                    showActivities ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-700/50 text-slate-400'
-                  }`}
-                >
-                  <MessageSquare className="h-4 w-4" />
-                </button>
-                
-                <button
-                  onClick={initializeNetwork}
-                  className="p-2 rounded-lg bg-slate-700/50 text-slate-400 hover:text-white transition-colors"
-                >
-                  <RotateCcw className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-            
-            <div className="relative bg-slate-900/50 rounded-xl overflow-hidden">
-              <canvas
-                ref={canvasRef}
-                width={800}
-                height={500}
-                onClick={handleCanvasClick}
-                className="w-full h-full cursor-pointer"
-              />
-              
-              {/* Legend */}
-              <div className="absolute top-4 left-4 bg-slate-800/80 backdrop-blur-sm rounded-lg p-3 text-sm">
-                <div className="text-white font-medium mb-2">Status Legend</div>
-                <div className="space-y-1">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-green-400 rounded-full"></div>
-                    <span className="text-slate-300">Active</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
-                    <span className="text-slate-300">Busy</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-pink-400 rounded-full"></div>
-                    <span className="text-slate-300">Collaborating</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-gray-400 rounded-full"></div>
-                    <span className="text-slate-300">Idle</span>
-                  </div>
-                </div>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Network Visualization */}
+        <div className="lg:col-span-2 bg-white rounded-lg shadow-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Network Visualization</h2>
+            <div className="flex items-center space-x-4">
+              <label className="flex items-center space-x-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={showConnections}
+                  onChange={(e) => setShowConnections(e.target.checked)}
+                  className="rounded"
+                />
+                <span>Connections</span>
+              </label>
+              <label className="flex items-center space-x-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={showActivities}
+                  onChange={(e) => setShowActivities(e.target.checked)}
+                  className="rounded"
+                />
+                <span>Activities</span>
+              </label>
             </div>
           </div>
-        </div>
-
-        {/* Side Panel */}
-        <div className="space-y-6">
-          {/* Selected Agent Info */}
+          
+          <div className="border rounded-lg overflow-hidden">
+            <canvas
+              ref={canvasRef}
+              width={800}
+              height={500}
+              onClick={handleCanvasClick}
+              className="w-full h-auto cursor-pointer bg-gray-50"
+            />
+          </div>
+          
           {selectedAgent && (
-            <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-700/50 p-4">
-              <h3 className="text-lg font-semibold text-white mb-3">Agent Details</h3>
-              <div className="space-y-3">
-                <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold">
-                    {selectedAgent.avatar}
-                  </div>
-                  <div>
-                    <div className="font-medium text-white">{selectedAgent.name}</div>
-                    <div className="text-sm text-slate-400">{selectedAgent.role}</div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  {getStatusIcon(selectedAgent.status)}
-                  <span className="text-sm text-slate-300 capitalize">{selectedAgent.status}</span>
-                </div>
-                
+            <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <h3 className="font-semibold text-blue-900 mb-2">
+                {selectedAgent.avatar} {selectedAgent.name}
+              </h3>
+              <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <div className="text-sm text-slate-400 mb-1">Current Task</div>
-                  <div className="text-sm text-white">{selectedAgent.currentTask}</div>
+                  <span className="text-gray-600">Role:</span>
+                  <span className="ml-2 text-gray-900">{selectedAgent.role}</span>
                 </div>
-                
                 <div>
-                  <div className="text-sm text-slate-400 mb-1">Energy Level</div>
-                  <div className="flex items-center space-x-2">
-                    <div className="flex-1 bg-slate-700 rounded-full h-2">
-                      <div 
-                        className={`h-2 rounded-full transition-all duration-500 ${
-                          selectedAgent.energy > 80 ? 'bg-green-400' : 
-                          selectedAgent.energy > 60 ? 'bg-yellow-400' : 'bg-red-400'
-                        }`}
-                        style={{ width: `${selectedAgent.energy}%` }}
-                      ></div>
-                    </div>
-                    <span className="text-sm text-slate-400">{selectedAgent.energy}%</span>
-                  </div>
+                  <span className="text-gray-600">Status:</span>
+                  <span className="ml-2 flex items-center space-x-1">
+                    {getStatusIcon(selectedAgent.status)}
+                    <span className="capitalize">{selectedAgent.status}</span>
+                  </span>
                 </div>
-                
                 <div>
-                  <div className="text-sm text-slate-400 mb-1">Connected To</div>
-                  <div className="flex flex-wrap gap-1">
-                    {selectedAgent.connections.map(connId => {
-                      const connectedAgent = agents.find(a => a.id === connId);
-                      return connectedAgent ? (
-                        <span key={connId} className="text-xs bg-slate-700/50 text-slate-300 px-2 py-1 rounded">
-                          {connectedAgent.name.split(' ')[0]}
-                        </span>
-                      ) : null;
-                    })}
-                  </div>
+                  <span className="text-gray-600">Energy:</span>
+                  <span className="ml-2 text-gray-900">{selectedAgent.energy}%</span>
+                </div>
+                <div>
+                  <span className="text-gray-600">Task:</span>
+                  <span className="ml-2 text-gray-900">{selectedAgent.currentTask}</span>
                 </div>
               </div>
             </div>
           )}
+        </div>
 
-          {/* Recent Events */}
-          <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-700/50 p-4">
-            <h3 className="text-lg font-semibold text-white mb-3">Recent Events</h3>
-            <div className="space-y-3 max-h-64 overflow-y-auto custom-scrollbar">
-              {events.slice(0, 10).map(event => (
-                <div key={event.id} className="bg-slate-700/30 rounded-lg p-3">
-                  <div className="flex items-start justify-between mb-1">
-                    <span className={`text-xs font-medium ${getPriorityColor(event.priority)}`}>
-                      {event.type.replace('_', ' ').toUpperCase()}
-                    </span>
-                    <span className="text-xs text-slate-500">
-                      {new Date(event.timestamp).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <div className="text-sm text-slate-300">{event.description}</div>
-                  <div className="text-xs text-slate-400 mt-1">
-                    {agents.find(a => a.id === event.agentId)?.name}
-                  </div>
+        {/* Side Panel */}
+        <div className="space-y-6">
+          {/* Network Stats */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Network Stats</h3>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Users className="w-4 h-4 text-blue-500" />
+                  <span className="text-sm text-gray-600">Total Agents</span>
                 </div>
-              ))}
+                <span className="text-sm font-medium text-gray-900">{agents.length}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Activity className="w-4 h-4 text-green-500" />
+                  <span className="text-sm text-gray-600">Active Agents</span>
+                </div>
+                <span className="text-sm font-medium text-gray-900">
+                  {agents.filter(a => a.status === 'active').length}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Share2 className="w-4 h-4 text-purple-500" />
+                  <span className="text-sm text-gray-600">Connections</span>
+                </div>
+                <span className="text-sm font-medium text-gray-900">{connections.length}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Zap className="w-4 h-4 text-yellow-500" />
+                  <span className="text-sm text-gray-600">Avg Energy</span>
+                </div>
+                <span className="text-sm font-medium text-gray-900">
+                  {agents.length > 0 ? Math.round(agents.reduce((sum, a) => sum + a.energy, 0) / agents.length) : 0}%
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Network Stats */}
-          <div className="bg-slate-800/50 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-700/50 p-4">
-            <h3 className="text-lg font-semibold text-white mb-3">Network Stats</h3>
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Total Agents</span>
-                <span className="text-white font-medium">{agents.length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Active Connections</span>
-                <span className="text-white font-medium">{connections.filter(c => c.isActive).length}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Avg Energy</span>
-                <span className="text-white font-medium">
-                  {Math.round(agents.reduce((acc, a) => acc + a.energy, 0) / agents.length)}%
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Events Today</span>
-                <span className="text-white font-medium">{events.length}</span>
-              </div>
+          {/* Recent Events */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Recent Events</h3>
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                className="border rounded px-2 py-1 text-sm"
+              >
+                <option value="all">All Types</option>
+                <option value="task_start">Task Start</option>
+                <option value="collaboration">Collaboration</option>
+                <option value="communication">Communication</option>
+                <option value="decision">Decision</option>
+              </select>
+            </div>
+            
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {filteredEvents.map(event => {
+                const agent = agents.find(a => a.id === event.agentId);
+                return (
+                  <div key={event.id} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                    <div className="flex-shrink-0">
+                      {agent ? (
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm" style={{ backgroundColor: agent.color }}>
+                          {agent.avatar}
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-gray-400 flex items-center justify-center text-white text-sm">
+                          ?
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {event.description}
+                        </p>
+                        <span className={`px-2 py-1 text-xs rounded-full ${getPriorityColor(event.priority)}`}>
+                          {event.priority}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        {new Date(event.timestamp).toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

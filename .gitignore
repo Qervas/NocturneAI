@@ -1,3 +1,4 @@
 .env
 __pycache__
 __node_modules__
+frontend/node_modules/
