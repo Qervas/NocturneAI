@@ -1,0 +1,36 @@
+[package]
+name = "intelligence-core"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "intelligence-empire"
+path = "src/main.rs"
+
+[dependencies]
+bevy = { version = "0.12", features = ["dynamic_linking"] }
+bevy_egui = "0.23"
+shared-types = { path = "../shared-types" }
+cognitive-services = { path = "../cognitive-services" }
+social-engine = { path = "../social-engine" }
+agent-framework = { path = "../agent-framework" }
+log = "0.4"
+env_logger = "0.10"
+uuid = { version = "1.5", features = ["v4", "serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.11", features = ["json"] }
+
+# Performance
+rayon = "1.8"
+dashmap = "5.5"
+
+# Additional game features
+rand = "0.8"
+noise = "0.8"
+fastrand = "2.3.0"
+
+[features]
+default = ["dev"]
+dev = ["bevy/dynamic_linking"] 

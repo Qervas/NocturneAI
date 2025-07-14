@@ -1,4 +1,23 @@
+# Environment files
 .env
-__pycache__
-__node_modules__
-frontend/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.db
+
+# Rust
+/target/
+Cargo.lock
+**/*.rs.bk
+
+# Logs and data
+*.log
+*.db-journal
+
+# OS
+.DS_Store
+Thumbs.db

@@ -80,17 +80,17 @@ class MasterIntelligence:
                     "confidence": agent.current_state["confidence"]
                 }
             }
-            
-            processing_time = (datetime.now() - start_time).total_seconds()
-            
+        
+        processing_time = (datetime.now() - start_time).total_seconds()
+        
             # Store in history
             intelligence_response = IntelligenceResponse(
                 query=message,
                 response_data=response_data,
-                processing_time=processing_time,
-                timestamp=datetime.now().isoformat()
-            )
-            
+            processing_time=processing_time,
+            timestamp=datetime.now().isoformat()
+        )
+        
             self.conversation_history.append(intelligence_response)
             
             return response_data
@@ -214,11 +214,11 @@ class MasterIntelligence:
                 "message": f"Agent {name} created from template {template_name}"
             }
         except Exception as e:
-            return {
+        return {
                 "success": False,
                 "error": str(e),
                 "message": "Failed to create agent from template"
-            }
+        } 
     
     async def update_agent(self, agent_id: str, updates: Dict) -> Dict:
         """Update an existing agent"""
