@@ -8,9 +8,12 @@
 
 **🎥 Live Demo**: 
 
-https://github.com/user-attachments/assets/prototype.mp4
+[![NocturneAI Demo](https://img.shields.io/badge/▶️%20Watch%20Demo-2.8MB%20Video-00ff88?style=for-the-badge&logo=github)](https://github.com/Qervas/NocturneAI/raw/master/assets/prototype.mp4)
+
 
 *Watch NocturneAI's multi-agent ecosystem in action - see the autonomous AI creatures communicate through animated message bubbles!*
+
+> **Video Details**: 90 seconds • 720p HD • 2.8MB compressed for fast loading
 
 
 ## 🎭 Meet the Creatures
