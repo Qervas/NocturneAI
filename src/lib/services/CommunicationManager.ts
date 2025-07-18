@@ -231,6 +231,37 @@ export class AgentCommunicationManager {
     return message;
   }
 
+  // Send message from human user to agents
+  async sendUserMessage(
+    fromUser: string,
+    toAgent: string | undefined, // undefined = broadcast to all
+    content: string,
+    intent: CommunicationIntent = 'question'
+  ): Promise<AgentMessage> {
+    const message: AgentMessage = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date(),
+      fromAgent: fromUser,
+      toAgent,
+      messageType: 'user_message',
+      intent,
+      content,
+      priority: 'normal',
+      requiresResponse: true,
+      metadata: {
+        emotion: 'friendly'
+      }
+    };
+
+    // Add to message history
+    this.socialNetwork.messageHistory.push(message);
+    this.messageQueue.push(message);
+
+    console.log(`👤 User Message: ${fromUser} -> ${toAgent || 'ALL'}: ${intent} - "${content}"`);
+
+    return message;
+  }
+
   // Generate contextual response for agent
   async generateAgentResponse(
     respondingAgent: string,

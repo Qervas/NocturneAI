@@ -1,8 +1,10 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from "svelte";
   import { characterManager, characters, npcs, users, activeCharacter } from "../services/CharacterManager";
+  import { communicationManager } from "../services/CommunicationManager";
   import { llmService } from "../services/LLMService";
   import type { Character, NPCAgent, UserPlayer } from "../types/Character";
+  import type { CommunicationIntent } from "../types/Communication";
 
   export let isVisible = false;
 
@@ -122,6 +124,20 @@
 
     chatHistory = [...chatHistory, message];
     const currentMessage = chatInput.trim();
+    
+    // Send through communication manager for visualization
+    if (messageType === 'direct' && target) {
+      // Direct message to specific agent
+      const agentId = 'agent_' + target.toLowerCase();
+      communicationManager.sendUserMessage('player_main', agentId, currentMessage, 'question');
+    } else {
+      // Global message - send to all agents
+      const agents = ['agent_alpha', 'agent_beta', 'agent_gamma'];
+      agents.forEach(agentId => {
+        communicationManager.sendUserMessage('player_main', agentId, currentMessage, 'social_chat');
+      });
+    }
+    
     chatInput = "";
     saveChatHistory();
     
@@ -132,6 +148,14 @@
     // Send to AI agent for direct messages
     if (messageType === 'direct' && target) {
       setTimeout(() => sendToAIAgent(target, currentMessage), 500 + Math.random() * 1000);
+    } else if (messageType === 'global') {
+      // For global messages, trigger responses from random agents after a delay
+      const agents = ['Alpha', 'Beta', 'Gamma'];
+      const respondingAgents = agents.filter(() => Math.random() > 0.4); // 60% chance each agent responds
+      
+      respondingAgents.forEach((agentName, index) => {
+        setTimeout(() => sendToAIAgent(agentName, currentMessage), 1000 + (index * 800) + Math.random() * 1200);
+      });
     }
   }
 
@@ -168,6 +192,11 @@
       };
 
       chatHistory = [...chatHistory, response];
+      
+      // Send agent response through communication manager for visualization
+      const fullAgentId = 'agent_' + agentId;
+      communicationManager.sendAgentMessage(fullAgentId, 'player_main', 'acknowledge', llmResponse, 'normal');
+      
       saveChatHistory();
       scrollToBottom();
 

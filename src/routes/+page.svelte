@@ -101,7 +101,7 @@
       >
         {communicationActive ? '🔴 Stop Auto' : '🟢 Start Auto'}
       </button>
-      <GameChat />
+      <GameChat isVisible={true} />
       <CharacterPanel />
     </div>
   </header>

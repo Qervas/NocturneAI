@@ -12,6 +12,7 @@
   let mouseX = 0;
   let mouseY = 0;
   let agentCharacters: Character[] = [];
+  let allCharacters: Character[] = [];
   
   // Network visualization variables
   let activeMessages: AnimatedMessage[] = [];
@@ -37,6 +38,7 @@
 
   // Subscribe to characters from the character manager
   $: agentCharacters = $characters.filter(c => c.type === 'npc');
+  $: allCharacters = $characters; // All characters including user
 
   function handleMouseMove(event: MouseEvent) {
     if (!canvas) return;
@@ -92,20 +94,43 @@
     const hoverScale = isHovering ? 1.1 : 1;
     const finalSize = Math.max(actualSize * activeScale * hoverScale, 5);
     
-    // Body (triangle)
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - finalSize / Math.sqrt(3)); // Top vertex
-    ctx.lineTo(cx - finalSize / 2, cy + finalSize / (2 * Math.sqrt(3))); // Bottom left
-    ctx.lineTo(cx + finalSize / 2, cy + finalSize / (2 * Math.sqrt(3))); // Bottom right
-    ctx.closePath();
-    
-    // Use character's color for gradient
-    const gradient = ctx.createLinearGradient(cx, cy - finalSize, cx, cy + finalSize);
-    gradient.addColorStop(0, character.color);
-    gradient.addColorStop(0.5, character.color + 'CC');
-    gradient.addColorStop(1, character.color + '88');
-    ctx.fillStyle = gradient;
-    ctx.fill();
+    // Body shape depends on character type
+    if (character.type === 'user') {
+      // Human user: Draw as a circle (more human-like)
+      ctx.beginPath();
+      ctx.arc(cx, cy, finalSize / 2, 0, 2 * Math.PI);
+      
+      // Special gradient for human user
+      const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, finalSize / 2);
+      gradient.addColorStop(0, '#ffffff');
+      gradient.addColorStop(0.3, character.color);
+      gradient.addColorStop(1, character.color + '88');
+      ctx.fillStyle = gradient;
+      ctx.fill();
+      
+      // Human user gets special border
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.strokeStyle = character.color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    } else {
+      // AI Agents: Triangle shape
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - finalSize / Math.sqrt(3)); // Top vertex
+      ctx.lineTo(cx - finalSize / 2, cy + finalSize / (2 * Math.sqrt(3))); // Bottom left
+      ctx.lineTo(cx + finalSize / 2, cy + finalSize / (2 * Math.sqrt(3))); // Bottom right
+      ctx.closePath();
+      
+      // Use character's color for gradient
+      const gradient = ctx.createLinearGradient(cx, cy - finalSize, cx, cy + finalSize);
+      gradient.addColorStop(0, character.color);
+      gradient.addColorStop(0.5, character.color + 'CC');
+      gradient.addColorStop(1, character.color + '88');
+      ctx.fillStyle = gradient;
+      ctx.fill();
+    }
     
     // Glowing outline with hover and active effects
     const glowIntensity = isActive ? 8 : (isHovering ? 6 : 3);
@@ -219,10 +244,22 @@
   }
 
   function createMessageAnimation(message: AgentMessage) {
-    const fromChar = agentCharacters.find(c => c.id === message.fromAgent);
-    const toChar = agentCharacters.find(c => c.id === message.toAgent);
+    const fromChar = allCharacters.find(c => c.id === message.fromAgent);
+    const toChar = allCharacters.find(c => c.id === message.toAgent);
     
     if (!fromChar || !toChar) return;
+
+    // Different colors for different message types
+    let messageColor = '#00ffff'; // Default cyan
+    if (message.messageType === 'user_message') {
+      messageColor = '#ffff00'; // Yellow for user messages
+    } else if (message.toAgent === 'player_main') {
+      messageColor = '#ff44ff'; // Pink/magenta for agent responses to user
+    } else if (message.intent === 'question') {
+      messageColor = '#ff8800'; // Orange for questions
+    } else if (message.intent === 'social_chat') {
+      messageColor = '#88ff88'; // Green for social chat
+    }
 
     const animatedMessage: AnimatedMessage = {
       id: message.id,
@@ -236,7 +273,7 @@
       fromPos: { x: fromChar.position.x, y: fromChar.position.y },
       toPos: { x: toChar.position.x, y: toChar.position.y },
       currentPos: { x: fromChar.position.x, y: fromChar.position.y },
-      color: getIntentColor(message.intent),
+      color: messageColor,
       alpha: 1
     };
 
@@ -309,8 +346,8 @@
     if (ctx && canvas) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
-      // Draw all agent characters
-      agentCharacters.forEach(character => {
+      // Draw all characters (agents + user)
+      allCharacters.forEach(character => {
         const isActive = $activeCharacter && $activeCharacter.id === character.id;
         drawCharacter(character, isActive);
       });
@@ -389,8 +426,33 @@
           <span class="stat-value">{agentCharacters.length}</span>
         </div>
         <div class="stat-item">
+          <span class="stat-label">USERS</span>
+          <span class="stat-value">{allCharacters.filter(c => c.type === 'user').length}</span>
+        </div>
+        <div class="stat-item">
           <span class="stat-label">TRUST</span>
           <span class="stat-value">{Math.round(communicationManager.getNetworkStats().averageTrustLevel * 100)}%</span>
+        </div>
+      </div>
+      
+      <!-- Message Type Legend -->
+      <div class="message-legend">
+        <h4>Message Colors:</h4>
+        <div class="legend-item">
+          <span class="color-dot" style="background-color: #ffff00;"></span>
+          <span>Your Messages</span>
+        </div>
+        <div class="legend-item">
+          <span class="color-dot" style="background-color: #ff44ff;"></span>
+          <span>Agent Replies</span>
+        </div>
+        <div class="legend-item">
+          <span class="color-dot" style="background-color: #88ff88;"></span>
+          <span>Agent Chat</span>
+        </div>
+        <div class="legend-item">
+          <span class="color-dot" style="background-color: #ff8800;"></span>
+          <span>Questions</span>
         </div>
       </div>
     </div>
@@ -535,6 +597,39 @@
     background: linear-gradient(135deg, rgba(0, 255, 136, 0.2) 0%, rgba(0, 40, 80, 0.8) 100%);
     box-shadow: 0 0 25px rgba(0, 255, 136, 0.6);
     transform: scale(1.1) rotate(10deg);
+  }
+
+  .message-legend {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(0, 255, 136, 0.3);
+  }
+
+  .message-legend h4 {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    color: rgba(0, 255, 136, 0.9);
+    margin: 0 0 8px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 8px;
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .color-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    box-shadow: 0 0 4px currentColor;
+    flex-shrink: 0;
   }
 
   @keyframes pulse-glow {

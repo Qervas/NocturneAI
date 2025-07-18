@@ -169,9 +169,9 @@ class CharacterManagerService implements CharacterManager {
     const sampleUsers: UserPlayer[] = [
       this.createUserPlayer({
         id: 'player_main',
-        name: 'Player',
+        name: 'You',
         role: 'player',
-        color: '#00ffff',
+        color: '#ffffff',
         position: { x: 400, y: 350 }
       })
     ];
