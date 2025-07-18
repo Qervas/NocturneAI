@@ -1,6 +1,10 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
   import GamingCanvas from "$lib/components/GamingCanvas.svelte";
+  import GameChat from "$lib/components/GameChat.svelte";
+  import CharacterPanel from "$lib/components/CharacterPanel.svelte";
+  import { characterManager } from "$lib/services/CharacterManager";
 
   let name = $state("");
   let greetMsg = $state("");
@@ -9,6 +13,12 @@
     event.preventDefault();
     greetMsg = await invoke("greet", { name });
   }
+
+  onMount(() => {
+    // Initialize character data for the chat to work properly
+    characterManager.initializeSampleData();
+    console.log('Characters initialized:', characterManager.characters);
+  });
 </script>
 
 <main class="container">
@@ -16,6 +26,8 @@
   <p class="subtitle">Neural Network Visualization</p>
 
   <GamingCanvas />
+  <GameChat />
+  <CharacterPanel />
 </main>
 
 <style>
