@@ -73,12 +73,40 @@
         characterManager.setActiveCharacter(character.id);
       }
     });
+    
+    // Test message bubble creation with right-click or ctrl+click
+    if (event.button === 2 || event.ctrlKey) {
+      createTestMessageBubble();
+      event.preventDefault();
+    }
+  }
+
+  // Test function to create a visible message bubble
+  function createTestMessageBubble() {
+    const testMessage: AnimatedMessage = {
+      id: 'test_' + Date.now(),
+      fromAgent: 'agent_alpha',
+      toAgent: 'agent_beta',
+      startTime: time,
+      duration: 300,
+      progress: 0,
+      content: 'Test message bubble',
+      intent: 'social_chat',
+      fromPos: { x: 250, y: 180 },
+      toPos: { x: 750, y: 180 },
+      currentPos: { x: 250, y: 180 },
+      color: '#ff00ff',
+      alpha: 1
+    };
+    
+    activeMessages.push(testMessage);
+    console.log('Created test message bubble, active messages:', activeMessages.length);
   }
 
   function drawCharacter(character: Character, isActive: boolean = false) {
     if (!ctx || !canvas) return;
     
-    const size = Math.min(canvas.width, canvas.height) * 0.1;
+    const size = Math.min(canvas.width, canvas.height) * 0.15; // Increased from 0.1 to make characters larger
     const cx = character.position.x;
     const cy = character.position.y;
     
@@ -87,12 +115,12 @@
     
     // Breathing animation
     const breathScale = 1 + Math.sin(time * 0.02) * 0.1;
-    const actualSize = Math.max(size * breathScale, 10);
+    const actualSize = Math.max(size * breathScale, 30); // Increased minimum size from 10 to 30
     
     // Active character gets a bigger scale
-    const activeScale = isActive ? 1.2 : 1;
-    const hoverScale = isHovering ? 1.1 : 1;
-    const finalSize = Math.max(actualSize * activeScale * hoverScale, 5);
+    const activeScale = isActive ? 1.3 : 1; // Increased from 1.2 to 1.3
+    const hoverScale = isHovering ? 1.15 : 1; // Increased from 1.1 to 1.15
+    const finalSize = Math.max(actualSize * activeScale * hoverScale, 25); // Increased minimum from 5 to 25
     
     // Body shape depends on character type
     if (character.type === 'user') {
@@ -247,7 +275,10 @@
     const fromChar = allCharacters.find(c => c.id === message.fromAgent);
     const toChar = allCharacters.find(c => c.id === message.toAgent);
     
-    if (!fromChar || !toChar) return;
+    if (!fromChar || !toChar) {
+      console.log('Could not find characters for message:', message.fromAgent, '->', message.toAgent);
+      return;
+    }
 
     // Different colors for different message types
     let messageColor = '#00ffff'; // Default cyan
@@ -266,7 +297,7 @@
       fromAgent: message.fromAgent,
       toAgent: message.toAgent || 'all',
       startTime: time,
-      duration: 180,
+      duration: 300, // Increased from 180 to 300 for longer visibility
       progress: 0,
       content: message.content,
       intent: message.intent,
@@ -278,6 +309,7 @@
     };
 
     activeMessages.push(animatedMessage);
+    console.log('Created message animation:', animatedMessage.fromAgent, '->', animatedMessage.toAgent, 'Active messages:', activeMessages.length);
     
     if (activeMessages.length > 8) {
       activeMessages = activeMessages.slice(-8);
@@ -303,38 +335,47 @@
   }
 
   function drawAnimatedMessages() {
-    if (!ctx || !showNetworkOverlay) return;
+    if (!ctx) return;
 
     activeMessages.forEach((msg, index) => {
       msg.progress = Math.min(1, (time - msg.startTime) / msg.duration);
       const easeProgress = 1 - Math.pow(1 - msg.progress, 2);
       
-      const arcHeight = 30 * Math.sin(msg.progress * Math.PI);
+      // Higher arc for more visible path
+      const arcHeight = 60 * Math.sin(msg.progress * Math.PI);
       msg.currentPos.x = msg.fromPos.x + (msg.toPos.x - msg.fromPos.x) * easeProgress;
       msg.currentPos.y = msg.fromPos.y + (msg.toPos.y - msg.fromPos.y) * easeProgress - arcHeight;
       
       msg.alpha = msg.progress < 0.8 ? 1 : (1 - (msg.progress - 0.8) / 0.2);
       
-      // Enhanced message particle
-      const pulse = 1 + Math.sin(time * 0.3 + index) * 0.3;
-      const particleSize = 8 * pulse;
+      // Larger and more visible message bubble
+      const pulse = 1 + Math.sin(time * 0.2 + index) * 0.4;
+      const bubbleSize = 16 * pulse; // Increased from 8 to 16
       
       if (ctx) {
+        // Draw outer glow effect
         ctx.beginPath();
-        ctx.arc(msg.currentPos.x, msg.currentPos.y, particleSize, 0, 2 * Math.PI);
+        ctx.arc(msg.currentPos.x, msg.currentPos.y, bubbleSize + 8, 0, 2 * Math.PI);
+        ctx.fillStyle = msg.color + Math.round(msg.alpha * 60).toString(16).padStart(2, '0');
+        ctx.fill();
+        
+        // Draw main bubble
+        ctx.beginPath();
+        ctx.arc(msg.currentPos.x, msg.currentPos.y, bubbleSize, 0, 2 * Math.PI);
         ctx.fillStyle = msg.color + Math.round(msg.alpha * 255).toString(16).padStart(2, '0');
         ctx.fill();
         
-        ctx.strokeStyle = '#FFFFFF' + Math.round(msg.alpha * 200).toString(16).padStart(2, '0');
-        ctx.lineWidth = 2;
+        // White border for visibility
+        ctx.strokeStyle = '#FFFFFF' + Math.round(msg.alpha * 255).toString(16).padStart(2, '0');
+        ctx.lineWidth = 3;
         ctx.stroke();
         
-        // Intent icon
+        // Intent icon - larger and more visible
         const icon = getIntentIcon(msg.intent);
-        ctx.fillStyle = '#FFFFFF' + Math.round(msg.alpha * 255).toString(16).padStart(2, '0');
-        ctx.font = '12px Arial';
+        ctx.fillStyle = '#000000' + Math.round(msg.alpha * 255).toString(16).padStart(2, '0');
+        ctx.font = 'bold 16px Arial'; // Increased from 12px to 16px
         ctx.textAlign = 'center';
-        ctx.fillText(icon, msg.currentPos.x, msg.currentPos.y + 4);
+        ctx.fillText(icon, msg.currentPos.x, msg.currentPos.y + 6);
       }
     });
     
@@ -360,8 +401,11 @@
 
   function resizeCanvas() {
     if (!canvas) return;
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight * 0.6;
+    // Make canvas more square and less wide
+    const maxWidth = Math.min(window.innerWidth * 0.8, 1000); // Limit max width
+    const aspectRatio = 4/3; // More square aspect ratio
+    canvas.width = maxWidth;
+    canvas.height = maxWidth / aspectRatio;
     ctx = canvas.getContext("2d");
   }
 
@@ -482,8 +526,8 @@
     border: 2px solid #00ff88;
     border-radius: 12px;
     box-shadow: 0 0 20px rgba(0, 255, 136, 0.3), inset 0 0 20px rgba(0, 255, 136, 0.1);
-    max-width: 90vw;
-    max-height: 60vh;
+    max-width: 85vw;
+    max-height: 70vh;
     cursor: pointer;
   }
 

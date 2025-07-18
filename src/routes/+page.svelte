@@ -82,7 +82,7 @@
     <div class="header-content">
       <h1 class="game-title">MULTI-AGENT SYSTEM</h1>
       <p class="subtitle">
-        Neural Network Visualization 
+        Agent Network Visualization 
         <span class="status-indicator {communicationActive ? 'active' : 'inactive'}">
           {communicationActive ? '🟢 ACTIVE' : '🔴 OFFLINE'}
         </span>
@@ -140,7 +140,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 20px;
+    padding: 12px 20px; /* Reduced from 20px to 12px for more compact header */
     background: rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid rgba(0, 255, 136, 0.2);

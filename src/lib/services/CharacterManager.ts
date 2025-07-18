@@ -146,7 +146,7 @@ class CharacterManagerService implements CharacterManager {
         color: '#00ff88',
         personality: 'analytical',
         specialization: 'data_analysis',
-        position: { x: 200, y: 150 }
+        position: { x: 250, y: 180 } // Adjusted for better canvas proportion
       }),
       this.createNPCAgent({
         id: 'agent_beta',
@@ -154,7 +154,7 @@ class CharacterManagerService implements CharacterManager {
         color: '#ff8800',
         personality: 'creative',
         specialization: 'content_generation',
-        position: { x: 400, y: 200 }
+        position: { x: 500, y: 120 } // Adjusted for better canvas proportion
       }),
       this.createNPCAgent({
         id: 'agent_gamma',
@@ -162,7 +162,7 @@ class CharacterManagerService implements CharacterManager {
         color: '#8800ff',
         personality: 'logical',
         specialization: 'problem_solving',
-        position: { x: 600, y: 150 }
+        position: { x: 750, y: 180 } // Adjusted for better canvas proportion
       })
     ];
 
@@ -172,7 +172,7 @@ class CharacterManagerService implements CharacterManager {
         name: 'You',
         role: 'player',
         color: '#ffffff',
-        position: { x: 400, y: 350 }
+        position: { x: 500, y: 420 } // Moved further down from 320 to 420
       })
     ];
 
