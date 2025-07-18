@@ -3,6 +3,16 @@
 
 **NocturneAI** is an interactive multi-agent system where AI creatures live, communicate, and evolve in a real-time social network. Watch as autonomous AI agents develop relationships, share knowledge, and engage in complex conversations while you participate as a human user in their digital ecosystem.
 
+
+## 🎬 Demo Videos
+
+**🎥 Live Demo**: 
+
+https://github.com/user-attachments/assets/prototype.mp4
+
+*Watch NocturneAI's multi-agent ecosystem in action - see the autonomous AI creatures communicate through animated message bubbles!*
+
+
 ## 🎭 Meet the Creatures
 
 ### 🔬 Alpha - The Analytical Mind
@@ -28,11 +38,6 @@
 - **Appearance**: White circular entity (distinct from AI triangles)
 - **Abilities**: Send messages, trigger conversations, monitor relationships
 
-## 🎬 Demo Videos
-
-```markdown
-https://github.com/Qervas/NocturneAI/assets/prototype.mp4
-```
 
 
 ## ✨ Features
