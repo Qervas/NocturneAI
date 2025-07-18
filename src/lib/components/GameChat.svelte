@@ -11,7 +11,7 @@
   let chatInput = "";
   let chatHistory: Array<{
     id: string;
-    type: 'global' | 'direct';
+    type: 'global' | 'direct' | 'agent';
     sender: string;
     message: string;
     timestamp: Date;
@@ -19,7 +19,7 @@
   }> = [];
   let inputElement: HTMLInputElement;
   let chatContainer: HTMLDivElement;
-  let activeTab: 'global' | 'direct' = 'global';
+  let activeTab: 'global' | 'direct' | 'agent' = 'global';
   let selectedAgent = "";
   let availableAgents: string[] = [];
   let isInitialized = false;
@@ -69,6 +69,27 @@
     // Set up available agents
     availableAgents = ['Alpha', 'Beta', 'Gamma'];
     isInitialized = true;
+    
+    // Subscribe to agent communications for the agents tab
+    const agentMessageInterval = setInterval(() => {
+      const recentAgentMessages = communicationManager.getPendingMessages('all').slice(-10);
+      recentAgentMessages.forEach(msg => {
+        // Only add agent-to-agent messages
+        if (msg.fromAgent.startsWith('agent_') && msg.toAgent?.startsWith('agent_') && 
+            !chatHistory.find(h => h.id === msg.id)) {
+          const agentMessage = {
+            id: msg.id,
+            type: 'agent' as const,
+            sender: msg.fromAgent.replace('agent_', '').charAt(0).toUpperCase() + msg.fromAgent.replace('agent_', '').slice(1),
+            message: msg.content,
+            timestamp: msg.timestamp,
+            target: msg.toAgent.replace('agent_', '').charAt(0).toUpperCase() + msg.toAgent.replace('agent_', '').slice(1)
+          };
+          chatHistory = [...chatHistory, agentMessage];
+          saveChatHistory();
+        }
+      });
+    }, 2000);
     
     // Add welcome message if chat history is empty
     if (chatHistory.length === 0) {
@@ -147,28 +168,33 @@
 
     // Send to AI agent for direct messages
     if (messageType === 'direct' && target) {
-      setTimeout(() => sendToAIAgent(target, currentMessage), 500 + Math.random() * 1000);
+      setTimeout(() => sendToAIAgent(target, currentMessage, false), 500 + Math.random() * 1000);
     } else if (messageType === 'global') {
       // For global messages, trigger responses from random agents after a delay
       const agents = ['Alpha', 'Beta', 'Gamma'];
-      const respondingAgents = agents.filter(() => Math.random() > 0.4); // 60% chance each agent responds
+      const respondingAgents = agents.filter(() => Math.random() > 0.3); // 70% chance each agent responds
+      
+      // Ensure at least one agent responds
+      if (respondingAgents.length === 0) {
+        respondingAgents.push(agents[Math.floor(Math.random() * agents.length)]);
+      }
       
       respondingAgents.forEach((agentName, index) => {
-        setTimeout(() => sendToAIAgent(agentName, currentMessage), 1000 + (index * 800) + Math.random() * 1200);
+        setTimeout(() => sendToAIAgent(agentName, currentMessage, true), 1000 + (index * 800) + Math.random() * 1200);
       });
     }
   }
 
-  async function sendToAIAgent(agentName: string, originalMessage: string) {
+  async function sendToAIAgent(agentName: string, originalMessage: string, isGlobalResponse: boolean = false) {
     try {
       // Show typing indicator
       const typingMessage = {
         id: generateMessageId(),
-        type: 'direct' as const,
+        type: isGlobalResponse ? 'global' as const : 'direct' as const,
         sender: agentName,
         message: '💭 Thinking...',
         timestamp: new Date(),
-        target: 'You'
+        target: isGlobalResponse ? undefined : 'You'
       };
 
       chatHistory = [...chatHistory, typingMessage];
@@ -184,11 +210,11 @@
       
       const response = {
         id: generateMessageId(),
-        type: 'direct' as const,
+        type: isGlobalResponse ? 'global' as const : 'direct' as const,
         sender: agentName,
         message: llmResponse,
         timestamp: new Date(),
-        target: 'You'
+        target: isGlobalResponse ? undefined : 'You'
       };
 
       chatHistory = [...chatHistory, response];
@@ -214,7 +240,7 @@
       // Add error message with helpful guidance
       const errorResponse = {
         id: generateMessageId(),
-        type: 'direct' as const,
+        type: isGlobalResponse ? 'global' as const : 'direct' as const,
         sender: agentName,
         message: `I'm having trouble connecting right now! 🔌\n\n` +
                 `To chat with me, please start a local LLM server:\n` +
@@ -222,7 +248,7 @@
                 `• **LM Studio**: Start the local server\n\n` +
                 `Click the ❓ button above for detailed setup instructions!`,
         timestamp: new Date(),
-        target: 'You'
+        target: isGlobalResponse ? undefined : 'You'
       };
 
       chatHistory = [...chatHistory, errorResponse];
@@ -255,10 +281,10 @@
 
   function getCharacterColor(sender: string): string {
     if (sender === 'System') return '#ffaa00';
-    if (sender === 'You') return '#00ffff';
-    if (sender === 'Alpha') return '#ff6b6b';
-    if (sender === 'Beta') return '#4ecdc4';
-    if (sender === 'Gamma') return '#45b7d1';
+    if (sender === 'You') return '#ffffff';
+    if (sender === 'Alpha') return '#00ff88';  // Match agent colors
+    if (sender === 'Beta') return '#ff8800';   // Match agent colors
+    if (sender === 'Gamma') return '#8800ff';  // Match agent colors
     return '#00ff88';
   }
 
@@ -266,7 +292,7 @@
     return sender === 'You';
   }
 
-  function changeTab(tab: 'global' | 'direct') {
+  function changeTab(tab: 'global' | 'direct' | 'agent') {
     activeTab = tab;
     if (tab === 'direct' && !selectedAgent) {
       selectedAgent = availableAgents[0] || 'Alpha';
@@ -295,6 +321,7 @@
         msg.target === 'You' || msg.sender === 'You'
       );
     }
+    if (activeTab === 'agent') return msg.type === 'agent';
     return true;
   });
 
@@ -303,6 +330,7 @@
   $: directCount = chatHistory.filter(msg => 
     msg.type === 'direct' && (msg.target === 'You' || msg.sender === 'You')
   ).length;
+  $: agentCount = chatHistory.filter(msg => msg.type === 'agent').length;
 </script>
 
 <!-- Chat Component for Header Layout -->
@@ -336,6 +364,12 @@
             on:click={() => changeTab('direct')}
           >
             AI Chat {#if directCount > 0}<span class="tab-count">({directCount})</span>{/if}
+          </button>
+          <button 
+            class="ui-tab {activeTab === 'agent' ? 'ui-tab-active' : ''}"
+            on:click={() => changeTab('agent')}
+          >
+            Agents {#if agentCount > 0}<span class="tab-count">({agentCount})</span>{/if}
           </button>
         </div>
         <div class="ui-flex">
@@ -398,8 +432,10 @@
           <div class="no-messages">
             {#if activeTab === 'global'}
               No global messages yet. Start a conversation!
-            {:else}
+            {:else if activeTab === 'direct'}
               No direct messages yet. Select an AI agent and start chatting!
+            {:else if activeTab === 'agent'}
+              No agent conversations yet. Agents will start chatting autonomously!
             {/if}
           </div>
         {:else}
@@ -409,9 +445,13 @@
             <div class="ui-message {isOwn ? 'ui-message-user' : 'ui-message-ai'} ui-animate-slide-in" style="--char-color: {charColor}">
               <div class="message-header ui-flex-between">
                 <span class="sender ui-text-sm" style="color: {charColor}">
-                  {message.sender}
-                  {#if message.type === 'direct' && message.target && !isOwn}
-                    → <span style="color: {getCharacterColor(message.target)}">{message.target}</span>
+                  {#if message.type === 'agent' && message.target}
+                    {message.sender} → <span style="color: {getCharacterColor(message.target)}">{message.target}</span>
+                  {:else}
+                    {message.sender}
+                    {#if message.type === 'direct' && message.target && !isOwn}
+                      → <span style="color: {getCharacterColor(message.target)}">{message.target}</span>
+                    {/if}
                   {/if}
                 </span>
                 <span class="time ui-text-sm">{formatTime(message.timestamp)}</span>
@@ -424,20 +464,22 @@
         {/if}
       </div>
 
-      <div class="chat-input-container ui-flex">
-        <input
-          bind:this={inputElement}
-          bind:value={chatInput}
-          on:keydown={handleKeydown}
-          placeholder={activeTab === 'direct' ? `Message ${selectedAgent}...` : "Type your message..."}
-          class="ui-input"
-          maxlength="500"
-          disabled={!isInitialized}
-        />
-        <button class="ui-btn ui-btn-primary" on:click={sendMessage} disabled={!chatInput.trim() || !isInitialized}>
-          ➤
-        </button>
-      </div>
+      {#if activeTab !== 'agent'}
+        <div class="chat-input-container ui-flex">
+          <input
+            bind:this={inputElement}
+            bind:value={chatInput}
+            on:keydown={handleKeydown}
+            placeholder={activeTab === 'direct' ? `Message ${selectedAgent}...` : "Type your message..."}
+            class="ui-input"
+            maxlength="500"
+            disabled={!isInitialized}
+          />
+          <button class="ui-btn ui-btn-primary" on:click={sendMessage} disabled={!chatInput.trim() || !isInitialized}>
+            ➤
+          </button>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
