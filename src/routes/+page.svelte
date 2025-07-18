@@ -5,6 +5,7 @@
   import GameChat from "$lib/components/GameChat.svelte";
   import CharacterPanel from "$lib/components/CharacterPanel.svelte";
   import { characterManager } from "$lib/services/CharacterManager";
+  import { llmService } from "$lib/services/LLMService";
 
   let name = $state("");
   let greetMsg = $state("");
@@ -14,21 +15,35 @@
     greetMsg = await invoke("greet", { name });
   }
 
-  onMount(() => {
+  onMount(async () => {
     // Initialize character data for the chat to work properly
     characterManager.initializeSampleData();
     console.log('Characters initialized:', characterManager.characters);
+    
+    // Initialize LLM service
+    await llmService.initialize();
+    console.log('LLM service initialized');
   });
 </script>
 
-<main class="container">
-  <h1 class="game-title">MULTI-AGENT SYSTEM</h1>
-  <p class="subtitle">Neural Network Visualization</p>
+<div class="app-layout">
+  <!-- Header Section -->
+  <header class="app-header">
+    <div class="header-content">
+      <h1 class="game-title">MULTI-AGENT SYSTEM</h1>
+      <p class="subtitle">Neural Network Visualization</p>
+    </div>
+    <div class="header-controls">
+      <GameChat />
+      <CharacterPanel />
+    </div>
+  </header>
 
-  <GamingCanvas />
-  <GameChat />
-  <CharacterPanel />
-</main>
+  <!-- Main Content Area -->
+  <main class="app-main">
+    <GamingCanvas />
+  </main>
+</div>
 
 <style>
   :root {
@@ -45,32 +60,64 @@
     -webkit-text-size-adjust: 100%;
   }
 
-  .container {
-    margin: 0;
-    padding-top: 5vh;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    text-align: center;
+  /* Main Layout Grid */
+  .app-layout {
+    display: grid;
+    grid-template-rows: auto 1fr;
     min-height: 100vh;
+    overflow: hidden;
   }
 
-  .game-title {
-    font-size: 3.5rem;
-    font-weight: bold;
+  /* Header Layout */
+  .app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+    position: relative;
+    z-index: 1000;
+  }
+
+  .header-content {
+    flex: 1;
     text-align: center;
+  }
+
+  .header-controls {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    position: relative;
+  }
+
+  /* Main Content Area */
+  .app-main {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* Typography */
+  .game-title {
+    font-size: 2.5rem;
+    font-weight: bold;
     color: #00ff88;
     text-shadow: 0 0 20px #00ff88, 0 0 40px #00ff88;
-    margin-bottom: 0.5rem;
+    margin: 0;
     letter-spacing: 0.2em;
     animation: glow 2s ease-in-out infinite alternate;
   }
 
   .subtitle {
-    font-size: 1.2rem;
+    font-size: 1rem;
     color: #00ffff;
     text-shadow: 0 0 10px #00ffff;
-    margin-bottom: 2rem;
+    margin: 0;
     opacity: 0.8;
   }
 
@@ -80,6 +127,23 @@
     }
     to {
       text-shadow: 0 0 30px #00ff88, 0 0 60px #00ff88, 0 0 80px #00ff88;
+    }
+  }
+
+  /* Responsive Design */
+  @media (max-width: 768px) {
+    .app-header {
+      flex-direction: column;
+      gap: 15px;
+      padding: 15px;
+    }
+    
+    .header-controls {
+      justify-content: center;
+    }
+    
+    .game-title {
+      font-size: 2rem;
     }
   }
 

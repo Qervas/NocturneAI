@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from "svelte";
   import { characterManager, characters, npcs, users, activeCharacter } from "../services/CharacterManager";
+  import { llmService } from "../services/LLMService";
   import type { Character, NPCAgent, UserPlayer } from "../types/Character";
 
   export let isVisible = false;
@@ -8,7 +9,7 @@
   let chatInput = "";
   let chatHistory: Array<{
     id: string;
-    type: 'global' | 'team' | 'direct';
+    type: 'global' | 'direct';
     sender: string;
     message: string;
     timestamp: Date;
@@ -16,12 +17,10 @@
   }> = [];
   let inputElement: HTMLInputElement;
   let chatContainer: HTMLDivElement;
-  let mentionSuggestions: Character[] = [];
-  let showMentions = false;
-  let mentionIndex = -1;
-  let activeTab: 'global' | 'team' | 'direct' = 'global';
-  let directTarget = "";
-  let unsubscribe: (() => void)[] = [];
+  let activeTab: 'global' | 'direct' = 'global';
+  let selectedAgent = "";
+  let availableAgents: string[] = [];
+  let isInitialized = false;
 
   // Load chat history from localStorage
   function loadChatHistory() {
@@ -53,17 +52,25 @@
     return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  onMount(() => {
+  onMount(async () => {
     loadChatHistory();
     
-    // Add some initial system messages if chat history is empty
+    // Initialize character manager and LLM service
+    characterManager.initializeSampleData();
+    await llmService.initialize();
+    
+    // Set up available agents
+    availableAgents = ['Alpha', 'Beta', 'Gamma'];
+    isInitialized = true;
+    
+    // Add welcome message if chat history is empty
     if (chatHistory.length === 0) {
       chatHistory = [
         {
           id: generateMessageId(),
           type: 'global',
           sender: 'System',
-          message: 'Welcome to Multi-Agent System! Use @ to mention characters.',
+          message: 'Welcome to Multi-Agent System! Switch to Direct tab to chat with AI agents.',
           timestamp: new Date()
         }
       ];
@@ -73,20 +80,6 @@
     if (isVisible) {
       setTimeout(() => inputElement?.focus(), 100);
     }
-
-    // Subscribe to character changes to update mentions
-    const unsubCharacters = characters.subscribe(() => {
-      // Update mention suggestions if they're showing
-      if (showMentions) {
-        updateMentionSuggestions();
-      }
-    });
-
-    unsubscribe.push(unsubCharacters);
-  });
-
-  onDestroy(() => {
-    unsubscribe.forEach(unsub => unsub());
   });
 
   function handleKeydown(event: KeyboardEvent) {
@@ -94,173 +87,111 @@
       event.preventDefault();
       sendMessage();
     } else if (event.key === 'Escape') {
-      if (showMentions) {
-        hideMentionSuggestions();
-      } else {
-        isVisible = false;
-      }
-    } else if (event.key === 'ArrowDown' && showMentions) {
-      event.preventDefault();
-      mentionIndex = Math.min(mentionIndex + 1, mentionSuggestions.length - 1);
-    } else if (event.key === 'ArrowUp' && showMentions) {
-      event.preventDefault();
-      mentionIndex = Math.max(mentionIndex - 1, 0);
-    } else if (event.key === 'Enter' && showMentions) {
-      event.preventDefault();
-      selectMention();
-    } else if (event.key === 'Tab' && showMentions) {
-      event.preventDefault();
-      selectMention();
-    }
-  }
-
-  function handleInput() {
-    const cursorPos = inputElement.selectionStart || 0;
-    const textBeforeCursor = chatInput.substring(0, cursorPos);
-    const atIndex = textBeforeCursor.lastIndexOf('@');
-    
-    if (atIndex !== -1 && atIndex === textBeforeCursor.length - 1) {
-      // User just typed @
-      showMentionSuggestions();
-    } else if (atIndex !== -1) {
-      // User is typing after @
-      const searchTerm = textBeforeCursor.substring(atIndex + 1);
-      if (searchTerm.length === 0 || /^[A-Za-z_\s]*$/.test(searchTerm)) {
-        showMentionSuggestions(searchTerm);
-      } else {
-        hideMentionSuggestions();
-      }
-    } else {
-      hideMentionSuggestions();
-    }
-  }
-
-  function updateMentionSuggestions(searchTerm: string = "") {
-    const allCharacters = [...$npcs, ...$users].filter(char => char.isActive);
-    mentionSuggestions = searchTerm 
-      ? allCharacters.filter(char => 
-          char.name.toLowerCase().includes(searchTerm.toLowerCase())
-        )
-      : allCharacters;
-  }
-
-  function showMentionSuggestions(searchTerm: string = "") {
-    updateMentionSuggestions(searchTerm);
-    showMentions = mentionSuggestions.length > 0;
-    mentionIndex = 0;
-  }
-
-  function hideMentionSuggestions() {
-    showMentions = false;
-    mentionSuggestions = [];
-    mentionIndex = -1;
-  }
-
-  function selectMention() {
-    if (mentionSuggestions[mentionIndex]) {
-      const selected = mentionSuggestions[mentionIndex];
-      const cursorPos = inputElement.selectionStart || 0;
-      const textBeforeCursor = chatInput.substring(0, cursorPos);
-      const atIndex = textBeforeCursor.lastIndexOf('@');
-      
-      if (atIndex !== -1) {
-        const beforeAt = chatInput.substring(0, atIndex);
-        const afterCursor = chatInput.substring(cursorPos);
-        chatInput = `${beforeAt}@${selected.name} ${afterCursor}`;
-        
-        // Set cursor position after the mention
-        setTimeout(() => {
-          const newPos = atIndex + selected.name.length + 2;
-          inputElement.setSelectionRange(newPos, newPos);
-        }, 0);
-      }
-      
-      hideMentionSuggestions();
-      inputElement?.focus();
+      isVisible = false;
     }
   }
 
   async function sendMessage() {
     if (!chatInput.trim()) return;
 
-    let messageType: 'global' | 'team' | 'direct' = activeTab;
+    const messageType = activeTab;
     let target = '';
-    let finalMessage = chatInput.trim();
-
-    // Check for @ mentions
-    const mentionMatch = finalMessage.match(/@([A-Za-z_]+(?:\s[A-Za-z]+)*)/);
-    if (mentionMatch) {
-      const mentionedName = mentionMatch[1];
-      const allCharacters = [...$npcs, ...$users];
-      const mentionedChar = allCharacters.find(char => char.name === mentionedName);
-      
-      if (mentionedChar) {
-        messageType = 'direct';
-        target = mentionedChar.name;
-        directTarget = mentionedChar.name;
-        activeTab = 'direct'; // Switch to direct tab
-      }
-    } else if (activeTab === 'direct' && directTarget) {
-      target = directTarget;
+    
+    // For direct messages, use selected agent
+    if (activeTab === 'direct' && selectedAgent) {
+      target = selectedAgent;
     }
 
     const message = {
       id: generateMessageId(),
       type: messageType,
-      sender: $activeCharacter?.name || 'You',
-      message: finalMessage,
+      sender: 'You',
+      message: chatInput.trim(),
       timestamp: new Date(),
       target: target || undefined
     };
 
     chatHistory = [...chatHistory, message];
+    const currentMessage = chatInput.trim();
     chatInput = "";
     saveChatHistory();
     
     // Auto-scroll to bottom
     await tick();
-    if (chatContainer) {
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-    }
+    scrollToBottom();
 
-    // Simulate NPC responses for direct messages
+    // Send to AI agent for direct messages
     if (messageType === 'direct' && target) {
-      setTimeout(() => simulateNPCResponse(target, finalMessage), 1000 + Math.random() * 2000);
+      setTimeout(() => sendToAIAgent(target, currentMessage), 500 + Math.random() * 1000);
     }
   }
 
-  function simulateNPCResponse(npcName: string, originalMessage: string) {
-    const npc = $npcs.find(n => n.name === npcName);
-    if (!npc) return;
+  async function sendToAIAgent(agentName: string, originalMessage: string) {
+    try {
+      // Show typing indicator
+      const typingMessage = {
+        id: generateMessageId(),
+        type: 'direct' as const,
+        sender: agentName,
+        message: '💭 Thinking...',
+        timestamp: new Date(),
+        target: 'You'
+      };
 
-    const responses = [
-      "Interesting point! Let me think about that.",
-      "I understand your perspective. Here's what I think...",
-      "That's a great question! My analysis suggests...",
-      "Thanks for reaching out. Based on my specialization in " + npc.specialization + "...",
-      "I appreciate the message. In my experience...",
-      "Good to hear from you! Regarding your message..."
-    ];
+      chatHistory = [...chatHistory, typingMessage];
+      saveChatHistory();
+      scrollToBottom();
 
-    const response = {
-      id: generateMessageId(),
-      type: 'direct' as const,
-      sender: npc.name,
-      message: responses[Math.floor(Math.random() * responses.length)],
-      timestamp: new Date(),
-      target: $activeCharacter?.name || 'You'
-    };
+      // Get response from LLM service
+      const agentId = agentName.toLowerCase();
+      const llmResponse = await llmService.sendMessageToAgent(agentId, originalMessage, 'You');
 
-    chatHistory = [...chatHistory, response];
-    saveChatHistory();
-    
-    // Auto-scroll to bottom
+      // Remove typing indicator and add real response
+      chatHistory = chatHistory.filter(msg => msg.id !== typingMessage.id);
+      
+      const response = {
+        id: generateMessageId(),
+        type: 'direct' as const,
+        sender: agentName,
+        message: llmResponse,
+        timestamp: new Date(),
+        target: 'You'
+      };
+
+      chatHistory = [...chatHistory, response];
+      saveChatHistory();
+      scrollToBottom();
+
+    } catch (error) {
+      console.error('Failed to get AI response:', error);
+      
+      // Remove typing indicator
+      chatHistory = chatHistory.filter(msg => !msg.message.includes('💭 Thinking...'));
+      
+      // Add error message
+      const errorResponse = {
+        id: generateMessageId(),
+        type: 'direct' as const,
+        sender: agentName,
+        message: `Sorry, I'm having trouble right now. Please make sure your local LLM server is running!`,
+        timestamp: new Date(),
+        target: 'You'
+      };
+
+      chatHistory = [...chatHistory, errorResponse];
+      saveChatHistory();
+      scrollToBottom();
+    }
+  }
+
+  function scrollToBottom() {
     setTimeout(() => {
       if (chatContainer) {
         chatContainer.scrollTop = chatContainer.scrollHeight;
       }
     }, 100);
   }
+
   function formatTime(date: Date): string {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
@@ -274,21 +205,21 @@
 
   function getCharacterColor(sender: string): string {
     if (sender === 'System') return '#ffaa00';
-    if (sender === 'You' || sender === $activeCharacter?.name) return '#00ffff';
-    
-    const allCharacters = [...$npcs, ...$users];
-    const character = allCharacters.find(char => char.name === sender);
-    return character?.color || '#00ff88';
+    if (sender === 'You') return '#00ffff';
+    if (sender === 'Alpha') return '#ff6b6b';
+    if (sender === 'Beta') return '#4ecdc4';
+    if (sender === 'Gamma') return '#45b7d1';
+    return '#00ff88';
   }
 
   function isOwnMessage(sender: string): boolean {
-    return sender === 'You' || sender === $activeCharacter?.name;
+    return sender === 'You';
   }
 
-  function changeTab(tab: 'global' | 'team' | 'direct') {
+  function changeTab(tab: 'global' | 'direct') {
     activeTab = tab;
-    if (tab !== 'direct') {
-      directTarget = "";
+    if (tab === 'direct' && !selectedAgent) {
+      selectedAgent = availableAgents[0] || 'Alpha';
     }
   }
 
@@ -300,307 +231,163 @@
   // Filter messages based on active tab
   $: filteredMessages = chatHistory.filter(msg => {
     if (activeTab === 'global') return msg.type === 'global';
-    if (activeTab === 'team') return msg.type === 'team';
     if (activeTab === 'direct') {
       return msg.type === 'direct' && (
-        msg.target === ($activeCharacter?.name || 'You') || 
-        msg.sender === ($activeCharacter?.name || 'You')
+        msg.target === 'You' || msg.sender === 'You'
       );
     }
     return true;
   });
 
-  // Get unread message counts for tabs
+  // Get message counts for tabs
   $: globalCount = chatHistory.filter(msg => msg.type === 'global').length;
-  $: teamCount = chatHistory.filter(msg => msg.type === 'team').length;
   $: directCount = chatHistory.filter(msg => 
-    msg.type === 'direct' && (
-      msg.target === ($activeCharacter?.name || 'You') || 
-      msg.sender === ($activeCharacter?.name || 'You')
-    )
+    msg.type === 'direct' && (msg.target === 'You' || msg.sender === 'You')
   ).length;
 </script>
 
-<!-- Chat Toggle Button -->
-<button 
-  class="chat-toggle" 
-  on:click={toggleChat}
-  class:active={isVisible}
->
-  💬
-</button>
-
-<!-- Chat Interface -->
-{#if isVisible}
-  <div class="chat-overlay">
-    <div class="chat-header">
-      <div class="chat-tabs">
-        <button 
-          class="tab-btn {activeTab === 'global' ? 'active' : ''}"
-          on:click={() => changeTab('global')}
-        >
-          Global {#if globalCount > 0}<span class="tab-count">({globalCount})</span>{/if}
-        </button>
-        <button 
-          class="tab-btn {activeTab === 'team' ? 'active' : ''}"
-          on:click={() => changeTab('team')}
-        >
-          Team {#if teamCount > 0}<span class="tab-count">({teamCount})</span>{/if}
-        </button>
-        <button 
-          class="tab-btn {activeTab === 'direct' ? 'active' : ''}"
-          on:click={() => changeTab('direct')}
-        >
-          Direct {#if directCount > 0}<span class="tab-count">({directCount})</span>{/if}
-        </button>
-      </div>
-      <div class="chat-controls">
-        <button class="control-btn" on:click={clearChat} title="Clear chat">
-          🗑️
-        </button>
-        <button class="chat-close-btn" on:click={() => isVisible = false}>
-          ✕
-        </button>
-      </div>
-    </div>
-
-    {#if activeTab === 'direct' && directTarget}
-      <div class="direct-target-info">
-        <span>Chatting with: <strong style="color: {getCharacterColor(directTarget)}">{directTarget}</strong></span>
-        <button class="clear-target-btn" on:click={() => directTarget = ""}>×</button>
-      </div>
+<!-- Chat Component for Header Layout -->
+<div class="chat-widget">
+  <!-- Chat Toggle Button -->
+  <button 
+    class="ui-btn ui-btn-primary ui-btn-round" 
+    on:click={toggleChat}
+    class:ui-glow-primary={isVisible}
+    title="Toggle Chat"
+  >
+    💬
+    {#if !isInitialized}
+      <span class="loading-dot ui-animate-pulse"></span>
     {/if}
+  </button>
 
-    <div class="chat-messages" bind:this={chatContainer}>
-      {#if filteredMessages.length === 0}
-        <div class="no-messages">
-          {#if activeTab === 'global'}
-            No global messages yet. Start a conversation!
-          {:else if activeTab === 'team'}
-            No team messages yet. Coordinate with your team!
-          {:else}
-            No direct messages yet. Use @mention to start a private conversation!
-          {/if}
-        </div>
-      {:else}
-        {#each filteredMessages as message (message.id)}
-          {@const isOwn = isOwnMessage(message.sender)}
-          {@const charColor = getCharacterColor(message.sender)}
-          <div class="message {isOwn ? 'own' : 'other'}" style="--char-color: {charColor}">
-            <div class="message-header">
-              <span class="sender" style="color: {charColor}">
-                {message.sender}
-                {#if message.type === 'direct' && message.target}
-                  → <span style="color: {getCharacterColor(message.target)}">{message.target}</span>
-                {/if}
-              </span>
-              <span class="time">{formatTime(message.timestamp)}</span>
-            </div>
-            <div class="message-content">
-              {message.message}
-            </div>
-          </div>
-        {/each}
-      {/if}
-    </div>
-
-    <div class="chat-input-container">
-      <input
-        bind:this={inputElement}
-        bind:value={chatInput}
-        on:keydown={handleKeydown}
-        on:input={handleInput}
-        placeholder={activeTab === 'direct' ? `Message ${directTarget || 'someone'}...` : "Type your message..."}
-        class="chat-input"
-        maxlength="200"
-      />
-      <button class="send-btn" on:click={sendMessage} disabled={!chatInput.trim()}>
-        ➤
-      </button>
-    </div>
-
-    <!-- Mention Suggestions -->
-    {#if showMentions && mentionSuggestions.length > 0}
-      <div class="mention-suggestions">
-        {#each mentionSuggestions as char, index}
-          <button
-            type="button"
-            class="mention-item {index === mentionIndex ? 'selected' : ''}"
-            on:click={() => {
-              mentionIndex = index;
-              selectMention();
-            }}
+  <!-- Chat Interface -->
+  {#if isVisible}
+    <div class="ui-panel chat-panel ui-animate-fade-in">
+      <div class="ui-panel-header">
+        <div class="ui-tabs">
+          <button 
+            class="ui-tab {activeTab === 'global' ? 'ui-tab-active' : ''}"
+            on:click={() => changeTab('global')}
           >
-            <span class="mention-icon" style="color: {char.color}">
-              {char.type === 'npc' ? '🤖' : '👤'}
-            </span>
-            <span class="mention-name">{char.name}</span>
-            <span class="mention-role">{char.role}</span>
+            Global {#if globalCount > 0}<span class="tab-count">({globalCount})</span>{/if}
           </button>
-        {/each}
+          <button 
+            class="ui-tab {activeTab === 'direct' ? 'ui-tab-active' : ''}"
+            on:click={() => changeTab('direct')}
+          >
+            AI Chat {#if directCount > 0}<span class="tab-count">({directCount})</span>{/if}
+          </button>
+        </div>
+        <div class="ui-flex">
+          <button class="ui-btn ui-btn-sm" on:click={clearChat} title="Clear chat">
+            🗑️
+          </button>
+          <button class="ui-btn ui-btn-sm" on:click={() => isVisible = false}>
+            ✕
+          </button>
+        </div>
       </div>
-    {/if}
-  </div>
-{/if}
 
-<style>
-  .chat-toggle {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    background: rgba(0, 255, 136, 0.2);
-    border: 2px solid #00ff88;
-    color: #00ff88;
-    font-size: 20px;
-    cursor: pointer;
+      {#if activeTab === 'direct'}
+        <div class="agent-selector">
+          <label for="agent-select" class="ui-text-sm">Chat with:</label>
+          <select id="agent-select" bind:value={selectedAgent} class="ui-select">
+            {#each availableAgents as agent}
+              <option value={agent}>{agent}</option>
+            {/each}
+          </select>
+        </div>
+      {/if}
+
+      <div class="chat-messages" bind:this={chatContainer}>
+        {#if filteredMessages.length === 0}
+          <div class="no-messages">
+            {#if activeTab === 'global'}
+              No global messages yet. Start a conversation!
+            {:else}
+              No direct messages yet. Select an AI agent and start chatting!
+            {/if}
+          </div>
+        {:else}
+          {#each filteredMessages as message (message.id)}
+            {@const isOwn = isOwnMessage(message.sender)}
+            {@const charColor = getCharacterColor(message.sender)}
+            <div class="ui-message {isOwn ? 'ui-message-user' : 'ui-message-ai'} ui-animate-slide-in" style="--char-color: {charColor}">
+              <div class="message-header ui-flex-between">
+                <span class="sender ui-text-sm" style="color: {charColor}">
+                  {message.sender}
+                  {#if message.type === 'direct' && message.target && !isOwn}
+                    → <span style="color: {getCharacterColor(message.target)}">{message.target}</span>
+                  {/if}
+                </span>
+                <span class="time ui-text-sm">{formatTime(message.timestamp)}</span>
+              </div>
+              <div class="message-content {message.message.includes('💭 Thinking...') ? 'thinking-indicator ui-animate-pulse' : ''}">
+                {message.message}
+              </div>
+            </div>
+          {/each}
+        {/if}
+      </div>
+
+      <div class="chat-input-container ui-flex">
+        <input
+          bind:this={inputElement}
+          bind:value={chatInput}
+          on:keydown={handleKeydown}
+          placeholder={activeTab === 'direct' ? `Message ${selectedAgent}...` : "Type your message..."}
+          class="ui-input"
+          maxlength="500"
+          disabled={!isInitialized}
+        />
+        <button class="ui-btn ui-btn-primary" on:click={sendMessage} disabled={!chatInput.trim() || !isInitialized}>
+          ➤
+        </button>
+      </div>
+    </div>
+  {/if}
+</div>
+
+<style lang="css">
+  .chat-widget {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .chat-panel {
+    position: absolute;
+    top: 60px;
+    right: 0;
+    width: 380px;
+    max-height: 500px;
     z-index: 1000;
-    transition: all 0.3s ease;
-    backdrop-filter: blur(10px);
   }
 
-  .chat-toggle:hover {
-    background: rgba(0, 255, 136, 0.3);
-    transform: scale(1.1);
-  }
-
-  .chat-toggle.active {
-    background: rgba(0, 255, 136, 0.4);
-    box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
-  }
-
-  .chat-overlay {
-    position: fixed;
-    top: 80px;
-    right: 20px;
-    width: 350px;
-    height: 500px;
-    background: rgba(0, 0, 0, 0.8);
-    border: 2px solid #00ff88;
-    border-radius: 12px;
-    backdrop-filter: blur(15px);
-    z-index: 999;
+  .agent-selector {
     display: flex;
-    flex-direction: column;
-    box-shadow: 0 0 30px rgba(0, 255, 136, 0.3);
-  }
-
-  .chat-header {
-    display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
-    border-bottom: 1px solid rgba(0, 255, 136, 0.3);
-    background: rgba(0, 0, 0, 0.5);
+    gap: var(--space-sm);
+    padding: var(--space-sm);
+    background: var(--color-surface-subtle);
+    border-bottom: 1px solid var(--color-border);
   }
 
-  .chat-tabs {
-    display: flex;
-    gap: 6px;
-    flex: 1;
-  }
-
-  .chat-controls {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-
-  .tab-btn {
-    background: none;
-    border: 1px solid #00ff88;
-    color: #00ff88;
-    padding: 4px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 11px;
-    transition: all 0.2s ease;
+  .agent-selector label {
+    font-size: var(--font-size-sm);
+    color: var(--color-accent);
     white-space: nowrap;
-  }
-
-  .tab-count {
-    font-size: 9px;
-    opacity: 0.8;
-  }
-
-  .tab-btn.active {
-    background: rgba(0, 255, 136, 0.2);
-  }
-
-  .tab-btn:hover {
-    background: rgba(0, 255, 136, 0.1);
-  }
-
-  .control-btn {
-    background: none;
-    border: 1px solid #ff8800;
-    color: #ff8800;
-    padding: 4px 6px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 10px;
-    transition: all 0.2s ease;
-  }
-
-  .control-btn:hover {
-    background: rgba(255, 136, 0, 0.1);
-  }
-
-  .chat-close-btn {
-    background: none;
-    border: 1px solid #00ff88;
-    color: #00ff88;
-    padding: 4px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-  }
-
-  .direct-target-info {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 16px;
-    background: rgba(0, 255, 136, 0.1);
-    border-bottom: 1px solid rgba(0, 255, 136, 0.3);
-    font-size: 12px;
-    color: #ffffff;
-  }
-
-  .clear-target-btn {
-    background: none;
-    border: none;
-    color: #ff8800;
-    cursor: pointer;
-    font-size: 16px;
-    padding: 0 4px;
-  }
-
-  .clear-target-btn:hover {
-    color: #ffaa00;
-  }
-
-  .no-messages {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 13px;
-    text-align: center;
-    padding: 20px;
-    font-style: italic;
+    font-weight: 500;
   }
 
   .chat-messages {
     flex: 1;
     overflow-y: auto;
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    padding: var(--space-sm);
+    max-height: 320px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-accent) transparent;
   }
 
   .chat-messages::-webkit-scrollbar {
@@ -608,148 +395,75 @@
   }
 
   .chat-messages::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 3px;
+    background: transparent;
   }
 
   .chat-messages::-webkit-scrollbar-thumb {
-    background: rgba(0, 255, 136, 0.5);
-    border-radius: 3px;
-  }
-
-  .message {
-    padding: 8px 12px;
-    border-radius: 8px;
-    max-width: 80%;
-    --char-color: #00ff88;
-  }
-
-  .message.own {
-    align-self: flex-end;
-    background: rgba(0, 255, 136, 0.2);
-    border: 1px solid rgba(0, 255, 136, 0.4);
-  }
-
-  .message.other {
-    align-self: flex-start;
-    background: rgba(0, 255, 255, 0.1);
-    border: 1px solid rgba(0, 255, 255, 0.3);
+    background: var(--color-accent);
+    border-radius: var(--radius-full);
   }
 
   .message-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 4px;
-    font-size: 11px;
+    margin-bottom: var(--space-xs);
   }
 
   .sender {
-    font-weight: bold;
+    font-weight: 600;
   }
 
   .time {
-    color: rgba(255, 255, 255, 0.6);
+    opacity: 0.7;
   }
 
   .message-content {
-    color: #ffffff;
-    font-size: 13px;
     line-height: 1.4;
   }
 
-  .chat-input-container {
-    display: flex;
-    padding: 12px;
-    gap: 8px;
-    border-top: 1px solid rgba(0, 255, 136, 0.3);
-    background: rgba(0, 0, 0, 0.5);
+  .thinking-indicator {
+    font-style: italic;
+    opacity: 0.8;
   }
 
-  .chat-input {
-    flex: 1;
-    background: rgba(0, 0, 0, 0.7);
-    border: 1px solid #00ff88;
-    border-radius: 6px;
-    padding: 8px 12px;
-    color: #ffffff;
-    font-size: 13px;
-    outline: none;
-  }
-
-  .chat-input::placeholder {
-    color: rgba(255, 255, 255, 0.5);
-  }
-
-  .chat-input:focus {
-    border-color: #00ffff;
-    box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
-  }
-
-  .send-btn {
-    background: rgba(0, 255, 136, 0.2);
-    border: 1px solid #00ff88;
-    color: #00ff88;
-    padding: 8px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.2s ease;
-  }
-
-  .send-btn:hover:not(:disabled) {
-    background: rgba(0, 255, 136, 0.3);
-  }
-
-  .send-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .mention-suggestions {
+  .loading-dot {
     position: absolute;
-    bottom: 60px;
-    left: 12px;
-    right: 12px;
-    background: rgba(0, 0, 0, 0.95);
-    border: 1px solid #00ff88;
-    border-radius: 6px;
-    max-height: 150px;
-    overflow-y: auto;
-    z-index: 1001;
-    box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+    top: 3px;
+    right: 3px;
+    width: 6px;
+    height: 6px;
+    background: var(--color-warning);
+    border-radius: var(--radius-full);
   }
 
-  .mention-item {
+  .tab-count {
+    opacity: 0.8;
+    font-size: 0.8em;
+  }
+
+  .chat-input-container {
+    margin-top: var(--space-sm);
+    gap: var(--space-sm);
+  }
+
+  .no-messages {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    padding: 8px 12px;
-    cursor: pointer;
-    transition: background 0.2s ease;
-    background: none;
-    border: none;
-    width: 100%;
-    text-align: left;
+    justify-content: center;
+    height: 200px;
+    color: var(--color-text-secondary);
+    text-align: center;
+    font-style: italic;
   }
 
-  .mention-item:hover,
-  .mention-item.selected {
-    background: rgba(0, 255, 136, 0.2);
+  /* Responsive Adjustments */
+  @media (max-width: 768px) {
+    .chat-panel {
+      width: 300px;
+      max-height: 400px;
+    }
+    
+    .chat-messages {
+      max-height: 250px;
+    }
   }
-
-  .mention-icon {
-    margin-right: 8px;
-    font-size: 16px;
-  }
-
-  .mention-name {
-    color: #ffffff;
-    font-weight: bold;
-    margin-right: 8px;
-  }
-
-  .mention-role {
-    color: rgba(255, 255, 255, 0.6);
-    font-size: 11px;
-  }
-</style> 
+</style>
