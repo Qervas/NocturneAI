@@ -11,7 +11,7 @@ struct LLMRequest {
     max_tokens: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct ChatMessage {
     role: String,
     content: String,
@@ -75,7 +75,7 @@ async fn send_message_to_agent(
     ];
     
     // Add recent conversation history (last 10 messages)
-    let recent_messages: Vec<_> = conversation.iter().rev().take(10).rev().cloned().collect();
+    let recent_messages: Vec<_> = conversation.iter().rev().take(10).rev().map(|msg| msg.clone()).collect();
     messages.extend(recent_messages);
     
     // Send to local LLM
@@ -96,7 +96,7 @@ fn get_agent_configs() -> Vec<AgentConfig> {
         AgentConfig {
             id: "agent_alpha".to_string(),
             name: "Agent Alpha".to_string(),
-            model: "llama3.2".to_string(), // Default Ollama model
+            model: "gemma3:latest".to_string(), // Use available Gemma model
             personality: "analytical".to_string(),
             specialization: "data_analysis".to_string(),
             system_prompt: "You are Agent Alpha, an analytical AI assistant specializing in data analysis. You are logical, precise, and always provide well-reasoned responses. You work as part of a multi-agent system and enjoy collaborating with other agents and users. Keep responses concise but informative.".to_string(),
@@ -104,7 +104,7 @@ fn get_agent_configs() -> Vec<AgentConfig> {
         AgentConfig {
             id: "agent_beta".to_string(),
             name: "Agent Beta".to_string(),
-            model: "llama3.2".to_string(),
+            model: "gemma3:latest".to_string(),
             personality: "creative".to_string(),
             specialization: "content_generation".to_string(),
             system_prompt: "You are Agent Beta, a creative AI assistant specializing in content generation. You are imaginative, innovative, and love brainstorming new ideas. You work in a multi-agent environment and enjoy bouncing ideas off other agents and users. Keep responses engaging and creative but professional.".to_string(),
@@ -112,7 +112,7 @@ fn get_agent_configs() -> Vec<AgentConfig> {
         AgentConfig {
             id: "agent_gamma".to_string(),
             name: "Agent Gamma".to_string(),
-            model: "llama3.2".to_string(),
+            model: "gemma3:latest".to_string(),
             personality: "logical".to_string(),
             specialization: "problem_solving".to_string(),
             system_prompt: "You are Agent Gamma, a logical AI assistant specializing in problem-solving. You are methodical, systematic, and excel at breaking down complex problems into manageable steps. You collaborate effectively in a multi-agent system. Keep responses structured and solution-focused.".to_string(),
@@ -143,14 +143,18 @@ async fn call_local_llm(model: &str, messages: Vec<ChatMessage>) -> Result<Strin
     match client.post(ollama_url).json(&ollama_request).send().await {
         Ok(response) => {
             if response.status().is_success() {
-                match response.json::<LLMResponse>().await {
-                    Ok(llm_response) => return Ok(llm_response.message.content),
-                    Err(_) => {
-                        // Try to parse as text if JSON parsing fails
-                        if let Ok(text) = response.text().await {
-                            return Ok(text);
-                        }
-                    }
+                // Try JSON parsing first
+                let response_text = match response.text().await {
+                    Ok(text) => text,
+                    Err(_) => return Err("Failed to read response text".to_string())
+                };
+                
+                // Try to parse as JSON
+                if let Ok(llm_response) = serde_json::from_str::<LLMResponse>(&response_text) {
+                    return Ok(llm_response.message.content);
+                } else {
+                    // Return raw text if JSON parsing fails
+                    return Ok(response_text);
                 }
             }
         }
@@ -203,7 +207,7 @@ fn clear_agent_history(agent_id: String) -> Result<(), String> {
 #[tauri::command]
 fn get_agent_history(agent_id: String) -> Vec<ChatMessage> {
     let history = get_conversation_history();
-    history.get(&agent_id).cloned().unwrap_or_default()
+    history.get(&agent_id).map(|v| v.clone()).unwrap_or_default()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

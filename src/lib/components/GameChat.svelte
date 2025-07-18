@@ -21,6 +21,8 @@
   let selectedAgent = "";
   let availableAgents: string[] = [];
   let isInitialized = false;
+  let llmStatus = "🔴 Checking...";
+  let showConnectionHelp = false;
 
   // Load chat history from localStorage
   function loadChatHistory() {
@@ -59,18 +61,25 @@
     characterManager.initializeSampleData();
     await llmService.initialize();
     
+    // Check LLM connectivity status
+    llmStatus = await llmService.getConnectionStatus();
+    
     // Set up available agents
     availableAgents = ['Alpha', 'Beta', 'Gamma'];
     isInitialized = true;
     
     // Add welcome message if chat history is empty
     if (chatHistory.length === 0) {
+      const welcomeMessage = llmStatus.includes('🟢') 
+        ? 'Welcome to Multi-Agent System! The AI agents are ready to chat. Switch to Direct tab to start conversations.'
+        : 'Welcome to Multi-Agent System! For real AI conversations, please start a local LLM server (Ollama or LM Studio). Check the connection status in the Direct tab.';
+        
       chatHistory = [
         {
           id: generateMessageId(),
           type: 'global',
           sender: 'System',
-          message: 'Welcome to Multi-Agent System! Switch to Direct tab to chat with AI agents.',
+          message: welcomeMessage,
           timestamp: new Date()
         }
       ];
@@ -162,18 +171,27 @@
       saveChatHistory();
       scrollToBottom();
 
+      // Refresh status if we got an offline message
+      if (llmResponse.includes('offline') || llmResponse.includes('LLM server')) {
+        await refreshLLMStatus();
+      }
+
     } catch (error) {
       console.error('Failed to get AI response:', error);
       
       // Remove typing indicator
       chatHistory = chatHistory.filter(msg => !msg.message.includes('💭 Thinking...'));
       
-      // Add error message
+      // Add error message with helpful guidance
       const errorResponse = {
         id: generateMessageId(),
         type: 'direct' as const,
         sender: agentName,
-        message: `Sorry, I'm having trouble right now. Please make sure your local LLM server is running!`,
+        message: `I'm having trouble connecting right now! 🔌\n\n` +
+                `To chat with me, please start a local LLM server:\n` +
+                `• **Ollama**: Run 'ollama run llama3.2'\n` +
+                `• **LM Studio**: Start the local server\n\n` +
+                `Click the ❓ button above for detailed setup instructions!`,
         timestamp: new Date(),
         target: 'You'
       };
@@ -181,6 +199,9 @@
       chatHistory = [...chatHistory, errorResponse];
       saveChatHistory();
       scrollToBottom();
+      
+      // Refresh status to show current state
+      await refreshLLMStatus();
     }
   }
 
@@ -226,6 +247,15 @@
   function clearChat() {
     chatHistory = [];
     saveChatHistory();
+  }
+
+  async function refreshLLMStatus() {
+    llmStatus = "🔄 Checking...";
+    llmStatus = await llmService.getConnectionStatus();
+  }
+
+  function toggleConnectionHelp() {
+    showConnectionHelp = !showConnectionHelp;
   }
 
   // Filter messages based on active tab
@@ -290,6 +320,40 @@
       </div>
 
       {#if activeTab === 'direct'}
+        <!-- LLM Status Bar -->
+        <div class="llm-status-bar ui-flex ui-justify-between ui-items-center">
+          <div class="ui-flex ui-items-center ui-gap-sm">
+            <span class="status-indicator" title="LLM Connection Status">{llmStatus}</span>
+            <button class="ui-btn ui-btn-sm ui-btn-ghost" on:click={refreshLLMStatus} title="Refresh status">
+              🔄
+            </button>
+            <button class="ui-btn ui-btn-sm ui-btn-ghost" on:click={toggleConnectionHelp} title="Connection help">
+              ❓
+            </button>
+          </div>
+        </div>
+
+        <!-- Connection Help Panel -->
+        {#if showConnectionHelp}
+          <div class="connection-help ui-panel-section">
+            <h4>🤖 How to Connect AI Agents</h4>
+            <p><strong>Option 1: Ollama (Recommended)</strong></p>
+            <ol>
+              <li>Download Ollama from <code>ollama.ai</code></li>
+              <li>Install and run: <code>ollama run llama3.2</code></li>
+              <li>Agents will connect automatically!</li>
+            </ol>
+            <p><strong>Option 2: LM Studio</strong></p>
+            <ol>
+              <li>Download LM Studio from <code>lmstudio.ai</code></li>
+              <li>Load a model and start the local server</li>
+              <li>Use port 1234 (default)</li>
+            </ol>
+            <button class="ui-btn ui-btn-sm" on:click={toggleConnectionHelp}>Close Help</button>
+          </div>
+        {/if}
+
+        <!-- Agent Selector -->
         <div class="agent-selector">
           <label for="agent-select" class="ui-text-sm">Chat with:</label>
           <select id="agent-select" bind:value={selectedAgent} class="ui-select">
@@ -437,6 +501,58 @@
   .tab-count {
     opacity: 0.8;
     font-size: 0.8em;
+  }
+
+  .llm-status-bar {
+    padding: var(--space-xs) var(--space-sm);
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    font-size: var(--font-size-sm);
+  }
+
+  .status-indicator {
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .connection-help {
+    background: var(--color-surface-subtle);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-sm);
+    margin: var(--space-sm);
+    font-size: var(--font-size-sm);
+  }
+
+  .connection-help h4 {
+    margin: 0 0 var(--space-xs) 0;
+    color: var(--color-accent);
+    font-size: var(--font-size-sm);
+  }
+
+  .connection-help p {
+    margin: var(--space-xs) 0;
+    color: var(--color-text-secondary);
+  }
+
+  .connection-help ol {
+    margin: var(--space-xs) 0;
+    padding-left: var(--space-md);
+  }
+
+  .connection-help li {
+    margin: var(--space-xs) 0;
+    color: var(--color-text);
+  }
+
+  .connection-help code {
+    background: var(--color-surface);
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+    font-family: monospace;
+    font-size: 0.9em;
+    color: var(--color-accent);
   }
 
   .chat-input-container {
