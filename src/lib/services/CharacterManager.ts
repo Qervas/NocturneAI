@@ -142,45 +142,45 @@ class CharacterManagerService implements CharacterManager {
     const sampleNPCs: NPCAgent[] = [
       this.createNPCAgent({
         id: 'agent_alpha',
-        name: 'Agent Alpha',
+        name: 'Alpha',
         color: '#00ff88',
         personality: 'analytical',
         specialization: 'data_analysis',
-        position: { x: 100, y: 100 }
-      }),
-      this.createNPCAgent({
-        id: 'agent_beta',
-        name: 'Agent Beta',
-        color: '#ff8800',
-        personality: 'creative',
-        specialization: 'content_generation',
         position: { x: 200, y: 150 }
       }),
       this.createNPCAgent({
+        id: 'agent_beta',
+        name: 'Beta', 
+        color: '#ff8800',
+        personality: 'creative',
+        specialization: 'content_generation',
+        position: { x: 400, y: 200 }
+      }),
+      this.createNPCAgent({
         id: 'agent_gamma',
-        name: 'Agent Gamma',
+        name: 'Gamma',
         color: '#8800ff',
         personality: 'logical',
         specialization: 'problem_solving',
-        position: { x: 150, y: 200 }
+        position: { x: 600, y: 150 }
       })
     ];
 
     const sampleUsers: UserPlayer[] = [
       this.createUserPlayer({
         id: 'player_main',
-        name: 'Main Player',
+        name: 'Player',
         role: 'player',
         color: '#00ffff',
-        position: { x: 300, y: 100 }
+        position: { x: 400, y: 350 }
       })
     ];
 
     // Add all sample characters
     [...sampleNPCs, ...sampleUsers].forEach(char => this.addCharacter(char));
     
-    // Set main player as active
-    this.setActiveCharacter('player_main');
+    // Set alpha agent as active initially
+    this.setActiveCharacter('agent_alpha');
   }
 }
 

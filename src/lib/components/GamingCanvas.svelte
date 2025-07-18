@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { characterManager, characters } from "../services/CharacterManager";
+  import { characterManager, characters, activeCharacter } from "../services/CharacterManager";
+  import { communicationManager } from "../services/CommunicationManager";
   import type { Character } from "../types/Character";
+  import type { AgentMessage } from "../types/Communication";
 
   let canvas: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D | null = null;
@@ -10,6 +12,28 @@
   let mouseX = 0;
   let mouseY = 0;
   let agentCharacters: Character[] = [];
+  
+  // Network visualization variables
+  let activeMessages: AnimatedMessage[] = [];
+  let messageHistory: AgentMessage[] = [];
+  let updateInterval: number;
+  let showNetworkOverlay = true;
+
+  interface AnimatedMessage {
+    id: string;
+    fromAgent: string;
+    toAgent: string;
+    startTime: number;
+    duration: number;
+    progress: number;
+    content: string;
+    intent: string;
+    fromPos: { x: number; y: number };
+    toPos: { x: number; y: number };
+    currentPos: { x: number; y: number };
+    color: string;
+    alpha: number;
+  }
 
   // Subscribe to characters from the character manager
   $: agentCharacters = $characters.filter(c => c.type === 'npc');
@@ -179,17 +203,120 @@
     ctx.fill();
   }
 
+  // Network Visualization Functions
+  function updateCommunications() {
+    const recentMessages = communicationManager.getPendingMessages('all').slice(-5);
+    
+    recentMessages.forEach(msg => {
+      if (!messageHistory.find(m => m.id === msg.id)) {
+        messageHistory.push(msg);
+        
+        if (msg.fromAgent !== msg.toAgent && msg.toAgent) {
+          createMessageAnimation(msg);
+        }
+      }
+    });
+  }
+
+  function createMessageAnimation(message: AgentMessage) {
+    const fromChar = agentCharacters.find(c => c.id === message.fromAgent);
+    const toChar = agentCharacters.find(c => c.id === message.toAgent);
+    
+    if (!fromChar || !toChar) return;
+
+    const animatedMessage: AnimatedMessage = {
+      id: message.id,
+      fromAgent: message.fromAgent,
+      toAgent: message.toAgent || 'all',
+      startTime: time,
+      duration: 180,
+      progress: 0,
+      content: message.content,
+      intent: message.intent,
+      fromPos: { x: fromChar.position.x, y: fromChar.position.y },
+      toPos: { x: toChar.position.x, y: toChar.position.y },
+      currentPos: { x: fromChar.position.x, y: fromChar.position.y },
+      color: getIntentColor(message.intent),
+      alpha: 1
+    };
+
+    activeMessages.push(animatedMessage);
+    
+    if (activeMessages.length > 8) {
+      activeMessages = activeMessages.slice(-8);
+    }
+  }
+
+  function getIntentColor(intent: string): string {
+    const colors: Record<string, string> = {
+      question: '#FFD700', request_help: '#FF6B6B', share_info: '#4ECDC4',
+      collaborate: '#45B7D1', social_chat: '#96CEB4', challenge: '#FFEAA7',
+      acknowledge: '#74B9FF', suggest: '#FD79A8', compliment: '#FDCB6E', critique: '#E17055'
+    };
+    return colors[intent] || '#FFFFFF';
+  }
+
+  function getIntentIcon(intent: string): string {
+    const icons: Record<string, string> = {
+      question: '❓', request_help: '🤝', share_info: '💡', collaborate: '🤜',
+      social_chat: '💬', challenge: '⚔️', acknowledge: '✅', suggest: '💭',
+      compliment: '👍', critique: '📝'
+    };
+    return icons[intent] || '💬';
+  }
+
+  function drawAnimatedMessages() {
+    if (!ctx || !showNetworkOverlay) return;
+
+    activeMessages.forEach((msg, index) => {
+      msg.progress = Math.min(1, (time - msg.startTime) / msg.duration);
+      const easeProgress = 1 - Math.pow(1 - msg.progress, 2);
+      
+      const arcHeight = 30 * Math.sin(msg.progress * Math.PI);
+      msg.currentPos.x = msg.fromPos.x + (msg.toPos.x - msg.fromPos.x) * easeProgress;
+      msg.currentPos.y = msg.fromPos.y + (msg.toPos.y - msg.fromPos.y) * easeProgress - arcHeight;
+      
+      msg.alpha = msg.progress < 0.8 ? 1 : (1 - (msg.progress - 0.8) / 0.2);
+      
+      // Enhanced message particle
+      const pulse = 1 + Math.sin(time * 0.3 + index) * 0.3;
+      const particleSize = 8 * pulse;
+      
+      if (ctx) {
+        ctx.beginPath();
+        ctx.arc(msg.currentPos.x, msg.currentPos.y, particleSize, 0, 2 * Math.PI);
+        ctx.fillStyle = msg.color + Math.round(msg.alpha * 255).toString(16).padStart(2, '0');
+        ctx.fill();
+        
+        ctx.strokeStyle = '#FFFFFF' + Math.round(msg.alpha * 200).toString(16).padStart(2, '0');
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Intent icon
+        const icon = getIntentIcon(msg.intent);
+        ctx.fillStyle = '#FFFFFF' + Math.round(msg.alpha * 255).toString(16).padStart(2, '0');
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(icon, msg.currentPos.x, msg.currentPos.y + 4);
+      }
+    });
+    
+    activeMessages = activeMessages.filter(msg => msg.progress < 1);
+  }
+
   function animate() {
     time += 1;
     if (ctx && canvas) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
       // Draw all agent characters
-      const activeChar = characterManager.activeCharacter;
       agentCharacters.forEach(character => {
-        const isActive = activeChar?.id === character.id;
+        const isActive = $activeCharacter && $activeCharacter.id === character.id;
         drawCharacter(character, isActive);
       });
+      
+      // Draw animated messages on top
+      drawAnimatedMessages();
     }
     animationId = requestAnimationFrame(animate);
   }
@@ -207,6 +334,11 @@
     
     resizeCanvas();
     animate();
+    updateCommunications();
+    
+    // Update communications every 2 seconds
+    updateInterval = setInterval(updateCommunications, 2000);
+    
     window.addEventListener("resize", resizeCanvas);
     canvas.addEventListener("mousemove", handleMouseMove);
     canvas.addEventListener("click", handleMouseClick);
@@ -216,6 +348,9 @@
     if (animationId) {
       cancelAnimationFrame(animationId);
     }
+    if (updateInterval) {
+      clearInterval(updateInterval);
+    }
     window.removeEventListener("resize", resizeCanvas);
     if (canvas) {
       canvas.removeEventListener("mousemove", handleMouseMove);
@@ -224,9 +359,60 @@
   });
 </script>
 
-<canvas bind:this={canvas} class="gaming-canvas"></canvas>
+<div class="canvas-container">
+  <canvas bind:this={canvas} class="gaming-canvas"></canvas>
+  
+  <!-- Network Stats Overlay -->
+  {#if showNetworkOverlay}
+    <div class="network-stats">
+      <div class="stats-header">
+        <h3>NEURAL NETWORK</h3>
+        <button 
+          class="toggle-btn" 
+          on:click={() => showNetworkOverlay = !showNetworkOverlay}
+          title="Toggle Network Overlay"
+        >
+          👁️
+        </button>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-item">
+          <span class="stat-label">ACTIVE</span>
+          <span class="stat-value">{activeMessages.length}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">TOTAL</span>
+          <span class="stat-value">{communicationManager.getNetworkStats().totalMessages}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">AGENTS</span>
+          <span class="stat-value">{agentCharacters.length}</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">TRUST</span>
+          <span class="stat-value">{Math.round(communicationManager.getNetworkStats().averageTrustLevel * 100)}%</span>
+        </div>
+      </div>
+    </div>
+  {:else}
+    <button 
+      class="show-stats-btn" 
+      on:click={() => showNetworkOverlay = !showNetworkOverlay}
+      title="Show Network Stats"
+    >
+      📊
+    </button>
+  {/if}
+</div>
 
 <style>
+  .canvas-container {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
   .gaming-canvas {
     display: block;
     margin: 2rem auto 1rem auto;
@@ -237,5 +423,141 @@
     max-width: 90vw;
     max-height: 60vh;
     cursor: pointer;
+  }
+
+  .network-stats {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.9) 0%, rgba(0, 20, 40, 0.9) 100%);
+    border: 1px solid rgba(0, 255, 136, 0.5);
+    border-radius: 8px;
+    padding: 12px;
+    min-width: 180px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.3), inset 0 0 10px rgba(0, 255, 136, 0.1);
+    animation: pulse-glow 3s ease-in-out infinite;
+  }
+
+  .stats-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(0, 255, 136, 0.3);
+  }
+
+  .stats-header h3 {
+    color: #00FF88;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    font-weight: bold;
+    margin: 0;
+    letter-spacing: 1px;
+    text-shadow: 0 0 5px #00FF88;
+  }
+
+  .toggle-btn {
+    background: transparent;
+    border: 1px solid rgba(0, 255, 136, 0.5);
+    border-radius: 4px;
+    color: #00FF88;
+    cursor: pointer;
+    padding: 4px 6px;
+    font-size: 12px;
+    transition: all 0.3s ease;
+  }
+
+  .toggle-btn:hover {
+    background: rgba(0, 255, 136, 0.1);
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+    transform: scale(1.1);
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px;
+    background: rgba(0, 255, 136, 0.05);
+    border: 1px solid rgba(0, 255, 136, 0.2);
+    border-radius: 4px;
+    transition: all 0.3s ease;
+  }
+
+  .stat-item:hover {
+    background: rgba(0, 255, 136, 0.1);
+    border-color: rgba(0, 255, 136, 0.4);
+    transform: translateY(-2px);
+  }
+
+  .stat-label {
+    font-family: 'Courier New', monospace;
+    font-size: 9px;
+    color: rgba(0, 255, 136, 0.8);
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+  }
+
+  .stat-value {
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    color: #FFFFFF;
+    font-weight: bold;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+  }
+
+  .show-stats-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(0, 20, 40, 0.8) 100%);
+    border: 1px solid rgba(0, 255, 136, 0.5);
+    border-radius: 50%;
+    color: #00FF88;
+    cursor: pointer;
+    padding: 10px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+  }
+
+  .show-stats-btn:hover {
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.2) 0%, rgba(0, 40, 80, 0.8) 100%);
+    box-shadow: 0 0 25px rgba(0, 255, 136, 0.6);
+    transform: scale(1.1) rotate(10deg);
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 20px rgba(0, 255, 136, 0.3), inset 0 0 10px rgba(0, 255, 136, 0.1);
+    }
+    50% {
+      box-shadow: 0 0 30px rgba(0, 255, 136, 0.5), inset 0 0 15px rgba(0, 255, 136, 0.2);
+    }
+  }
+
+  @media (max-width: 768px) {
+    .network-stats {
+      top: 10px;
+      right: 10px;
+      min-width: 140px;
+      padding: 8px;
+    }
+    .show-stats-btn {
+      top: 10px;
+      right: 10px;
+      padding: 8px;
+      font-size: 14px;
+    }
   }
 </style> 
