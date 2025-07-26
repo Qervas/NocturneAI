@@ -7,6 +7,8 @@
   import { characterManager } from "$lib/services/CharacterManager";
   import { communicationManager } from "$lib/services/CommunicationManager";
   import { llmService } from "$lib/services/LLMService";
+  import { abilityBridge } from "$lib/AbilitySystemBridge";
+  import { runCodingWorkflowDemo } from "$lib/demo/CodingWorkflowDemo";
 
   let name = $state("");
   let greetMsg = $state("");
@@ -53,10 +55,80 @@
     }
   }
 
+  async function testAbilitySystem() {
+    // Test the ability system with enhanced communication
+    const agents = ['agent_alpha', 'agent_beta', 'agent_gamma'];
+    const fromAgent = agents[Math.floor(Math.random() * agents.length)];
+    const toAgent = agents[Math.floor(Math.random() * agents.length)];
+    
+    if (fromAgent !== toAgent) {
+      console.log('🧪 Testing enhanced communication via ability system...');
+      const result = await abilityBridge.enhancedCommunicate(
+        fromAgent, 
+        toAgent, 
+        'Greetings! This message is sent through the new ability system with enhanced features like delivery tracking and read receipts.'
+      );
+      
+      if (result.success) {
+        console.log('✅ Enhanced communication test successful!', result);
+      } else {
+        console.log('❌ Enhanced communication test failed:', result.error);
+      }
+    }
+  }
+
+  async function testResearchAbility() {
+    // Test research capability
+    const agents = ['agent_alpha', 'agent_beta', 'agent_gamma'];
+    const testAgent = agents[Math.floor(Math.random() * agents.length)];
+    
+    console.log(`🔬 Testing research ability with ${testAgent}...`);
+    const result = await abilityBridge.performResearch(testAgent, 'artificial intelligence agent communication protocols');
+    
+    if (result.success) {
+      console.log('✅ Research test successful!', result);
+      console.log('📚 Research findings:', result.research);
+      console.log('🧠 Analysis:', result.analysis);
+      console.log('⭐ XP gained:', result.xpGained);
+    } else {
+      console.log('❌ Research test failed:', result.error);
+    }
+  }
+
+  function showAbilityStats() {
+    // Display current ability system statistics
+    const systemStats = abilityBridge.getSystemStats();
+    console.log('📊 System Statistics:', systemStats);
+    
+    // Show individual agent stats
+    const agents = ['agent_alpha', 'agent_beta', 'agent_gamma'];
+    agents.forEach(agentId => {
+      const agentStats = abilityBridge.getAgentStats(agentId);
+      if (agentStats) {
+        console.log(`🤖 ${agentId} stats:`, agentStats);
+      }
+    });
+  }
+
+  async function runCodingDemo() {
+    console.log('🚀 Starting comprehensive coding workflow demonstration...');
+    await runCodingWorkflowDemo();
+  }
+
   onMount(async () => {
     // Initialize character data for the chat to work properly
     characterManager.initializeSampleData();
     console.log('Characters initialized:', characterManager.characters);
+    
+    // Initialize the new Ability System
+    await abilityBridge.initialize();
+    console.log('🚀 Ability system initialized');
+    
+    // Register existing characters as agents in the ability system
+    for (const character of characterManager.characters) {
+      await abilityBridge.registerCharacterAsAgent(character);
+    }
+    console.log('💫 Characters registered as agents in ability system');
     
     // Initialize LLM service
     await llmService.initialize();
@@ -73,6 +145,12 @@
     communicationManager.startAutonomousInteractions();
     communicationActive = true;
     console.log('Communication manager initialized and autonomous conversations started');
+    
+    // Display ability system stats
+    setTimeout(() => {
+      const stats = abilityBridge.getSystemStats();
+      console.log('📊 Ability system stats:', stats);
+    }, 2000);
   });
 </script>
 
@@ -94,6 +172,18 @@
     <div class="header-controls">
       <button class="control-btn" onclick={triggerManualMessage}>
         💬 Send Message
+      </button>
+      <button class="control-btn ability-btn" onclick={testAbilitySystem}>
+        🚀 Test Abilities
+      </button>
+      <button class="control-btn research-btn" onclick={testResearchAbility}>
+        🔬 Test Research
+      </button>
+      <button class="control-btn coding-btn" onclick={runCodingDemo}>
+        💻 Coding Demo
+      </button>
+      <button class="control-btn stats-btn" onclick={showAbilityStats}>
+        📊 Show Stats
       </button>
       <button 
         class="control-btn {communicationActive ? 'active' : ''}" 
@@ -190,6 +280,51 @@
   .control-btn.active:hover {
     background: linear-gradient(135deg, rgba(255, 150, 150, 0.9) 0%, rgba(200, 50, 50, 0.9) 100%);
     box-shadow: 0 0 20px rgba(255, 100, 100, 0.5);
+  }
+
+  /* Ability System Button Styles */
+  .control-btn.ability-btn {
+    border-color: rgba(138, 43, 226, 0.6);
+    color: #8A2BE2;
+    box-shadow: 0 0 10px rgba(138, 43, 226, 0.2);
+  }
+
+  .control-btn.ability-btn:hover {
+    background: linear-gradient(135deg, rgba(138, 43, 226, 0.2) 0%, rgba(75, 0, 130, 0.8) 100%);
+    box-shadow: 0 0 20px rgba(138, 43, 226, 0.5);
+  }
+
+  .control-btn.research-btn {
+    border-color: rgba(255, 165, 0, 0.6);
+    color: #FFA500;
+    box-shadow: 0 0 10px rgba(255, 165, 0, 0.2);
+  }
+
+  .control-btn.research-btn:hover {
+    background: linear-gradient(135deg, rgba(255, 165, 0, 0.2) 0%, rgba(255, 140, 0, 0.8) 100%);
+    box-shadow: 0 0 20px rgba(255, 165, 0, 0.5);
+  }
+
+  .control-btn.stats-btn {
+    border-color: rgba(64, 224, 208, 0.6);
+    color: #40E0D0;
+    box-shadow: 0 0 10px rgba(64, 224, 208, 0.2);
+  }
+
+  .control-btn.stats-btn:hover {
+    background: linear-gradient(135deg, rgba(64, 224, 208, 0.2) 0%, rgba(0, 206, 209, 0.8) 100%);
+    box-shadow: 0 0 20px rgba(64, 224, 208, 0.5);
+  }
+
+  .control-btn.coding-btn {
+    border-color: rgba(255, 20, 147, 0.6);
+    color: #FF1493;
+    box-shadow: 0 0 10px rgba(255, 20, 147, 0.2);
+  }
+
+  .control-btn.coding-btn:hover {
+    background: linear-gradient(135deg, rgba(255, 20, 147, 0.2) 0%, rgba(199, 21, 133, 0.8) 100%);
+    box-shadow: 0 0 20px rgba(255, 20, 147, 0.5);
   }
 
   /* Main Content Area */
