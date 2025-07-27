@@ -1,333 +1,422 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { characterManager, characters, npcs, users, activeCharacter } from "../services/CharacterManager";
-  import type { Character, NPCAgent, UserPlayer } from "../types/Character";
+	import { onMount } from "svelte";
+	import { characterManager, characters, selectedAgent } from "../services/CharacterManager";
+	import type { Character, NPCAgent } from "../types/Character";
 
-  let isVisible = false;
-  let selectedTab: 'npcs' | 'users' = 'npcs';
-  let selectedCharacter: Character | null = null;
+	// Component state
+	let selectedAgentData: Character | null = null;
 
-  function togglePanel() {
-    isVisible = !isVisible;
-  }
+	// Reactive calculations
+	$: selectedAgentData = $selectedAgent ? $characters.find(c => c.id === $selectedAgent) || null : null;
 
-  function selectCharacter(character: Character) {
-    selectedCharacter = character;
-    characterManager.setActiveCharacter(character.id);
-  }
+	function getStatusColor(status: string): string {
+		switch (status) {
+			case 'online': return '#00ff88';
+			case 'offline': return '#666666';
+			case 'busy': return '#ff8800';
+			case 'idle': return '#ffff00';
+			default: return '#ffffff';
+		}
+	}
 
-  function getStatusColor(status: string): string {
-    switch (status) {
-      case 'online': return '#00ff88';
-      case 'offline': return '#666666';
-      case 'busy': return '#ff8800';
-      case 'idle': return '#ffff00';
-      default: return '#ffffff';
-    }
-  }
+	function getCharacterIcon(character: Character): string {
+		if (character.type === 'npc') {
+			const npc = character as NPCAgent;
+			return npc.name === 'Alpha' ? '🧠' : 
+				   npc.name === 'Beta' ? '🎨' : 
+				   npc.name === 'Gamma' ? '⚙️' : '🤖';
+		}
+		return '👤';
+	}
 
-  function getCharacterIcon(character: Character): string {
-    if (character.type === 'npc') {
-      const npc = character as NPCAgent;
-      return npc.name === 'Alpha' ? '🧠' : 
-             npc.name === 'Beta' ? '🎨' : 
-             npc.name === 'Gamma' ? '⚙️' : '🤖';
-    }
-    return '👤';
-  }
+	function getAgentColor(agentId: string): string {
+		if (agentId.includes('alpha')) return '#4CAF50';
+		if (agentId.includes('beta')) return '#FF9800';
+		if (agentId.includes('gamma')) return '#9C27B0';
+		return '#2196F3';
+	}
 
-  function formatLastSeen(lastSeen: Date): string {
-    const now = new Date();
-    const diff = Math.floor((now.getTime() - lastSeen.getTime()) / 1000);
-    
-    if (diff < 60) return 'Just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
-  }
+	function getAgentName(agentId: string): string {
+		if (agentId.includes('alpha')) return 'Alpha';
+		if (agentId.includes('beta')) return 'Beta';
+		if (agentId.includes('gamma')) return 'Gamma';
+		return 'Agent';
+	}
 
-  onMount(() => {
-    characterManager.initializeSampleData();
-  });
+	function getSpecialization(agentId: string): string {
+		if (agentId.includes('alpha')) return 'Data Analysis';
+		if (agentId.includes('beta')) return 'Content Generation';
+		if (agentId.includes('gamma')) return 'Problem Solving';
+		return 'General AI';
+	}
+
+	function getPersonality(agentId: string): string {
+		if (agentId.includes('alpha')) return 'Analytical & Logical';
+		if (agentId.includes('beta')) return 'Creative & Expressive';
+		if (agentId.includes('gamma')) return 'Strategic & Adaptive';
+		return 'Balanced';
+	}
+
+	function getAIModel(agentId: string): string {
+		if (agentId.includes('alpha')) return 'GPT-4 Turbo';
+		if (agentId.includes('beta')) return 'Claude-3 Sonnet';
+		if (agentId.includes('gamma')) return 'Gemini Pro';
+		return 'GPT-4';
+	}
+
+	onMount(() => {
+		characterManager.initializeSampleData();
+	});
 </script>
 
-<!-- Character Management Widget -->
-<div class="character-widget">
-  <!-- Character Panel Toggle Button -->
-  <button 
-    class="ui-btn ui-btn-accent ui-btn-round" 
-    on:click={togglePanel}
-    class:ui-glow-accent={isVisible}
-  >
-    👥
-  </button>
+<!-- Character Management Panel -->
+<div class="character-panel">
+	{#if selectedAgentData}
+		<!-- Selected Agent Header -->
+		<div class="agent-header">
+			<div class="agent-icon" style="color: {getAgentColor($selectedAgent || '')}">
+				{getCharacterIcon(selectedAgentData)}
+			</div>
+			<div class="agent-info">
+				<div class="agent-name">{getAgentName($selectedAgent || '')}</div>
+				<div class="agent-status">
+					Status: <span class="status-{selectedAgentData.status}">{selectedAgentData.status}</span>
+				</div>
+			</div>
+		</div>
 
-  <!-- Character Panel -->
-  {#if isVisible}
-    <div class="ui-panel character-panel ui-animate-fade-in">
-      <div class="ui-panel-header">
-        <h3>Character Management</h3>
-        <button class="ui-btn ui-btn-sm" on:click={() => isVisible = false}>✕</button>
-      </div>
+		<!-- Agent Details -->
+		<div class="agent-details">
+			<div class="detail-section">
+				<h4>📋 Basic Info</h4>
+				<div class="detail-grid">
+					<div class="detail-item">
+						<label>Type:</label>
+						<span>NPC Agent</span>
+					</div>
+					<div class="detail-item">
+						<label>Specialization:</label>
+						<span>{getSpecialization($selectedAgent || '')}</span>
+					</div>
+					<div class="detail-item">
+						<label>AI Model:</label>
+						<span>{getAIModel($selectedAgent || '')}</span>
+					</div>
+					<div class="detail-item">
+						<label>Personality:</label>
+						<span>{getPersonality($selectedAgent || '')}</span>
+					</div>
+				</div>
+			</div>
 
-      <!-- Tab Navigation -->
-      <div class="ui-tabs">
-        <button 
-          class="ui-tab {selectedTab === 'npcs' ? 'ui-tab-active' : ''}"
-          on:click={() => selectedTab = 'npcs'}
-        >
-          🤖 NPCs ({$npcs.length})
-        </button>
-        <button 
-          class="ui-tab {selectedTab === 'users' ? 'ui-tab-active' : ''}"
-          on:click={() => selectedTab = 'users'}
-        >
-          👤 Users ({$users.length})
-        </button>
-      </div>
+			<div class="detail-section">
+				<h4>📊 Performance</h4>
+				<div class="detail-grid">
+					<div class="detail-item">
+						<label>Level:</label>
+						<span>Lv.{selectedAgentData.level}</span>
+					</div>
+					<div class="detail-item">
+						<label>Tasks Completed:</label>
+						<span>{(selectedAgentData as NPCAgent)?.performance?.tasksCompleted || 0}</span>
+					</div>
+					<div class="detail-item">
+						<label>Success Rate:</label>
+						<span>{((selectedAgentData as NPCAgent)?.performance?.successRate || 0) * 100}%</span>
+					</div>
+					<div class="detail-item">
+						<label>Experience:</label>
+						<span>{selectedAgentData.experience || 0} XP</span>
+					</div>
+				</div>
+			</div>
 
-      <!-- Character List -->
-      <div class="character-list">
-        {#if selectedTab === 'npcs'}
-          {#each $npcs as npc}
-            <div 
-              class="character-item {selectedCharacter?.id === npc.id ? 'selected' : ''}"
-              on:click={() => selectCharacter(npc)}
-              role="button"
-              tabindex="0"
-              on:keydown={(e) => e.key === 'Enter' && selectCharacter(npc)}
-            >
-              <div class="character-icon" style="color: {npc.color}">
-                {getCharacterIcon(npc)}
-              </div>
-              <div class="character-info">
-                <div class="character-name">{npc.name}</div>
-                <div class="character-details">
-                  <span class="specialization">{npc.specialization}</span>
-                  <span class="status" style="color: {getStatusColor(npc.status)}">
-                    {npc.status}
-                  </span>
-                </div>
-              </div>
-              <div class="character-stats">
-                <div class="level">Lv.{npc.level}</div>
-                <div class="performance">
-                  {npc.performance.tasksCompleted} tasks
-                </div>
-              </div>
-            </div>
-          {/each}
-        {:else}
-          {#each $users as user}
-            <div 
-              class="character-item {selectedCharacter?.id === user.id ? 'selected' : ''}"
-              on:click={() => selectCharacter(user)}
-              role="button"
-              tabindex="0"
-              on:keydown={(e) => e.key === 'Enter' && selectCharacter(user)}
-            >
-              <div class="character-icon" style="color: {user.color}">
-                {getCharacterIcon(user)}
-              </div>
-              <div class="character-info">
-                <div class="character-name">{user.name}</div>
-                <div class="character-details">
-                  <span class="role">{user.role}</span>
-                  <span class="status" style="color: {getStatusColor(user.status)}">
-                    {user.status}
-                  </span>
-                </div>
-              </div>
-              <div class="character-stats">
-                <div class="level">Lv.{user.level}</div>
-                <div class="last-seen">
-                  {formatLastSeen(user.lastSeen)}
-                </div>
-              </div>
-            </div>
-          {/each}
-        {/if}
-      </div>
+			<div class="detail-section">
+				<h4>⚙️ Management</h4>
+				<div class="management-actions">
+					<button class="action-btn primary">
+						🔄 Restart Agent
+					</button>
+					<button class="action-btn secondary">
+						📝 Edit Settings
+					</button>
+					<button class="action-btn warning">
+						⏸️ Pause Agent
+					</button>
+					<button class="action-btn danger">
+						🗑️ Reset Agent
+					</button>
+				</div>
+			</div>
 
-      <!-- Character Details -->
-      {#if selectedCharacter}
-        <div class="character-details-panel">
-          <h4>{selectedCharacter.name}</h4>
-          <div class="detail-grid">
-            <div class="detail-item">
-              <label>Type:</label>
-              <span>{selectedCharacter.type.toUpperCase()}</span>
-            </div>
-            <div class="detail-item">
-              <label>Role:</label>
-              <span>{selectedCharacter.role}</span>
-            </div>
-            <div class="detail-item">
-              <label>Status:</label>
-              <span style="color: {getStatusColor(selectedCharacter.status)}">
-                {selectedCharacter.status}
-              </span>
-            </div>
-            <div class="detail-item">
-              <label>Level:</label>
-              <span>{selectedCharacter.level}</span>
-            </div>
-            {#if selectedCharacter.type === 'npc'}
-              {@const npc = selectedCharacter as NPCAgent}
-              <div class="detail-item">
-                <label>AI Model:</label>
-                <span>{npc.aiModel}</span>
-              </div>
-              <div class="detail-item">
-                <label>Personality:</label>
-                <span>{npc.personality}</span>
-              </div>
-              <div class="detail-item">
-                <label>Tasks Completed:</label>
-                <span>{npc.performance.tasksCompleted}</span>
-              </div>
-              <div class="detail-item">
-                <label>Success Rate:</label>
-                <span>{(npc.performance.successRate * 100).toFixed(1)}%</span>
-              </div>
-            {/if}
-          </div>
-        </div>
-      {/if}
-    </div>
-  {/if}
+			<div class="detail-section">
+				<h4>🔧 Advanced</h4>
+				<div class="advanced-options">
+					<div class="option-item">
+						<label>Auto-Response:</label>
+						<label class="toggle-switch">
+							<input type="checkbox" checked>
+							<span class="toggle-slider"></span>
+						</label>
+					</div>
+					<div class="option-item">
+						<label>Learning Mode:</label>
+						<label class="toggle-switch">
+							<input type="checkbox" checked>
+							<span class="toggle-slider"></span>
+						</label>
+					</div>
+					<div class="option-item">
+						<label>Debug Mode:</label>
+						<label class="toggle-switch">
+							<input type="checkbox">
+							<span class="toggle-slider"></span>
+						</label>
+					</div>
+				</div>
+			</div>
+		</div>
+	{:else}
+		<div class="no-agent-selected">
+			<div class="no-agent-icon">👤</div>
+			<div class="no-agent-text">
+				Click on an agent in the simulation to manage their settings
+			</div>
+		</div>
+	{/if}
 </div>
 
 <style lang="css">
-  .character-widget {
-    position: relative;
-    display: flex;
-    align-items: center;
-  }
+	.character-panel {
+		padding: 16px;
+		height: 100%;
+		overflow-y: auto;
+	}
 
-  .character-panel {
-    position: absolute;
-    top: 60px;
-    right: 0;
-    width: 420px;
-    max-height: 500px;
-    z-index: 1000;
-  }
+	.agent-header {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 12px;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 8px;
+		border: 1px solid rgba(0, 255, 136, 0.2);
+		margin-bottom: 16px;
+	}
 
-  .character-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--space-sm);
-    max-height: 300px;
-  }
+	.agent-icon {
+		font-size: 2rem;
+		width: 50px;
+		height: 50px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(0, 0, 0, 0.5);
+		border-radius: 50%;
+	}
 
-  .character-item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm);
-    padding: var(--space-sm);
-    margin-bottom: var(--space-xs);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: all var(--transition-base);
-    border: 1px solid transparent;
-    background: rgba(0, 0, 0, 0.3);
-  }
+	.agent-info {
+		flex: 1;
+	}
 
-  .character-item:hover {
-    background: rgba(0, 255, 136, 0.1);
-    border-color: rgba(0, 255, 136, 0.3);
-  }
+	.agent-name {
+		font-size: 1.2rem;
+		font-weight: bold;
+		color: #00ff88;
+		margin-bottom: 4px;
+	}
 
-  .character-item.selected {
-    background: rgba(0, 255, 136, 0.2);
-    border-color: var(--color-accent);
-  }
+	.agent-status {
+		font-size: 0.9rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
 
-  .character-icon {
-    font-size: 1.5rem;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-full);
-    background: rgba(0, 0, 0, 0.5);
-  }
+	.status-online { color: #4CAF50; }
+	.status-offline { color: #F44336; }
+	.status-idle { color: #FF9800; }
+	.status-busy { color: #2196F3; }
 
-  .character-info {
-    flex: 1;
-    min-width: 0;
-  }
+	.agent-details {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
 
-  .character-name {
-    font-weight: bold;
-    color: var(--color-accent);
-    margin-bottom: var(--space-xs);
-    font-size: 0.9rem;
-  }
+	.detail-section {
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 8px;
+		padding: 12px;
+		border: 1px solid rgba(0, 255, 136, 0.1);
+	}
 
-  .character-details {
-    display: flex;
-    gap: var(--space-sm);
-    font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
-  }
+	.detail-section h4 {
+		margin: 0 0 12px 0;
+		color: #00ff88;
+		font-size: 0.9rem;
+		font-weight: bold;
+	}
 
-  .character-stats {
-    text-align: right;
-    font-size: var(--font-size-sm);
-    color: var(--color-text-secondary);
-  }
+	.detail-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+	}
 
-  .character-details-panel {
-    padding: var(--space-md);
-    border-top: 1px solid var(--color-border);
-    background: var(--color-surface-subtle);
-  }
+	.detail-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 6px 0;
+		font-size: 0.8rem;
+	}
 
-  .character-details-panel h4 {
-    color: var(--color-accent);
-    margin: 0 0 var(--space-sm) 0;
-    font-size: 1rem;
-  }
+	.detail-item label {
+		color: rgba(255, 255, 255, 0.7);
+		font-weight: 500;
+	}
 
-  .detail-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--space-sm);
-  }
+	.detail-item span {
+		color: #ffffff;
+		font-weight: 600;
+	}
 
-  .detail-item {
-    display: flex;
-    justify-content: space-between;
-    font-size: var(--font-size-sm);
-    padding: var(--space-xs) 0;
-  }
+	.management-actions {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+	}
 
-  .detail-item label {
-    color: var(--color-text-secondary);
-    font-weight: 500;
-  }
+	.action-btn {
+		padding: 8px 12px;
+		border: none;
+		border-radius: 6px;
+		font-size: 0.8rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		font-weight: 500;
+	}
 
-  .detail-item span {
-    color: var(--color-text);
-    font-weight: 600;
-  }
+	.action-btn.primary {
+		background: rgba(0, 255, 136, 0.2);
+		color: #00ff88;
+		border: 1px solid rgba(0, 255, 136, 0.3);
+	}
 
-  /* Responsive Adjustments */
-  @media (max-width: 768px) {
-    .character-panel {
-      width: 350px;
-      max-height: 450px;
-    }
-    
-    .character-list {
-      max-height: 250px;
-    }
-    
-    .detail-grid {
-      grid-template-columns: 1fr;
-    }
-  }
+	.action-btn.primary:hover {
+		background: rgba(0, 255, 136, 0.3);
+	}
+
+	.action-btn.secondary {
+		background: rgba(33, 150, 243, 0.2);
+		color: #2196F3;
+		border: 1px solid rgba(33, 150, 243, 0.3);
+	}
+
+	.action-btn.secondary:hover {
+		background: rgba(33, 150, 243, 0.3);
+	}
+
+	.action-btn.warning {
+		background: rgba(255, 152, 0, 0.2);
+		color: #FF9800;
+		border: 1px solid rgba(255, 152, 0, 0.3);
+	}
+
+	.action-btn.warning:hover {
+		background: rgba(255, 152, 0, 0.3);
+	}
+
+	.action-btn.danger {
+		background: rgba(244, 67, 54, 0.2);
+		color: #F44336;
+		border: 1px solid rgba(244, 67, 54, 0.3);
+	}
+
+	.action-btn.danger:hover {
+		background: rgba(244, 67, 54, 0.3);
+	}
+
+	.advanced-options {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.option-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 8px 0;
+	}
+
+	.option-item label {
+		font-size: 0.9rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.toggle-switch {
+		position: relative;
+		display: inline-block;
+		width: 40px;
+		height: 20px;
+	}
+
+	.toggle-switch input {
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+
+	.toggle-slider {
+		position: absolute;
+		cursor: pointer;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(255, 255, 255, 0.2);
+		transition: 0.2s;
+		border-radius: 20px;
+	}
+
+	.toggle-slider:before {
+		position: absolute;
+		content: "";
+		height: 16px;
+		width: 16px;
+		left: 2px;
+		bottom: 2px;
+		background-color: white;
+		transition: 0.2s;
+		border-radius: 50%;
+	}
+
+	input:checked + .toggle-slider {
+		background-color: #00ff88;
+	}
+
+	input:checked + .toggle-slider:before {
+		transform: translateX(20px);
+	}
+
+	.no-agent-selected {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		height: 200px;
+		text-align: center;
+		color: rgba(255, 255, 255, 0.5);
+	}
+
+	.no-agent-icon {
+		font-size: 3rem;
+		margin-bottom: 12px;
+		opacity: 0.7;
+	}
+
+	.no-agent-text {
+		font-size: 0.9rem;
+		line-height: 1.4;
+	}
 </style> 

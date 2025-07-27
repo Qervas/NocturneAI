@@ -21,6 +21,9 @@ const users = derived(characters, $characters =>
   $characters.filter(c => c.type === 'user') as UserPlayer[]
 );
 
+// Selected agent store for UI state
+export const selectedAgent = writable<string | null>(null);
+
 // Character Manager Implementation
 class CharacterManagerService implements CharacterManager {
   get characters() {

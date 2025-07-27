@@ -1,10 +1,11 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import {
-        characterManager,
-        characters,
-        activeCharacter,
-    } from "../services/CharacterManager";
+    characterManager,
+    characters,
+    activeCharacter,
+    selectedAgent,
+} from "../services/CharacterManager";
     import { communicationManager } from "../services/CommunicationManager";
     import {
         simulationController,
@@ -117,7 +118,8 @@
                 )
             ) {
                 console.log(`Clicked on ${character.name}!`);
-                // You can add character selection logic here
+                // Set selected agent for UI
+                selectedAgent.set(character.id);
                 characterManager.setActiveCharacter(character.id);
             }
         });

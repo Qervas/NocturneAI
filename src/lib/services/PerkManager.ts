@@ -691,11 +691,11 @@ class SkillTreeManager {
         return skills;
       }
 
-      // Check if agent has enough points
-      if (agentTree.availablePoints < skill.cost) {
-        console.warn(`Not enough points to unlock ${skillId}`);
-        return skills;
-      }
+      // Developer mode: bypass point cost check
+      // if (agentTree.availablePoints < skill.cost) {
+      //   console.warn(`Not enough points to unlock ${skillId}`);
+      //   return skills;
+      // }
 
       // Check prerequisites
       const prerequisitesMet = skill.prerequisites.every((prereqId) => {
@@ -711,7 +711,8 @@ class SkillTreeManager {
       // Unlock the skill
       skill.currentRank++;
       skill.unlocked = true;
-      agentTree.availablePoints -= skill.cost;
+      // Developer mode: don't deduct points
+      // agentTree.availablePoints -= skill.cost;
 
       // Add abilities to unlocked list
       skill.effects.forEach((effect) => {

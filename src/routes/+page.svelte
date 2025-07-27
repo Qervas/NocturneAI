@@ -1,380 +1,303 @@
 <script lang="ts">
-    import { invoke } from "@tauri-apps/api/core";
-    import { onMount } from "svelte";
-    import GamingCanvas from "$lib/components/GamingCanvas.svelte";
-    import GameChat from "$lib/components/GameChat.svelte";
-    import CharacterPanel from "$lib/components/CharacterPanel.svelte";
-    import SimulationControls from "$lib/components/SimulationControls.svelte";
-    import PerkPanel from "$lib/components/PerkPanel.svelte";
-    import WorldResources from "$lib/components/WorldResources.svelte";
-    import ConversationConnections from "$lib/components/ConversationConnections.svelte";
-    import { characterManager } from "$lib/services/CharacterManager";
-    import { communicationManager } from "$lib/services/CommunicationManager";
-    import { simulationController } from "$lib/services/SimulationController";
-    import { skillTreeManager } from "$lib/services/PerkManager";
-    import { llmService } from "$lib/services/LLMService";
+	import "../lib/styles/ui-framework.css";
+	import GameChat from "../lib/components/GameChat.svelte";
+	import GamingCanvas from "../lib/components/GamingCanvas.svelte";
+	import ConversationConnections from "../lib/components/ConversationConnections.svelte";
+	import SimulationControls from "../lib/components/SimulationControls.svelte";
+	import PerkPanel from "../lib/components/PerkPanel.svelte";
+	import WorldResources from "../lib/components/WorldResources.svelte";
+	import CharacterPanel from "../lib/components/CharacterPanel.svelte";
+	import { selectedAgent } from "../lib/services/CharacterManager";
 
-    let name = $state("");
-    let greetMsg = $state("");
-    let communicationActive = $state(false);
-    let messageCount = $state(0);
-
-    // Update message count periodically
-    $effect(() => {
-        const interval = setInterval(() => {
-            messageCount = communicationManager.getNetworkStats().totalMessages;
-        }, 2000);
-
-        return () => clearInterval(interval);
-    });
-
-    async function greet(event: Event) {
-        event.preventDefault();
-        greetMsg = await invoke("greet", { name });
-    }
-
-    onMount(async () => {
-        try {
-            // Initialize character data for the chat to work properly
-            characterManager.initializeSampleData();
-            console.log("Characters initialized:", characterManager.characters);
-
-            // Initialize LLM service
-            try {
-                await llmService.initialize();
-                console.log("LLM service initialized");
-            } catch (error) {
-                console.warn("LLM service initialization failed:", error);
-            }
-
-            // Initialize communication manager
-            try {
-                communicationManager.initializeAgentStyles();
-                console.log("Communication manager initialized");
-            } catch (error) {
-                console.warn(
-                    "Communication manager initialization failed:",
-                    error,
-                );
-            }
-
-            // Add all NPCs to the communication system
-            try {
-                const npcs = characterManager.getNPCs();
-                if (npcs && npcs.length > 0) {
-                    npcs.forEach((npc) => {
-                        try {
-                            communicationManager.addAgent(npc.id);
-                            console.log(
-                                `🤖 Added ${npc.name} (${npc.id}) to communication system`,
-                            );
-                        } catch (error) {
-                            console.warn(
-                                `Failed to add agent ${npc.id}:`,
-                                error,
-                            );
-                        }
-                    });
-
-                    // Start natural conversation system
-                    try {
-                        communicationManager.startAutonomousInteractions();
-                        console.log("Natural conversation system started");
-                    } catch (error) {
-                        console.warn(
-                            "Failed to start conversation system:",
-                            error,
-                        );
-                    }
-                } else {
-                    console.warn(
-                        "No NPCs found to add to communication system",
-                    );
-                }
-            } catch (error) {
-                console.warn("Failed to initialize NPCs:", error);
-            }
-
-            // Initialize skill tree manager
-            try {
-                // Initialize skill trees for all NPCs
-                const npcs = characterManager.getNPCs();
-                npcs.forEach((npc) => {
-                    skillTreeManager.initializeAgent(npc.id);
-                });
-                skillTreeManager.startAutoSave();
-                console.log("Skill tree manager initialized");
-            } catch (error) {
-                console.warn(
-                    "Skill tree manager initialization failed:",
-                    error,
-                );
-            }
-
-            // Note: Autonomous interactions are now controlled by the SimulationController
-            communicationActive = true;
-            console.log("System initialized successfully");
-        } catch (error) {
-            console.error("Critical initialization error:", error);
-            // Don't prevent the app from loading, just log the error
-        }
-    });
+	let activeTab = "skills"; // "skills" | "character" | "resources"
 </script>
 
-<div class="app-layout">
-    <!-- Header Section -->
-    <header class="app-header">
-        <div class="header-content">
-            <h1 class="game-title">MULTI-AGENT SYSTEM</h1>
-            <p class="subtitle">
-                AI Company Management System
-                <span class="message-counter">
-                    📨 {messageCount} messages
-                </span>
-            </p>
-        </div>
-        <div class="header-controls">
-            <GameChat isVisible={true} />
-            <CharacterPanel />
-        </div>
-    </header>
+<div class="game-layout">
+	<!-- Game Header -->
+	<header class="game-header">
+		<div class="header-left">
+			<h1>🤖 Multi-Agent System</h1>
+		</div>
+		<div class="header-center">
+			<div class="game-status">
+				<span class="status-indicator">●</span>
+				<span class="status-text">Simulation Active</span>
+			</div>
+		</div>
+		<div class="header-right">
+			<div class="header-controls">
+				<button class="game-btn">Settings</button>
+				<button class="game-btn">Help</button>
+			</div>
+		</div>
+	</header>
 
-    <!-- Main Content Area -->
-    <main class="app-main">
-        <GamingCanvas />
+	<!-- Main Game Area -->
+	<main class="game-main">
+		<!-- Left Sidebar - Chat -->
+		<aside class="game-sidebar left-sidebar">
+			<div class="sidebar-header">
+				<h3>💬 Chat</h3>
+			</div>
+			<GameChat />
+		</aside>
 
-        <!-- Conversation Connections Overlay -->
-        <ConversationConnections />
+		<!-- Center - Simulation -->
+		<section class="game-center">
+			<div class="simulation-container">
+				<GamingCanvas />
+				<ConversationConnections />
+			</div>
+			<div class="game-controls">
+				<SimulationControls />
+			</div>
+		</section>
 
-        <!-- Game UI Components -->
-        <PerkPanel />
-        <WorldResources />
+		<!-- Right Sidebar - Properties Panel -->
+		<aside class="game-sidebar right-sidebar">
+			<div class="properties-panel">
+				<!-- Properties Header -->
+				<div class="properties-header">
+					<h3>⚙️ Properties</h3>
+					{#if $selectedAgent}
+						<span class="selected-agent">Selected: {$selectedAgent}</span>
+					{/if}
+				</div>
 
-        <!-- Simulation Controls - Sims-like time controls -->
-        <SimulationControls />
-    </main>
+				<!-- Properties Tabs -->
+				<div class="properties-tabs">
+					<button 
+						class="property-tab" 
+						class:active={activeTab === "skills"}
+						on:click={() => activeTab = "skills"}
+					>
+						⚡ Skills
+					</button>
+					<button 
+						class="property-tab" 
+						class:active={activeTab === "character"}
+						on:click={() => activeTab = "character"}
+					>
+						👤 Character
+					</button>
+					<button 
+						class="property-tab" 
+						class:active={activeTab === "resources"}
+						on:click={() => activeTab = "resources"}
+					>
+						🌎 Resources
+					</button>
+				</div>
+
+				<!-- Properties Content -->
+				<div class="properties-content">
+					{#if activeTab === "skills"}
+						<PerkPanel />
+					{:else if activeTab === "character"}
+						<CharacterPanel />
+					{:else if activeTab === "resources"}
+						<WorldResources />
+					{/if}
+				</div>
+			</div>
+		</aside>
+	</main>
 </div>
 
-<style>
-    :root {
-        font-family: "Courier New", monospace;
-        font-size: 16px;
-        line-height: 24px;
-        font-weight: 400;
-        color: #00ff88;
-        background: linear-gradient(
-            135deg,
-            #0a0a0a 0%,
-            #1a1a2e 50%,
-            #16213e 100%
-        );
-        font-synthesis: none;
-        text-rendering: optimizeLegibility;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-        -webkit-text-size-adjust: 100%;
-    }
+<style lang="css">
+	.game-layout {
+		display: grid;
+		grid-template-rows: auto 1fr;
+		height: 100vh;
+		background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+		color: #ffffff;
+	}
 
-    /* Main Layout Grid */
-    .app-layout {
-        display: grid;
-        grid-template-rows: auto 1fr;
-        min-height: 100vh;
-        overflow: hidden;
-    }
+	.game-header {
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
+		align-items: center;
+		padding: 12px 20px;
+		background: rgba(0, 0, 0, 0.8);
+		border-bottom: 1px solid rgba(0, 255, 136, 0.3);
+		backdrop-filter: blur(10px);
+	}
 
-    /* Header Layout */
-    .app-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 12px 20px; /* Reduced from 20px to 12px for more compact header */
-        background: rgba(0, 0, 0, 0.3);
-        backdrop-filter: blur(10px);
-        border-bottom: 1px solid rgba(0, 255, 136, 0.2);
-        position: relative;
-        z-index: 1000;
-    }
+	.header-left h1 {
+		margin: 0;
+		font-size: 1.5rem;
+		color: #00ff88;
+		font-weight: bold;
+	}
 
-    .header-content {
-        flex: 1;
-        text-align: center;
-    }
+	.header-center {
+		display: flex;
+		justify-content: center;
+	}
 
-    .header-controls {
-        display: flex;
-        gap: 15px;
-        align-items: center;
-        position: relative;
-    }
+	.game-status {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 12px;
+		background: rgba(0, 255, 136, 0.1);
+		border: 1px solid rgba(0, 255, 136, 0.3);
+		border-radius: 6px;
+	}
 
-    .control-btn {
-        background: linear-gradient(
-            135deg,
-            rgba(0, 0, 0, 0.8) 0%,
-            rgba(0, 20, 40, 0.8) 100%
-        );
-        border: 1px solid rgba(0, 255, 136, 0.5);
-        border-radius: 6px;
-        color: #00ff88;
-        cursor: pointer;
-        padding: 8px 12px;
-        font-size: 12px;
-        font-family: "Courier New", monospace;
-        font-weight: bold;
-        transition: all 0.3s ease;
-        backdrop-filter: blur(10px);
-        box-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
-    }
+	.status-indicator {
+		color: #00ff88;
+		font-size: 0.8rem;
+		animation: pulse 2s infinite;
+	}
 
-    .control-btn:hover {
-        background: linear-gradient(
-            135deg,
-            rgba(0, 255, 136, 0.2) 0%,
-            rgba(0, 40, 80, 0.8) 100%
-        );
-        box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
-        transform: translateY(-2px);
-    }
+	.status-text {
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
 
-    .control-btn.active {
-        background: linear-gradient(
-            135deg,
-            rgba(255, 100, 100, 0.8) 0%,
-            rgba(180, 0, 0, 0.8) 100%
-        );
-        border-color: rgba(255, 100, 100, 0.7);
-        color: #ffffff;
-    }
+	.header-right {
+		display: flex;
+		justify-content: flex-end;
+	}
 
-    .control-btn.active:hover {
-        background: linear-gradient(
-            135deg,
-            rgba(255, 150, 150, 0.9) 0%,
-            rgba(200, 50, 50, 0.9) 100%
-        );
-        box-shadow: 0 0 20px rgba(255, 100, 100, 0.5);
-    }
+	.header-controls {
+		display: flex;
+		gap: 8px;
+	}
 
-    /* Main Content Area */
-    .app-main {
-        position: relative;
-        overflow: hidden;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
+	.game-btn {
+		background: transparent;
+		border: 1px solid rgba(0, 255, 136, 0.3);
+		color: rgba(255, 255, 255, 0.8);
+		padding: 6px 12px;
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 0.8rem;
+		transition: all 0.2s ease;
+	}
 
-    /* Typography */
-    .game-title {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #00ff88;
-        text-shadow:
-            0 0 20px #00ff88,
-            0 0 40px #00ff88;
-        margin: 0;
-        letter-spacing: 0.2em;
-        animation: glow 2s ease-in-out infinite alternate;
-    }
+	.game-btn:hover {
+		background: rgba(0, 255, 136, 0.1);
+		color: #00ff88;
+		border-color: #00ff88;
+	}
 
-    .subtitle {
-        font-size: 1rem;
-        color: #00ffff;
-        text-shadow: 0 0 10px #00ffff;
-        margin: 0;
-        opacity: 0.8;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-    }
+	.game-main {
+		display: grid;
+		grid-template-columns: 350px 1fr 350px;
+		height: 100%;
+		overflow: hidden;
+	}
 
-    .status-indicator {
-        font-size: 0.8rem;
-        font-family: "Courier New", monospace;
-        font-weight: bold;
-        padding: 4px 8px;
-        border-radius: 4px;
-        border: 1px solid;
-        transition: all 0.3s ease;
-    }
+	.game-sidebar {
+		background: rgba(0, 0, 0, 0.6);
+		border-right: 1px solid rgba(0, 255, 136, 0.2);
+		display: flex;
+		flex-direction: column;
+	}
 
-    .status-indicator.active {
-        color: #00ff88;
-        border-color: rgba(0, 255, 136, 0.5);
-        background: rgba(0, 255, 136, 0.1);
-        animation: pulse-status 2s ease-in-out infinite;
-    }
+	.right-sidebar {
+		border-right: none;
+		border-left: 1px solid rgba(0, 255, 136, 0.2);
+	}
 
-    .status-indicator.inactive {
-        color: #ff6b6b;
-        border-color: rgba(255, 107, 107, 0.5);
-        background: rgba(255, 107, 107, 0.1);
-    }
+	.sidebar-header {
+		padding: 12px 16px;
+		border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+		background: rgba(0, 0, 0, 0.3);
+	}
 
-    .message-counter {
-        font-size: 0.8rem;
-        font-family: "Courier New", monospace;
-        font-weight: bold;
-        color: #00ffff;
-        padding: 4px 8px;
-        border-radius: 4px;
-        border: 1px solid rgba(0, 255, 255, 0.3);
-        background: rgba(0, 255, 255, 0.1);
-        text-shadow: 0 0 5px #00ffff;
-    }
+	.sidebar-header h3 {
+		margin: 0;
+		font-size: 1rem;
+		color: #00ff88;
+		font-weight: bold;
+	}
 
-    @keyframes pulse-status {
-        0%,
-        100% {
-            box-shadow: 0 0 5px rgba(0, 255, 136, 0.3);
-        }
-        50% {
-            box-shadow: 0 0 15px rgba(0, 255, 136, 0.6);
-        }
-    }
+	.game-center {
+		display: flex;
+		flex-direction: column;
+		background: rgba(0, 0, 0, 0.4);
+	}
 
-    @keyframes glow {
-        from {
-            text-shadow:
-                0 0 20px #00ff88,
-                0 0 40px #00ff88;
-        }
-        to {
-            text-shadow:
-                0 0 30px #00ff88,
-                0 0 60px #00ff88,
-                0 0 80px #00ff88;
-        }
-    }
+	.simulation-container {
+		flex: 1;
+		position: relative;
+		overflow: hidden;
+	}
 
-    /* Responsive Design */
-    @media (max-width: 768px) {
-        .app-header {
-            flex-direction: column;
-            gap: 15px;
-            padding: 15px;
-        }
+	.game-controls {
+		padding: 12px;
+		border-top: 1px solid rgba(0, 255, 136, 0.2);
+		background: rgba(0, 0, 0, 0.3);
+	}
 
-        .header-controls {
-            justify-content: center;
-        }
+	/* Properties Panel Styles */
+	.properties-panel {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+	}
 
-        .game-title {
-            font-size: 2rem;
-        }
-    }
+	.properties-header {
+		padding: 12px 16px;
+		border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+		background: rgba(0, 0, 0, 0.3);
+	}
 
-    @media (prefers-color-scheme: light) {
-        :root {
-            color: #00ff88;
-            background: linear-gradient(
-                135deg,
-                #0a0a0a 0%,
-                #1a1a2e 50%,
-                #16213e 100%
-            );
-        }
-    }
+	.properties-header h3 {
+		margin: 0 0 4px 0;
+		font-size: 1rem;
+		color: #00ff88;
+		font-weight: bold;
+	}
+
+	.selected-agent {
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.7);
+	}
+
+	.properties-tabs {
+		display: flex;
+		border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+		background: rgba(0, 0, 0, 0.2);
+	}
+
+	.property-tab {
+		flex: 1;
+		background: transparent;
+		border: none;
+		color: rgba(255, 255, 255, 0.7);
+		padding: 10px 12px;
+		cursor: pointer;
+		font-size: 0.8rem;
+		transition: all 0.2s ease;
+		border-bottom: 2px solid transparent;
+	}
+
+	.property-tab:hover {
+		color: rgba(255, 255, 255, 0.9);
+		background: rgba(0, 255, 136, 0.1);
+	}
+
+	.property-tab.active {
+		color: #00ff88;
+		border-bottom-color: #00ff88;
+		background: rgba(0, 255, 136, 0.1);
+	}
+
+	.properties-content {
+		flex: 1;
+		overflow: hidden;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.5;
+		}
+	}
 </style>

@@ -1,18 +1,17 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { skillTreeManager } from "../services/PerkManager";
-    import { characters } from "../services/CharacterManager";
+    import { characterManager, characters, selectedAgent } from "../services/CharacterManager";
+    import { settingsManager, settings } from "../services/SettingsManager";
     import type {
         AgentSkillTree,
         SkillNode,
         SkillCategory,
     } from "../services/PerkManager";
 
-    let showSkillPanel = false;
-    let selectedAgent: string | null = null;
     let selectedCategory: SkillCategory = "system_access";
     let agentSkillTrees: Record<string, AgentSkillTree> = {};
-    let hoveredSkill: string | null = null;
+    let applyToAllAgents = false; // Default: only current agent
 
     // Subscribe to skill trees
     skillTreeManager.agentSkills.subscribe((value) => {
@@ -23,15 +22,27 @@
     $: availableAgents = $characters.filter((c) => c.type === "npc");
 
     // Get current agent's skill tree
-    $: currentAgentSkills = selectedAgent
-        ? agentSkillTrees[selectedAgent]
+    $: currentAgentSkills = $selectedAgent
+        ? agentSkillTrees[$selectedAgent]
         : null;
 
     // Get skills for selected category
     $: categorySkills = skillTreeManager.getSkillsByCategory(selectedCategory);
+    
+    // Reactive skill states for current agent
+    $: currentAgentSkillStates = $selectedAgent && settingsTrigger ? categorySkills.map(skill => ({
+        skill,
+        state: getSkillState(skill),
+        rank: getSkillRank(skill.id),
+        owned: hasSkill(skill.id),
+        enabled: isSkillEnabled(skill.id)
+    })) : [];
+    
+    // Force reactivity when settings change
+    $: settingsTrigger = $settings;
 
     // Skill categories with icons and colors
-    const categories = [
+    const categories: Array<{ id: SkillCategory; name: string; icon: string; color: string }> = [
         { id: "system_access", name: "System", icon: "💻", color: "#4CAF50" },
         { id: "web_operations", name: "Web", icon: "🌐", color: "#2196F3" },
         { id: "communication", name: "Social", icon: "💬", color: "#FF9800" },
@@ -40,104 +51,129 @@
         { id: "security", name: "Security", icon: "🔒", color: "#F44336" },
     ];
 
-    function toggleSkillPanel() {
-        showSkillPanel = !showSkillPanel;
-        if (showSkillPanel && !selectedAgent && availableAgents.length > 0) {
-            selectedAgent = availableAgents[0].id;
-        }
-    }
-
-    function selectAgent(agentId: string) {
-        selectedAgent = agentId;
-        // Initialize agent if not already done
-        if (!agentSkillTrees[agentId]) {
-            skillTreeManager.initializeAgent(agentId);
-        }
-    }
-
     function selectCategory(category: SkillCategory) {
         selectedCategory = category;
     }
 
     function unlockSkill(skillId: string) {
-        if (selectedAgent) {
-            const success = skillTreeManager.unlockSkill(
-                selectedAgent,
-                skillId,
-            );
-            if (success) {
-                // Visual feedback for successful unlock
-                const skillElement = document.querySelector(
-                    `[data-skill="${skillId}"]`,
-                );
-                if (skillElement) {
-                    skillElement.classList.add("skill-unlocked-animation");
-                    setTimeout(() => {
-                        skillElement.classList.remove(
-                            "skill-unlocked-animation",
-                        );
-                    }, 1000);
+        if (!$selectedAgent) return;
+        
+        if (applyToAllAgents) {
+            // Apply to all agents
+            availableAgents.forEach(agent => {
+                const success = skillTreeManager.unlockSkill(agent.id, skillId);
+                if (success) {
+                    settingsManager.ownSkill(agent.id, skillId);
                 }
+            });
+        } else {
+            // Apply only to current agent
+            const success = skillTreeManager.unlockSkill($selectedAgent, skillId);
+            if (success) {
+                settingsManager.ownSkill($selectedAgent, skillId);
             }
         }
-    }
-
-    function getSkillState(
-        skill: SkillNode,
-    ): "locked" | "available" | "unlocked" | "maxed" {
-        if (!currentAgentSkills) return "locked";
-
-        const agentSkill = currentAgentSkills.skills[skill.id];
-        if (!agentSkill) return "locked";
-
-        if (agentSkill.currentRank >= agentSkill.maxRank) return "maxed";
-        if (agentSkill.currentRank > 0) return "unlocked";
-
-        // Check if prerequisites are met
-        const prerequisitesMet = skill.prerequisites.every((prereqId) => {
-            const prereq = currentAgentSkills.skills[prereqId];
-            return prereq && prereq.currentRank > 0;
-        });
-
-        if (
-            prerequisitesMet &&
-            currentAgentSkills.availablePoints >= skill.cost
-        ) {
-            return "available";
+        
+        // Visual feedback for successful unlock
+        const skillElement = document.querySelector(`[data-skill="${skillId}"]`);
+        if (skillElement) {
+            skillElement.classList.add("skill-unlocked-animation");
+            setTimeout(() => {
+                skillElement.classList.remove("skill-unlocked-animation");
+            }, 1000);
         }
-
-        return "locked";
     }
 
-    function getSkillRank(skillId: string): number {
-        if (!currentAgentSkills) return 0;
-        return currentAgentSkills.skills[skillId]?.currentRank || 0;
-    }
+    	function getSkillState(
+		skill: SkillNode,
+	): "locked" | "available" | "unlocked" | "maxed" {
+		if (!currentAgentSkills) return "locked";
 
-    function canAffordSkill(skill: SkillNode): boolean {
-        if (!currentAgentSkills) return false;
-        return currentAgentSkills.availablePoints >= skill.cost;
-    }
+		const agentSkill = currentAgentSkills.skills[skill.id];
+		if (!agentSkill) return "locked";
+
+		if (agentSkill.currentRank >= agentSkill.maxRank) return "maxed";
+		if (agentSkill.currentRank > 0) return "unlocked";
+
+		// Developer mode: all skills are available (bypass prerequisites)
+		return "available";
+		
+		// Original logic (commented out for developer mode):
+		// Check if prerequisites are met
+		// const prerequisitesMet = skill.prerequisites.every((prereqId) => {
+		// 	const prereq = currentAgentSkills.skills[prereqId];
+		// 	return prereq && prereq.currentRank > 0;
+		// });
+		// return prerequisitesMet ? "available" : "locked";
+	}
+
+	function hasSkill(skillId: string): boolean {
+		if (!$selectedAgent) return false;
+		// Check persistent settings first, then fall back to developer mode
+		return settingsManager.isSkillOwned($selectedAgent, skillId) || true; // true for developer mode
+	}
+
+	function isSkillEnabled(skillId: string): boolean {
+		if (!$selectedAgent) return false;
+		return settingsManager.isSkillEnabled($selectedAgent, skillId);
+	}
+
+	function toggleSkill(skillId: string) {
+		if (!$selectedAgent) return;
+		
+		if (applyToAllAgents) {
+			// Apply to all agents
+			availableAgents.forEach(agent => {
+				settingsManager.toggleSkill(agent.id, skillId);
+			});
+		} else {
+			// Apply only to current agent
+			settingsManager.toggleSkill($selectedAgent, skillId);
+		}
+	}
+
+    	function getSkillRank(skillId: string): number {
+		if (!currentAgentSkills) return 0;
+		const skill = currentAgentSkills.skills[skillId];
+		if (!skill) return 0;
+		return skill.currentRank;
+	}
 
     function getAgentColor(agentId: string): string {
-        const agent = availableAgents.find((a) => a.id === agentId);
-        return agent?.color || "#ffffff";
+        if (agentId.includes("alpha")) return "#4CAF50";
+        if (agentId.includes("beta")) return "#FF9800";
+        if (agentId.includes("gamma")) return "#9C27B0";
+        return "#2196F3";
     }
 
     function getAgentName(agentId: string): string {
-        const agent = availableAgents.find((a) => a.id === agentId);
-        return agent?.name || agentId;
+        if (agentId.includes("alpha")) return "Alpha";
+        if (agentId.includes("beta")) return "Beta";
+        if (agentId.includes("gamma")) return "Gamma";
+        return "Agent";
     }
 
     function getCategoryColor(categoryId: string): string {
-        return categories.find((c) => c.id === categoryId)?.color || "#ffffff";
+        const category = categories.find((c) => c.id === categoryId);
+        return category ? category.color : "#4CAF50";
     }
 
     function grantTestXP() {
-        if (selectedAgent) {
-            skillTreeManager.grantExperience(selectedAgent, 150, "testing");
+        if ($selectedAgent) {
+            skillTreeManager.grantExperience($selectedAgent, 150);
         }
     }
+
+    // Debug function to test persistence
+    function debugSettings() {
+        if ($selectedAgent) {
+            console.log('Current Settings for Agent:', $selectedAgent);
+            console.log('Enabled Skills:', settingsManager.getEnabledSkills($selectedAgent));
+            console.log('Owned Skills:', settingsManager.getOwnedSkills($selectedAgent));
+            console.log('All Settings:', settingsManager.export());
+        }
+    }
+
 
     onMount(() => {
         // Initialize skill trees for all agents
@@ -147,729 +183,571 @@
     });
 </script>
 
-<!-- Skill Tree Toggle Button -->
-<button
-    class="skill-tree-toggle"
-    on:click={toggleSkillPanel}
-    class:active={showSkillPanel}
-    title="Agent Skill Trees"
->
-    ⚡ Skills
-</button>
+<!-- Skills Panel -->
+<div class="skills-panel">
+			{#if $selectedAgent && currentAgentSkills}
+			<div class="agent-info">
+				<span class="agent-name">{getAgentName($selectedAgent)}</span>
+				<span class="agent-xp">XP: {currentAgentSkills.experience}</span>
+				<span class="agent-points dev-mode">Points: ∞ (Developer Mode)</span>
+				<button class="debug-btn" on:click={debugSettings}>🔧 Debug</button>
+			</div>
+			
+			<!-- Apply to All Toggle -->
+			<div class="apply-toggle-container" class:active={applyToAllAgents}>
+				<label class="apply-toggle">
+					<input 
+						type="checkbox" 
+						bind:checked={applyToAllAgents}
+					>
+					<span class="toggle-slider"></span>
+					<span class="toggle-label">
+						{applyToAllAgents ? "🌐 Apply to All Agents" : "👤 Apply to Current Agent Only"}
+					</span>
+				</label>
+			</div>
+		{/if}
 
-<!-- Skill Tree Panel -->
-{#if showSkillPanel}
-    <div class="skill-panel-overlay" on:click={toggleSkillPanel}>
-        <div class="skill-panel" on:click|stopPropagation>
-            <!-- Header -->
-            <div class="skill-header">
-                <h2>🎯 Agent Skill Trees</h2>
-                <div class="header-controls">
-                    <button
-                        class="test-xp-btn"
-                        on:click={grantTestXP}
-                        disabled={!selectedAgent}
-                    >
-                        +150 XP
-                    </button>
-                    <button class="close-btn" on:click={toggleSkillPanel}
-                        >✕</button
-                    >
-                </div>
-            </div>
-
-            <!-- Agent Selection -->
-            <div class="agent-selector">
-                <h3>Select Agent</h3>
-                <div class="agent-grid">
-                    {#each availableAgents as agent}
-                        <button
-                            class="agent-card"
-                            class:selected={selectedAgent === agent.id}
-                            on:click={() => selectAgent(agent.id)}
-                            style="border-color: {getAgentColor(agent.id)}"
-                        >
-                            <div
-                                class="agent-icon"
-                                style="color: {getAgentColor(agent.id)}"
-                            >
-                                {agent.name === "Alpha"
-                                    ? "🧠"
-                                    : agent.name === "Beta"
-                                      ? "🎨"
-                                      : "⚙️"}
-                            </div>
-                            <div class="agent-info">
-                                <div class="agent-name">
-                                    {getAgentName(agent.id)}
-                                </div>
-                                {#if agentSkillTrees[agent.id]}
-                                    <div class="agent-stats">
-                                        <span
-                                            >XP: {agentSkillTrees[agent.id]
-                                                .experience}</span
-                                        >
-                                        <span
-                                            >Points: {agentSkillTrees[agent.id]
-                                                .availablePoints}</span
-                                        >
-                                    </div>
-                                {/if}
-                            </div>
-                        </button>
-                    {/each}
-                </div>
-            </div>
-
-            {#if currentAgentSkills}
-                <!-- Category Tabs -->
-                <div class="category-tabs">
-                    {#each categories as category}
-                        <button
-                            class="category-tab"
-                            class:active={selectedCategory === category.id}
-                            on:click={() => selectCategory(category.id)}
-                            style="--category-color: {category.color}"
-                        >
-                            <span class="category-icon">{category.icon}</span>
-                            <span class="category-name">{category.name}</span>
-                        </button>
-                    {/each}
-                </div>
-
-                <!-- Skill Tree Grid -->
-                <div class="skill-tree-container">
-                    <div class="skill-tree-header">
-                        <h3 style="color: {getCategoryColor(selectedCategory)}">
-                            {categories.find((c) => c.id === selectedCategory)
-                                ?.icon}
-                            {categories.find((c) => c.id === selectedCategory)
-                                ?.name} Skills
-                        </h3>
-                        <div class="agent-resources">
-                            <span class="experience"
-                                >🌟 {currentAgentSkills.experience} XP</span
-                            >
-                            <span class="points"
-                                >💎 {currentAgentSkills.availablePoints} Points</span
-                            >
-                        </div>
-                    </div>
-
-                    <div class="skill-grid">
-                        {#each categorySkills as skill, index}
-                            {@const skillState = getSkillState(skill)}
-                            {@const skillRank = getSkillRank(skill.id)}
-                            <div
-                                class="skill-node {skillState}"
-                                class:hoverable={skillState === "available"}
-                                data-skill={skill.id}
-                                on:click={() =>
-                                    skillState === "available" &&
-                                    unlockSkill(skill.id)}
-                                on:mouseenter={() => (hoveredSkill = skill.id)}
-                                on:mouseleave={() => (hoveredSkill = null)}
-                                style="--category-color: {getCategoryColor(
-                                    selectedCategory,
-                                )}"
-                            >
-                                <!-- Skill Icon -->
-                                <div class="skill-icon">
-                                    {skill.icon}
-                                    {#if skillRank > 0}
-                                        <div class="skill-rank">
-                                            {skillRank}
-                                        </div>
-                                    {/if}
-                                </div>
-
-                                <!-- Skill Info -->
-                                <div class="skill-info">
-                                    <div class="skill-name">{skill.name}</div>
-                                    <div class="skill-description">
-                                        {skill.description}
-                                    </div>
-
-                                    {#if skillState === "locked" && skill.prerequisites.length > 0}
-                                        <div class="prerequisites">
-                                            Requires: {skill.prerequisites
-                                                .map(
-                                                    (id) =>
-                                                        categorySkills.find(
-                                                            (s) => s.id === id,
-                                                        )?.name || id,
-                                                )
-                                                .join(", ")}
-                                        </div>
-                                    {/if}
-
-                                    {#if skillState === "available"}
-                                        <div class="skill-cost">
-                                            Cost: {skill.cost} points
-                                        </div>
-                                    {/if}
-
-                                    {#if skillRank > 0}
-                                        <div class="skill-effects">
-                                            {#each skill.effects as effect}
-                                                <div class="effect">
-                                                    • {effect.description}
-                                                </div>
-                                            {/each}
-                                        </div>
-                                    {/if}
-
-                                    {#if skillState === "unlocked" && skillRank < skill.maxRank}
-                                        <div class="upgrade-info">
-                                            Rank {skillRank}/{skill.maxRank} - Can
-                                            upgrade for {skill.cost} points
-                                        </div>
-                                    {/if}
-                                </div>
-
-                                <!-- Connection Lines -->
-                                {#if skill.prerequisites.length > 0}
-                                    {#each skill.prerequisites as prereqId}
-                                        {@const prereqIndex =
-                                            categorySkills.findIndex(
-                                                (s) => s.id === prereqId,
-                                            )}
-                                        {#if prereqIndex !== -1}
-                                            <div
-                                                class="skill-connection"
-                                                style="--prereq-index: {prereqIndex}; --current-index: {index}"
-                                            ></div>
-                                        {/if}
-                                    {/each}
-                                {/if}
-                            </div>
-                        {/each}
-                    </div>
-                </div>
-
-                <!-- Skill Tooltip -->
-                {#if hoveredSkill}
-                    {@const hoveredSkillData = categorySkills.find(
-                        (s) => s.id === hoveredSkill,
-                    )}
-                    {#if hoveredSkillData}
-                        <div class="skill-tooltip">
-                            <h4>
-                                {hoveredSkillData.icon}
-                                {hoveredSkillData.name}
-                            </h4>
-                            <p>{hoveredSkillData.description}</p>
-                            <div class="tooltip-effects">
-                                {#each hoveredSkillData.effects as effect}
-                                    <div class="tooltip-effect">
-                                        <strong>{effect.type}:</strong>
-                                        {effect.description}
-                                    </div>
-                                {/each}
-                            </div>
-                            <div class="tooltip-stats">
-                                <span>Max Rank: {hoveredSkillData.maxRank}</span
-                                >
-                                <span>Cost: {hoveredSkillData.cost} points</span
-                                >
-                            </div>
-                        </div>
-                    {/if}
-                {/if}
-            {:else}
-                <div class="no-agent-selected">
-                    <p>Select an agent to view their skill tree</p>
-                </div>
-            {/if}
+    {#if $selectedAgent && currentAgentSkills}
+        <!-- Category Tabs -->
+        <div class="category-tabs">
+            {#each categories as category}
+                <button
+                    class="category-tab"
+                    class:active={selectedCategory === category.id}
+                    on:click={() => selectCategory(category.id)}
+                    style="--category-color: {category.color}"
+                >
+                    <span class="category-icon">{category.icon}</span>
+                    <span class="category-name">{category.name}</span>
+                </button>
+            {/each}
         </div>
-    </div>
-{/if}
 
-<style>
-    .skill-tree-toggle {
-        background: linear-gradient(135deg, #4caf50, #45a049);
-        border: none;
-        border-radius: 8px;
-        color: white;
-        padding: 10px 15px;
-        font-size: 14px;
-        font-weight: bold;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-    }
+        <!-- Skills Grid -->
+        <div class="skills-grid">
+            			{#each currentAgentSkillStates as skillData (skillData.skill.id)}
+				{@const skill = skillData.skill}
+				{@const skillState = skillData.state}
+				{@const skillRank = skillData.rank}
+				{@const owned = skillData.owned}
+				{@const enabled = skillData.enabled}
+				<div
+					class="skill-card"
+					class:locked={skillState === "locked"}
+					class:available={skillState === "available"}
+					class:unlocked={skillState === "unlocked"}
+					class:maxed={skillState === "maxed"}
+					class:owned={owned}
+					class:enabled={enabled}
+					data-skill={skill.id}
+				>
+					{#if owned}
+						<div class="owned-badge">OWN</div>
+					{/if}
+					<div class="skill-header">
+						<div class="skill-header-left">
+							<span class="skill-icon">{skill.icon}</span>
+							<span class="skill-name">{skill.name}</span>
+						</div>
+						<div class="skill-controls">
+							{#if skillRank > 0}
+								<span class="skill-rank">Rank {skillRank}</span>
+							{/if}
+							{#if owned}
+								<label 
+									class="ios-toggle"
+									title={enabled ? "Disable skill" : "Enable skill"}
+								>
+									<input 
+										type="checkbox" 
+										checked={enabled}
+										on:change|stopPropagation={() => toggleSkill(skill.id)}
+									>
+									<span class="toggle-slider"></span>
+								</label>
+							{/if}
+						</div>
+					</div>
+					<div class="skill-description">{skill.description}</div>
+					<div class="skill-status">
+						{#if !owned}
+							<span class="status-locked">🔒 Not Owned</span>
+						{:else if enabled}
+							<span class="status-enabled">✅ Enabled</span>
+						{:else}
+							<span class="status-disabled">⏸️ Disabled</span>
+						{/if}
+					</div>
+					<div class="skill-cost">
+						{#if owned}
+							<span class="cost-owned">OWNED</span>
+						{:else}
+							<button 
+								class="buy-btn"
+								on:click|stopPropagation={() => unlockSkill(skill.id)}
+							>
+								Buy for {skill.cost} points
+							</button>
+						{/if}
+					</div>
+				</div>
+			{/each}
+        </div>
 
-    .skill-tree-toggle:hover,
-    .skill-tree-toggle.active {
-        background: linear-gradient(135deg, #5cbf60, #4caf50);
-        transform: translateY(-2px);
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-    }
 
-    .skill-panel-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
+    {:else}
+        <div class="no-agent-selected">
+            <div class="no-agent-icon">🎯</div>
+            <div class="no-agent-text">
+                Click on an agent in the simulation to view their skills
+            </div>
+        </div>
+    {/if}
+</div>
+
+<style lang="css">
+    .skills-panel {
         background: rgba(0, 0, 0, 0.8);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 2000;
-        animation: fadeIn 0.3s ease;
-    }
-
-    .skill-panel {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        border: 2px solid #4caf50;
-        border-radius: 15px;
-        width: 90vw;
-        height: 85vh;
-        max-width: 1200px;
-        padding: 20px;
+        border: 1px solid rgba(0, 255, 136, 0.3);
+        border-radius: 8px;
+        padding: 16px;
+        height: 100%;
         overflow-y: auto;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-        animation: slideIn 0.3s ease;
     }
 
-    .skill-header {
+    	.agent-info {
+		display: flex;
+		gap: 12px;
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.8);
+		margin-bottom: 16px;
+		padding: 8px 12px;
+		background: rgba(0, 0, 0, 0.3);
+		border-radius: 6px;
+		border: 1px solid rgba(0, 255, 136, 0.2);
+	}
+
+    .agent-name {
+        color: #00ff88;
+        font-weight: bold;
+    }
+
+    .agent-xp {
+        color: #FFD700;
+    }
+
+    	.agent-points {
+		color: #2196F3;
+	}
+
+	.dev-mode {
+		color: #FFD700 !important;
+		font-weight: bold;
+	}
+
+	.debug-btn {
+		background: rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		color: rgba(255, 255, 255, 0.7);
+		padding: 4px 8px;
+		border-radius: 4px;
+		font-size: 0.7rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.debug-btn:hover {
+		background: rgba(255, 255, 255, 0.2);
+		color: rgba(255, 255, 255, 0.9);
+	}
+
+	.apply-toggle-container {
+		margin: 12px 0;
+		padding: 8px 12px;
+		background: rgba(0, 0, 0, 0.2);
+		border-radius: 6px;
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		transition: all 0.2s ease;
+	}
+
+	.apply-toggle-container.active {
+		background: rgba(255, 152, 0, 0.1);
+		border-color: rgba(255, 152, 0, 0.3);
+	}
+
+	.apply-toggle {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		cursor: pointer;
+		font-size: 0.85rem;
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.apply-toggle input {
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+
+	.apply-toggle .toggle-slider {
+		position: relative;
+		display: inline-block;
+		width: 36px;
+		height: 20px;
+		background-color: rgba(255, 255, 255, 0.2);
+		border-radius: 20px;
+		transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		border: 1px solid rgba(255, 255, 255, 0.3);
+	}
+
+	.apply-toggle .toggle-slider:before {
+		position: absolute;
+		content: "";
+		height: 14px;
+		width: 14px;
+		left: 2px;
+		bottom: 2px;
+		background-color: white;
+		transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		border-radius: 50%;
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+	}
+
+	.apply-toggle input:checked + .toggle-slider {
+		background-color: #FF9800;
+		border-color: #FF9800;
+	}
+
+	.apply-toggle input:checked + .toggle-slider:before {
+		transform: translateX(16px);
+	}
+
+	.apply-toggle:hover .toggle-slider {
+		background-color: rgba(255, 255, 255, 0.3);
+		border-color: rgba(255, 255, 255, 0.5);
+	}
+
+	.apply-toggle input:checked + .toggle-slider:hover {
+		background-color: #FFB74D;
+	}
+
+	.toggle-label {
+		font-weight: 500;
+		transition: color 0.2s ease;
+	}
+
+	.apply-toggle:hover .toggle-label {
+		color: rgba(255, 255, 255, 0.9);
+	}
+
+    .category-tabs {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-        padding-bottom: 15px;
-        border-bottom: 2px solid #4caf50;
+        gap: 4px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
     }
 
-    .skill-header h2 {
-        color: #4caf50;
-        margin: 0;
-        font-size: 24px;
-        text-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
-    }
-
-    .header-controls {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-    }
-
-    .test-xp-btn {
-        background: #ff9800;
-        border: none;
+    .category-tab {
+        background: transparent;
+        border: 1px solid rgba(0, 255, 136, 0.3);
+        color: rgba(255, 255, 255, 0.7);
+        padding: 6px 12px;
         border-radius: 6px;
-        color: white;
-        padding: 8px 12px;
-        font-size: 12px;
         cursor: pointer;
-        transition: all 0.3s ease;
+        transition: all 0.2s ease;
+        font-size: 0.8rem;
+        display: flex;
+        align-items: center;
+        gap: 4px;
     }
 
-    .test-xp-btn:hover:not(:disabled) {
-        background: #f57c00;
-        transform: scale(1.05);
+    .category-tab:hover {
+        background: rgba(0, 255, 136, 0.1);
+        color: rgba(255, 255, 255, 0.9);
     }
 
-    .test-xp-btn:disabled {
+    .category-tab.active {
+        background: rgba(0, 255, 136, 0.2);
+        color: var(--category-color);
+        border-color: var(--category-color);
+    }
+
+    .category-icon {
+        font-size: 0.9rem;
+    }
+
+    .category-name {
+        font-weight: 500;
+    }
+
+    .skills-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px;
+    }
+
+    .skill-card {
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(0, 255, 136, 0.2);
+        border-radius: 6px;
+        padding: 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        position: relative;
+    }
+
+    .skill-card:hover {
+        border-color: rgba(0, 255, 136, 0.5);
+        transform: translateY(-2px);
+    }
+
+    .skill-card.locked {
         opacity: 0.5;
         cursor: not-allowed;
     }
 
-    .close-btn {
-        background: #f44336;
-        border: none;
-        border-radius: 6px;
-        color: white;
-        padding: 8px 12px;
-        font-size: 16px;
-        cursor: pointer;
-        transition: all 0.3s ease;
+    .skill-card.available {
+        border-color: #FF9800;
+        background: rgba(255, 152, 0, 0.1);
     }
 
-    .close-btn:hover {
-        background: #d32f2f;
-        transform: scale(1.1);
+    .skill-card.unlocked {
+        border-color: #4CAF50;
+        background: rgba(76, 175, 80, 0.1);
     }
 
-    .agent-selector {
-        margin-bottom: 20px;
-    }
+    	.skill-card.maxed {
+		border-color: #9C27B0;
+		background: rgba(156, 39, 176, 0.1);
+	}
 
-    .agent-selector h3 {
-        color: #ffffff;
-        margin-bottom: 10px;
-        font-size: 16px;
-    }
+	.skill-card.owned {
+		border-color: #4CAF50;
+		background: rgba(76, 175, 80, 0.1);
+		position: relative;
+	}
 
-    .agent-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 10px;
-    }
+	.owned-badge {
+		position: absolute;
+		top: -8px;
+		right: -8px;
+		background: #4CAF50;
+		color: white;
+		font-size: 0.7rem;
+		font-weight: bold;
+		padding: 4px 8px;
+		border-radius: 12px;
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+		z-index: 10;
+	}
 
-    .agent-card {
-        background: rgba(255, 255, 255, 0.05);
-        border: 2px solid transparent;
-        border-radius: 10px;
-        padding: 15px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
+    	.skill-header {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 8px;
+		justify-content: space-between;
+	}
 
-    .agent-card:hover {
-        background: rgba(255, 255, 255, 0.1);
-        transform: translateY(-2px);
-    }
+	.skill-header-left {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
 
-    .agent-card.selected {
-        border-color: currentColor;
-        background: rgba(255, 255, 255, 0.15);
-        box-shadow: 0 0 15px rgba(76, 175, 80, 0.3);
-    }
-
-    .agent-icon {
-        font-size: 24px;
-        width: 40px;
-        height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 50%;
-    }
-
-    .agent-info {
-        flex: 1;
-    }
-
-    .agent-name {
-        color: #ffffff;
-        font-weight: bold;
-        margin-bottom: 5px;
-    }
-
-    .agent-stats {
-        display: flex;
-        gap: 10px;
-        font-size: 12px;
-        color: #cccccc;
-    }
-
-    .category-tabs {
-        display: flex;
-        gap: 5px;
-        margin-bottom: 20px;
-        overflow-x: auto;
-    }
-
-    .category-tab {
-        background: rgba(255, 255, 255, 0.1);
-        border: 2px solid transparent;
-        border-radius: 8px;
-        padding: 10px 15px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        white-space: nowrap;
-        color: #ffffff;
-    }
-
-    .category-tab:hover {
-        background: rgba(255, 255, 255, 0.2);
-    }
-
-    .category-tab.active {
-        border-color: var(--category-color);
-        background: var(--category-color);
-        color: #000000;
-        box-shadow: 0 0 15px var(--category-color);
-    }
-
-    .category-icon {
-        font-size: 16px;
-    }
-
-    .category-name {
-        font-size: 14px;
-        font-weight: bold;
-    }
-
-    .skill-tree-container {
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 10px;
-        padding: 20px;
-    }
-
-    .skill-tree-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-    }
-
-    .skill-tree-header h3 {
-        margin: 0;
-        font-size: 18px;
-    }
-
-    .agent-resources {
-        display: flex;
-        gap: 15px;
-        font-size: 14px;
-        color: #ffffff;
-    }
-
-    .experience {
-        color: #ffd700;
-    }
-
-    .points {
-        color: #4caf50;
-    }
-
-    .skill-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        gap: 15px;
-        position: relative;
-    }
-
-    .skill-node {
-        background: linear-gradient(
-            135deg,
-            rgba(255, 255, 255, 0.1) 0%,
-            rgba(255, 255, 255, 0.05) 100%
-        );
-        border: 2px solid rgba(255, 255, 255, 0.2);
-        border-radius: 12px;
-        padding: 15px;
-        transition: all 0.3s ease;
-        position: relative;
-        cursor: default;
-    }
-
-    .skill-node.locked {
-        opacity: 0.4;
-        background: rgba(0, 0, 0, 0.3);
-        border-color: #666666;
-    }
-
-    .skill-node.available {
-        border-color: var(--category-color);
-        cursor: pointer;
-        animation: pulse 2s infinite;
-    }
-
-    .skill-node.available:hover {
-        background: rgba(76, 175, 80, 0.2);
-        transform: translateY(-3px);
-        box-shadow: 0 5px 20px rgba(76, 175, 80, 0.4);
-    }
-
-    .skill-node.unlocked {
-        border-color: var(--category-color);
-        background: linear-gradient(
-            135deg,
-            rgba(76, 175, 80, 0.2) 0%,
-            rgba(76, 175, 80, 0.1) 100%
-        );
-    }
-
-    .skill-node.maxed {
-        border-color: #ffd700;
-        background: linear-gradient(
-            135deg,
-            rgba(255, 215, 0, 0.3) 0%,
-            rgba(255, 215, 0, 0.1) 100%
-        );
-        box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
-    }
+	.skill-controls {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
 
     .skill-icon {
-        font-size: 28px;
-        text-align: center;
-        margin-bottom: 10px;
-        position: relative;
+        font-size: 1.2rem;
     }
 
-    .skill-rank {
-        position: absolute;
-        bottom: -5px;
-        right: -5px;
-        background: #4caf50;
-        color: white;
-        border-radius: 50%;
-        width: 20px;
-        height: 20px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 12px;
-        font-weight: bold;
-    }
+    	.skill-name {
+		font-weight: bold;
+		color: #ffffff;
+		font-size: 0.9rem;
+	}
 
-    .skill-info {
-        text-align: center;
-    }
+	.skill-rank {
+		font-size: 0.7rem;
+		color: #FFD700;
+		font-weight: bold;
+		margin-left: auto;
+	}
 
-    .skill-name {
-        color: #ffffff;
-        font-weight: bold;
-        font-size: 16px;
-        margin-bottom: 8px;
-    }
+	.skill-description {
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.7);
+		margin-bottom: 8px;
+		line-height: 1.3;
+	}
 
-    .skill-description {
-        color: #cccccc;
-        font-size: 13px;
-        line-height: 1.4;
-        margin-bottom: 10px;
-    }
+	.skill-status {
+		margin-bottom: 8px;
+	}
 
-    .prerequisites,
-    .skill-cost,
-    .upgrade-info {
-        font-size: 12px;
-        color: #ff9800;
-        margin-top: 8px;
-    }
+	.status-locked {
+		color: #666666;
+		font-size: 0.7rem;
+		font-weight: 500;
+	}
 
-    .skill-effects {
-        margin-top: 10px;
-        text-align: left;
-    }
+	.status-available {
+		color: #FF9800;
+		font-size: 0.7rem;
+		font-weight: 500;
+	}
 
-    .effect {
-        font-size: 11px;
-        color: #4caf50;
-        margin-bottom: 3px;
-    }
+	.status-unlocked {
+		color: #4CAF50;
+		font-size: 0.7rem;
+		font-weight: 500;
+	}
 
-    .skill-tooltip {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background: rgba(0, 0, 0, 0.95);
-        border: 2px solid #4caf50;
-        border-radius: 10px;
-        padding: 15px;
-        max-width: 300px;
-        z-index: 3000;
-        animation: fadeIn 0.3s ease;
-    }
+	.status-maxed {
+		color: #9C27B0;
+		font-size: 0.7rem;
+		font-weight: 500;
+	}
 
-    .skill-tooltip h4 {
-        color: #4caf50;
-        margin: 0 0 10px 0;
-        font-size: 16px;
-    }
+	.status-enabled {
+		color: #4CAF50;
+		font-size: 0.7rem;
+		font-weight: 500;
+	}
 
-    .skill-tooltip p {
-        color: #cccccc;
-        margin: 0 0 10px 0;
-        font-size: 13px;
-    }
+	.status-disabled {
+		color: #FF9800;
+		font-size: 0.7rem;
+		font-weight: 500;
+	}
 
-    .tooltip-effects {
-        margin-bottom: 10px;
-    }
+    	.skill-cost {
+		font-size: 0.7rem;
+		color: #2196F3;
+		font-weight: bold;
+	}
 
-    .tooltip-effect {
-        font-size: 12px;
-        color: #ffffff;
-        margin-bottom: 3px;
-    }
+	.cost-owned {
+		color: #4CAF50;
+		font-weight: bold;
+	}
 
-    .tooltip-stats {
-        display: flex;
-        justify-content: space-between;
-        font-size: 11px;
-        color: #888888;
-    }
+	.ios-toggle {
+		position: relative;
+		display: inline-block;
+		width: 44px;
+		height: 24px;
+		cursor: pointer;
+	}
+
+	.ios-toggle input {
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+
+	.toggle-slider {
+		position: absolute;
+		cursor: pointer;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(255, 255, 255, 0.2);
+		transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		border-radius: 24px;
+		border: 1px solid rgba(255, 255, 255, 0.3);
+	}
+
+	.toggle-slider:before {
+		position: absolute;
+		content: "";
+		height: 18px;
+		width: 18px;
+		left: 2px;
+		bottom: 2px;
+		background-color: white;
+		transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		border-radius: 50%;
+		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+	}
+
+	input:checked + .toggle-slider {
+		background-color: #4CAF50;
+		border-color: #4CAF50;
+	}
+
+	input:checked + .toggle-slider:before {
+		transform: translateX(20px);
+	}
+
+	.ios-toggle:hover .toggle-slider {
+		background-color: rgba(255, 255, 255, 0.3);
+		border-color: rgba(255, 255, 255, 0.5);
+	}
+
+	input:checked + .toggle-slider:hover {
+		background-color: #5CBF60;
+	}
+
+	.buy-btn {
+		background: #FF9800;
+		border: none;
+		color: white;
+		padding: 6px 12px;
+		border-radius: 4px;
+		font-size: 0.7rem;
+		font-weight: bold;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.buy-btn:hover {
+		background: #F57C00;
+		transform: translateY(-1px);
+	}
 
     .no-agent-selected {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 200px;
         text-align: center;
-        color: #cccccc;
-        padding: 50px;
-        font-size: 18px;
+        color: rgba(255, 255, 255, 0.5);
     }
 
-    @keyframes fadeIn {
-        from {
-            opacity: 0;
-        }
-        to {
-            opacity: 1;
-        }
+    .no-agent-icon {
+        font-size: 3rem;
+        margin-bottom: 12px;
+        opacity: 0.7;
     }
 
-    @keyframes slideIn {
-        from {
-            opacity: 0;
-            transform: translateY(50px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-
-    @keyframes pulse {
-        0%,
-        100% {
-            box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
-        }
-        50% {
-            box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
-        }
+    .no-agent-text {
+        font-size: 0.9rem;
+        line-height: 1.4;
     }
 
     .skill-unlocked-animation {
-        animation: skillUnlock 1s ease;
+        animation: skillUnlocked 1s ease;
     }
 
-    @keyframes skillUnlock {
+    @keyframes skillUnlocked {
         0% {
             transform: scale(1);
-            box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
         }
         50% {
-            transform: scale(1.1);
-            box-shadow: 0 0 0 15px rgba(76, 175, 80, 0);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(76, 175, 80, 0.8);
         }
         100% {
             transform: scale(1);
-            box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
-        }
-    }
-
-    /* Responsive design */
-    @media (max-width: 768px) {
-        .skill-panel {
-            width: 95vw;
-            height: 90vh;
-            padding: 15px;
-        }
-
-        .skill-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .category-tabs {
-            flex-wrap: wrap;
-        }
-
-        .skill-tooltip {
-            position: absolute;
-            bottom: 10px;
-            right: 10px;
-            max-width: 250px;
         }
     }
 </style>
