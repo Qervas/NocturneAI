@@ -28,7 +28,14 @@ export class PerkManager {
   });
 
   private perksData = new Map<string, AgentPerks>();
-  private perkDefinitions: PerkDefinitions;
+  private perkDefinitions: PerkDefinitions = {
+    cognitive: {} as any,
+    technical: {} as any,
+    creative: {} as any,
+    research: {} as any,
+    social: {} as any,
+    automation: {} as any,
+  };
 
   constructor() {
     this.initializePerkDefinitions();
@@ -203,6 +210,13 @@ export class PerkManager {
             description: "Provide excellent user support and assistance",
             icon: "🎧",
           },
+          temporaryConversation: {
+            id: "temporary_conversation",
+            name: "Temporary Conversation",
+            description: "Send simple one-reply messages to other agents",
+            icon: "💬",
+          },
+
         },
       },
       automation: {
@@ -275,7 +289,7 @@ export class PerkManager {
       };
 
       // Initialize skills for this perk
-      Object.values(perkDef.skills).forEach((skillDef) => {
+      Object.values(perkDef.skills).forEach((skillDef: any) => {
         const skill: Skill = {
           id: skillDef.id,
           name: skillDef.name,
@@ -298,6 +312,17 @@ export class PerkManager {
       const specPerk = agentPerks.perks.get(specialization);
       if (specPerk && specPerk.skills.length > 0) {
         specPerk.skills[0].unlocked = true;
+      }
+    }
+
+    // Enable temporary conversations for all agents by default
+    const socialPerk = agentPerks.perks.get('social');
+    if (socialPerk) {
+      const tempConversationSkill = socialPerk.skills.find(s => s.id === 'temporary_conversation');
+      if (tempConversationSkill) {
+        tempConversationSkill.unlocked = true;
+        tempConversationSkill.level = 1; // Give them level 1 to start
+        console.log(`💬 Enabled temporary conversations for ${agentId}`);
       }
     }
 
@@ -356,13 +381,18 @@ export class PerkManager {
     if (skill.level >= 5) return false;
 
     const nextLevel = skill.level + 1;
-    const requiredExp = SKILL_EXPERIENCE_REQUIREMENTS[nextLevel];
+    const requiredExp =
+      SKILL_EXPERIENCE_REQUIREMENTS[
+        nextLevel as keyof typeof SKILL_EXPERIENCE_REQUIREMENTS
+      ];
 
     if (skill.experience >= requiredExp) {
       skill.level = nextLevel;
       skill.experience = skill.experience - requiredExp;
       skill.maxExperience =
-        SKILL_EXPERIENCE_REQUIREMENTS[nextLevel + 1] || requiredExp;
+        SKILL_EXPERIENCE_REQUIREMENTS[
+          (nextLevel + 1) as keyof typeof SKILL_EXPERIENCE_REQUIREMENTS
+        ] || requiredExp;
       return true;
     }
     return false;
@@ -372,13 +402,18 @@ export class PerkManager {
     if (perk.level >= 3) return false;
 
     const nextLevel = perk.level + 1;
-    const requiredExp = PERK_EXPERIENCE_REQUIREMENTS[nextLevel];
+    const requiredExp =
+      PERK_EXPERIENCE_REQUIREMENTS[
+        nextLevel as keyof typeof PERK_EXPERIENCE_REQUIREMENTS
+      ];
 
     if (perk.experience >= requiredExp) {
       perk.level = nextLevel;
       perk.experience = perk.experience - requiredExp;
       perk.maxExperience =
-        PERK_EXPERIENCE_REQUIREMENTS[nextLevel + 1] || requiredExp;
+        PERK_EXPERIENCE_REQUIREMENTS[
+          (nextLevel + 1) as keyof typeof PERK_EXPERIENCE_REQUIREMENTS
+        ] || requiredExp;
       return true;
     }
     return false;
@@ -514,6 +549,7 @@ export class PerkManager {
   }
 
   public getPerkDefinitions(): PerkDefinitions {
+    console.log("🔍 PerkManager.getPerkDefinitions() called, categories:", Object.keys(this.perkDefinitions));
     return this.perkDefinitions;
   }
 
@@ -560,7 +596,7 @@ export class PerkManager {
       if (saved) {
         const entries = JSON.parse(saved);
         this.perksData = new Map();
-        
+
         // Reconstruct the Map with proper Map objects for perks
         entries.forEach(([agentId, agentPerksData]: [string, any]) => {
           const agentPerks: AgentPerks = {
@@ -570,24 +606,31 @@ export class PerkManager {
             availablePoints: agentPerksData.availablePoints || 0,
             specialization: agentPerksData.specialization,
           };
-          
+
           // Convert the perks object back to a Map
-          if (agentPerksData.perks && typeof agentPerksData.perks === 'object') {
-            Object.entries(agentPerksData.perks).forEach(([perkId, perkData]: [string, any]) => {
-              agentPerks.perks.set(perkId, perkData as Perk);
-            });
+          if (
+            agentPerksData.perks &&
+            typeof agentPerksData.perks === "object"
+          ) {
+            Object.entries(agentPerksData.perks).forEach(
+              ([perkId, perkData]: [string, any]) => {
+                agentPerks.perks.set(perkId, perkData as Perk);
+              },
+            );
           }
-          
+
           // Validate that the Map was properly reconstructed
-          if (typeof agentPerks.perks.get !== 'function') {
-            console.warn(`Invalid perks Map for agent ${agentId}, reinitializing...`);
+          if (typeof agentPerks.perks.get !== "function") {
+            console.warn(
+              `Invalid perks Map for agent ${agentId}, reinitializing...`,
+            );
             this.initializeAgentPerks(agentId, agentPerks.specialization);
             return;
           }
-          
+
           this.perksData.set(agentId, agentPerks);
         });
-        
+
         this.updateStore();
       }
     } catch (error) {
@@ -622,15 +665,15 @@ export class PerkManager {
   // Validate and repair corrupted perk data
   public validateAndRepairPerks(): void {
     let hasCorruptedData = false;
-    
+
     this.perksData.forEach((agentPerks, agentId) => {
-      if (typeof agentPerks.perks.get !== 'function') {
+      if (typeof agentPerks.perks.get !== "function") {
         console.warn(`Repairing corrupted perks for agent ${agentId}`);
         hasCorruptedData = true;
         this.initializeAgentPerks(agentId, agentPerks.specialization);
       }
     });
-    
+
     if (hasCorruptedData) {
       this.updateStore();
       this.savePerksData();

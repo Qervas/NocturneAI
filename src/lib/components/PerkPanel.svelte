@@ -172,6 +172,7 @@
                                     currentAgentPerks?.perks && typeof currentAgentPerks.perks.get === 'function' 
                                         ? currentAgentPerks.perks.get(categoryId)
                                         : undefined}
+
                                 {#if perk}
                                     <div class="category-item">
                                         <button

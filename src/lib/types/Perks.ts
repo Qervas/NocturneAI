@@ -218,6 +218,13 @@ export interface PerkDefinitions {
         description: 'Provide excellent user support and assistance';
         icon: '🎧';
       };
+      temporaryConversation: {
+        id: 'temporary_conversation';
+        name: 'Temporary Conversation';
+        description: 'Send simple one-reply messages to other agents';
+        icon: '💬';
+      };
+
     };
   };
 

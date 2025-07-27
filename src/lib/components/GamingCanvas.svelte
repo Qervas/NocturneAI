@@ -26,6 +26,7 @@
     let activeMessages: AnimatedMessage[] = [];
     let messageHistory: AgentMessage[] = [];
     let updateInterval: number;
+    let activeConnections: any[] = [];
 
     // Simulation integration
     let simulationSpeed: SimulationSpeed = "normal";
@@ -130,239 +131,398 @@
 
     // Test function to create a visible message bubble
     function createTestMessageBubble() {
+        const agents = ["agent_alpha", "agent_beta", "agent_gamma"];
+        const fromAgent = agents[Math.floor(Math.random() * agents.length)];
+        const toAgent = agents.filter((a) => a !== fromAgent)[
+            Math.floor(Math.random() * 2)
+        ];
+
+        const fromChar = allCharacters.find((c) => c.id === fromAgent);
+        const toChar = allCharacters.find((c) => c.id === toAgent);
+
+        if (!fromChar || !toChar) return;
+
         const testMessage: AnimatedMessage = {
             id: "test_" + Date.now(),
-            fromAgent: "agent_alpha",
-            toAgent: "agent_beta",
+            fromAgent: fromAgent,
+            toAgent: toAgent,
             startTime: time,
             duration: 300,
             progress: 0,
             content: "Test message bubble",
             intent: "social_chat",
-            fromPos: { x: 250, y: 180 },
-            toPos: { x: 750, y: 180 },
-            currentPos: { x: 250, y: 180 },
-            color: "#ff00ff",
+            fromPos: { x: fromChar.position.x, y: fromChar.position.y },
+            toPos: { x: toChar.position.x, y: toChar.position.y },
+            currentPos: { x: fromChar.position.x, y: fromChar.position.y },
+            color: "#00ffff",
             alpha: 1,
         };
 
         activeMessages.push(testMessage);
         console.log(
-            "Created test message bubble, active messages:",
+            `🚀 Created test message: ${fromAgent} -> ${toAgent}, active messages:`,
             activeMessages.length,
         );
     }
 
+    // Handle keyboard events for testing
+    function handleKeyPress(event: KeyboardEvent) {
+        if (event.key === "t" || event.key === "T") {
+            createTestMessageBubble();
+        }
+    }
+
+    // Simple function to trigger message for testing
+    function triggerTestMessage() {
+        createTestMessageBubble();
+    }
+
     function drawCharacter(character: Character, isActive: boolean = false) {
-        if (!ctx || !canvas) return;
+        if (!ctx || !canvas || !character) return;
 
-        const size = Math.min(canvas.width, canvas.height) * 0.15; // Increased from 0.1 to make characters larger
-        const cx = character.position.x;
-        const cy = character.position.y;
-
-        // Check if mouse is hovering over this character
-        const isHovering = isMouseOverCharacter(mouseX, mouseY, cx, cy, size);
-
-        // Breathing animation
-        const breathScale = 1 + Math.sin(time * 0.02) * 0.1;
-        const actualSize = Math.max(size * breathScale, 30); // Increased minimum size from 10 to 30
-
-        // Active character gets a bigger scale
-        const activeScale = isActive ? 1.3 : 1; // Increased from 1.2 to 1.3
-        const hoverScale = isHovering ? 1.15 : 1; // Increased from 1.1 to 1.15
-        const finalSize = Math.max(actualSize * activeScale * hoverScale, 25); // Increased minimum from 5 to 25
-
-        // Body shape depends on character type
-        if (character.type === "user") {
-            // Human user: Draw as a circle (more human-like)
-            ctx.beginPath();
-            ctx.arc(cx, cy, finalSize / 2, 0, 2 * Math.PI);
-
-            // Special gradient for human user
-            const gradient = ctx.createRadialGradient(
-                cx,
-                cy,
-                0,
-                cx,
-                cy,
-                finalSize / 2,
+        try {
+            // Check if this character is sending or receiving a message
+            const isTransmitting = activeMessages.some(
+                (msg) =>
+                    msg.fromAgent === character.id ||
+                    msg.toAgent === character.id,
             );
-            gradient.addColorStop(0, "#ffffff");
-            gradient.addColorStop(0.3, character.color);
-            gradient.addColorStop(1, character.color + "88");
-            ctx.fillStyle = gradient;
-            ctx.fill();
 
-            // Human user gets special border
-            ctx.strokeStyle = "#ffffff";
-            ctx.lineWidth = 4;
+            const size = Math.min(canvas.width, canvas.height) * 0.15; // Increased from 0.1 to make characters larger
+            const cx = character.position.x;
+            const cy = character.position.y;
+
+            // Check if mouse is hovering over this character
+            const isHovering = isMouseOverCharacter(
+                mouseX,
+                mouseY,
+                cx,
+                cy,
+                size,
+            );
+
+            // Breathing animation
+            const breathScale = 1 + Math.sin(time * 0.02) * 0.1;
+            const actualSize = Math.max(size * breathScale, 30); // Increased minimum size from 10 to 30
+
+            // Active character gets a bigger scale
+            const activeScale = isActive ? 1.3 : 1; // Increased from 1.2 to 1.3
+            const hoverScale = isHovering ? 1.15 : 1; // Increased from 1.1 to 1.15
+            const finalSize = Math.max(
+                actualSize * activeScale * hoverScale,
+                25,
+            ); // Increased minimum from 5 to 25
+
+            // Body shape depends on character type
+            if (character.type === "user") {
+                // Human user: Draw as a circle (more human-like)
+                ctx.beginPath();
+                ctx.arc(cx, cy, finalSize / 2, 0, 2 * Math.PI);
+
+                // Special gradient for human user
+                const gradient = ctx.createRadialGradient(
+                    cx,
+                    cy,
+                    0,
+                    cx,
+                    cy,
+                    finalSize / 2,
+                );
+                gradient.addColorStop(0, "#ffffff");
+                gradient.addColorStop(0.3, character.color);
+                gradient.addColorStop(1, character.color + "88");
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Human user gets special border
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 4;
+                ctx.stroke();
+                ctx.strokeStyle = character.color;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            } else {
+                // AI Agents: Triangle shape
+                ctx.beginPath();
+                ctx.moveTo(cx, cy - finalSize / Math.sqrt(3)); // Top vertex
+                ctx.lineTo(
+                    cx - finalSize / 2,
+                    cy + finalSize / (2 * Math.sqrt(3)),
+                ); // Bottom left
+                ctx.lineTo(
+                    cx + finalSize / 2,
+                    cy + finalSize / (2 * Math.sqrt(3)),
+                ); // Bottom right
+                ctx.closePath();
+
+                // Use character's color for gradient
+                const gradient = ctx.createLinearGradient(
+                    cx,
+                    cy - finalSize,
+                    cx,
+                    cy + finalSize,
+                );
+                gradient.addColorStop(0, character.color);
+                gradient.addColorStop(0.5, character.color + "CC");
+                gradient.addColorStop(1, character.color + "88");
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+
+            // Glowing outline with hover, active, and transmission effects
+            const glowIntensity = isActive
+                ? 8
+                : isTransmitting
+                  ? 6
+                  : isHovering
+                    ? 4
+                    : 3;
+            ctx.strokeStyle = isActive
+                ? "#ffff00"
+                : isTransmitting
+                  ? "#00ffff"
+                  : "#ffffff";
+            ctx.lineWidth = glowIntensity;
             ctx.stroke();
+
+            // Additional hover glow
+            if (isHovering) {
+                ctx.strokeStyle = "rgba(0, 255, 255, 0.6)";
+                ctx.lineWidth = 15;
+                ctx.stroke();
+            }
+
+            // Active character special effects
+            // Additional active glow
+            if (isActive) {
+                ctx.strokeStyle = "rgba(255, 255, 0, 0.8)";
+                ctx.lineWidth = 20;
+                ctx.stroke();
+            }
+
+            // Message sending pulse glow
+            // Message transmission pulse glow
+            if (isTransmitting) {
+                const pulseIntensity = 0.7 + Math.sin(time * 0.08) * 0.3;
+                ctx.strokeStyle = `rgba(0, 255, 255, ${pulseIntensity})`;
+                ctx.lineWidth = 12;
+                ctx.stroke();
+            }
+
+            // Eyes
+            const eyeSize = Math.max(finalSize * 0.15, 1);
+            const eyeY = cy - finalSize * 0.1;
+            const eyeSpacing = Math.max(finalSize * 0.3, 5);
+
+            // Eye movement based on mouse position
+            const eyeOffsetX = isHovering ? (mouseX - cx) * 0.01 : 0;
+            const eyeOffsetY = isHovering ? (mouseY - cy) * 0.01 : 0;
+
+            // Left eye
+            ctx.beginPath();
+            ctx.arc(
+                cx - eyeSpacing + eyeOffsetX,
+                eyeY + eyeOffsetY,
+                eyeSize,
+                0,
+                2 * Math.PI,
+            );
+            ctx.fillStyle = "#ffffff";
+            ctx.fill();
             ctx.strokeStyle = character.color;
             ctx.lineWidth = 2;
             ctx.stroke();
-        } else {
-            // AI Agents: Triangle shape
-            ctx.beginPath();
-            ctx.moveTo(cx, cy - finalSize / Math.sqrt(3)); // Top vertex
-            ctx.lineTo(cx - finalSize / 2, cy + finalSize / (2 * Math.sqrt(3))); // Bottom left
-            ctx.lineTo(cx + finalSize / 2, cy + finalSize / (2 * Math.sqrt(3))); // Bottom right
-            ctx.closePath();
 
-            // Use character's color for gradient
-            const gradient = ctx.createLinearGradient(
-                cx,
-                cy - finalSize,
-                cx,
-                cy + finalSize,
+            // Right eye
+            ctx.beginPath();
+            ctx.arc(
+                cx + eyeSpacing + eyeOffsetX,
+                eyeY + eyeOffsetY,
+                eyeSize,
+                0,
+                2 * Math.PI,
             );
-            gradient.addColorStop(0, character.color);
-            gradient.addColorStop(0.5, character.color + "CC");
-            gradient.addColorStop(1, character.color + "88");
-            ctx.fillStyle = gradient;
             ctx.fill();
-        }
-
-        // Glowing outline with hover and active effects
-        const glowIntensity = isActive ? 8 : isHovering ? 6 : 3;
-        ctx.strokeStyle = isActive ? "#ffff00" : "#00ffff";
-        ctx.lineWidth = glowIntensity;
-        ctx.stroke();
-
-        // Additional hover glow
-        if (isHovering) {
-            ctx.strokeStyle = "rgba(0, 255, 255, 0.6)";
-            ctx.lineWidth = 15;
             ctx.stroke();
-        }
 
-        // Active character special effects
-        if (isActive) {
-            ctx.strokeStyle = "rgba(255, 255, 0, 0.8)";
-            ctx.lineWidth = 20;
-            ctx.stroke();
-        }
+            // Pupils with blinking animation
+            const blink = Math.sin(time * 0.1) > 0.8 ? 0 : 1;
+            const pupilSize = Math.max(eyeSize * 0.6 * blink, 0.5);
 
-        // Eyes
-        const eyeSize = Math.max(finalSize * 0.15, 1);
-        const eyeY = cy - finalSize * 0.1;
-        const eyeSpacing = Math.max(finalSize * 0.3, 5);
+            ctx.fillStyle = "#000000";
+            ctx.beginPath();
+            ctx.arc(
+                cx - eyeSpacing + eyeOffsetX,
+                eyeY + eyeOffsetY,
+                pupilSize,
+                0,
+                2 * Math.PI,
+            );
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(
+                cx + eyeSpacing + eyeOffsetX,
+                eyeY + eyeOffsetY,
+                pupilSize,
+                0,
+                2 * Math.PI,
+            );
+            ctx.fill();
 
-        // Eye movement based on mouse position
-        const eyeOffsetX = isHovering ? (mouseX - cx) * 0.01 : 0;
-        const eyeOffsetY = isHovering ? (mouseY - cy) * 0.01 : 0;
-
-        // Left eye
-        ctx.beginPath();
-        ctx.arc(
-            cx - eyeSpacing + eyeOffsetX,
-            eyeY + eyeOffsetY,
-            eyeSize,
-            0,
-            2 * Math.PI,
-        );
-        ctx.fillStyle = "#ffffff";
-        ctx.fill();
-        ctx.strokeStyle = character.color;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Right eye
-        ctx.beginPath();
-        ctx.arc(
-            cx + eyeSpacing + eyeOffsetX,
-            eyeY + eyeOffsetY,
-            eyeSize,
-            0,
-            2 * Math.PI,
-        );
-        ctx.fill();
-        ctx.stroke();
-
-        // Pupils with blinking animation
-        const blink = Math.sin(time * 0.1) > 0.8 ? 0 : 1;
-        const pupilSize = Math.max(eyeSize * 0.6 * blink, 0.5);
-
-        ctx.fillStyle = "#000000";
-        ctx.beginPath();
-        ctx.arc(
-            cx - eyeSpacing + eyeOffsetX,
-            eyeY + eyeOffsetY,
-            pupilSize,
-            0,
-            2 * Math.PI,
-        );
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(
-            cx + eyeSpacing + eyeOffsetX,
-            eyeY + eyeOffsetY,
-            pupilSize,
-            0,
-            2 * Math.PI,
-        );
-        ctx.fill();
-
-        // Mouth
-        const mouthY = cy + finalSize * 0.2;
-        const mouthWidth = Math.max(finalSize * 0.3, 10);
-        const mouthCurve = Math.sin(time * 0.05) * 5 + (isHovering ? 10 : 0);
-
-        ctx.beginPath();
-        ctx.moveTo(cx - mouthWidth, mouthY + mouthCurve);
-        ctx.quadraticCurveTo(
-            cx,
-            mouthY + mouthCurve + 10,
-            cx + mouthWidth,
-            mouthY + mouthCurve,
-        );
-        ctx.strokeStyle = character.color;
-        ctx.lineWidth = 3;
-        ctx.stroke();
-
-        // Energy particles
-        for (let i = 0; i < 6; i++) {
-            const angle = time * 0.01 + (i * Math.PI) / 3;
-            const radius = Math.max(finalSize * 0.9, 20);
-            const x = cx + Math.cos(angle) * radius;
-            const y = cy + Math.sin(angle) * radius;
-            const particleSize = Math.max(Math.sin(time * 0.02 + i) * 2 + 1, 1);
+            // Mouth
+            const mouthY = cy + finalSize * 0.2;
+            const mouthWidth = Math.max(finalSize * 0.3, 10);
+            const mouthCurve =
+                Math.sin(time * 0.05) * 5 + (isHovering ? 10 : 0);
 
             ctx.beginPath();
-            ctx.arc(x, y, particleSize, 0, 2 * Math.PI);
-            ctx.fillStyle = character.color + "80";
+            ctx.moveTo(cx - mouthWidth, mouthY + mouthCurve);
+            ctx.quadraticCurveTo(
+                cx,
+                mouthY + mouthCurve + 10,
+                cx + mouthWidth,
+                mouthY + mouthCurve,
+            );
+            ctx.strokeStyle = character.color;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Energy particles
+            for (let i = 0; i < 6; i++) {
+                const angle = time * 0.01 + (i * Math.PI) / 3;
+                const radius = Math.max(finalSize * 0.9, 20);
+                const x = cx + Math.cos(angle) * radius;
+                const y = cy + Math.sin(angle) * radius;
+                const particleSize = Math.max(
+                    Math.sin(time * 0.02 + i) * 2 + 1,
+                    1,
+                );
+
+                ctx.beginPath();
+                ctx.arc(x, y, particleSize, 0, 2 * Math.PI);
+                ctx.fillStyle = character.color + "80";
+                ctx.fill();
+            }
+
+            // Character name label
+            ctx.fillStyle = character.color;
+            ctx.font = `${Math.max(12, finalSize * 0.15)}px 'Courier New', monospace`;
+            ctx.textAlign = "center";
+            ctx.fillText(character.name, cx, cy + finalSize + 20);
+
+            // Status indicator
+            const statusColor =
+                character.status === "online" ? "#00ff00" : "#888888";
+            ctx.beginPath();
+            ctx.arc(
+                cx + finalSize * 0.4,
+                cy - finalSize * 0.4,
+                4,
+                0,
+                2 * Math.PI,
+            );
+            ctx.fillStyle = statusColor;
             ctx.fill();
+        } catch (error) {
+            console.warn(`🎮 Failed to draw character ${character.id}:`, error);
         }
+    }
 
-        // Character name label
-        ctx.fillStyle = character.color;
-        ctx.font = `${Math.max(12, finalSize * 0.15)}px 'Courier New', monospace`;
-        ctx.textAlign = "center";
-        ctx.fillText(character.name, cx, cy + finalSize + 20);
+    // Draw message transmission lines when agents are sending messages
+    function drawMessageTransmissionLines() {
+        if (!ctx || !canvas || activeMessages.length === 0) return;
 
-        // Status indicator
-        const statusColor =
-            character.status === "online" ? "#00ff00" : "#888888";
-        ctx.beginPath();
-        ctx.arc(cx + finalSize * 0.4, cy - finalSize * 0.4, 4, 0, 2 * Math.PI);
-        ctx.fillStyle = statusColor;
-        ctx.fill();
+
+
+        // Draw temporary message lines (simple one-reply conversations)
+        // Group messages by sender-receiver pairs to avoid duplicate lines
+        const messagePairs = new Map();
+
+        activeMessages.forEach((msg) => {
+            const key = `${msg.fromAgent}-${msg.toAgent}`;
+            if (!messagePairs.has(key)) {
+                messagePairs.set(key, msg);
+            }
+        });
+
+        messagePairs.forEach((msg) => {
+            const fromChar = allCharacters.find((c) => c.id === msg.fromAgent);
+            const toChar = allCharacters.find((c) => c.id === msg.toAgent);
+
+            if (!fromChar || !toChar) return;
+
+            const x1 = fromChar.position.x;
+            const y1 = fromChar.position.y;
+            const x2 = toChar.position.x;
+            const y2 = toChar.position.y;
+
+            // Create animated transmission line for temporary messages
+            const pulseIntensity = 0.7 + Math.sin(time * 0.1) * 0.3;
+            const lineWidth = 3;
+
+            // Main transmission line (straight line, not arc)
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.strokeStyle = `rgba(255, 165, 0, ${pulseIntensity})`; // Orange for temp messages
+            ctx.lineWidth = lineWidth;
+            ctx.stroke();
+
+            // Add glow effect
+            ctx.strokeStyle = `rgba(255, 255, 255, ${pulseIntensity * 0.5})`;
+            ctx.lineWidth = lineWidth + 2;
+            ctx.stroke();
+
+            // Draw animated particles along the line
+            const particleCount = 3;
+            for (let i = 0; i < particleCount; i++) {
+                const progress = (time * 0.03 + i * 0.33) % 1;
+                const x = x1 + (x2 - x1) * progress;
+                const y = y1 + (y2 - y1) * progress;
+
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, 2 * Math.PI);
+                ctx.fillStyle = `rgba(255, 255, 255, ${pulseIntensity})`;
+                ctx.fill();
+            }
+
+            // Draw message intent label in the middle
+            const midX = (x1 + x2) / 2;
+            const midY = (y1 + y2) / 2 - 15;
+
+            ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+            ctx.fillRect(midX - 20, midY - 8, 40, 16);
+
+            ctx.fillStyle = "#ffa500";
+            ctx.font = "10px 'Courier New', monospace";
+            ctx.textAlign = "center";
+            ctx.fillText(getIntentIcon(msg.intent), midX, midY + 3);
+        });
     }
 
     // Network Visualization Functions
     function updateCommunications() {
-        const recentMessages = communicationManager
-            .getPendingMessages("all")
-            .slice(-5);
+        try {
+            // Update active connections based on message activity
+            activeConnections =
+                communicationManager.getActiveConnections() || [];
 
-        recentMessages.forEach((msg) => {
-            if (!messageHistory.find((m) => m.id === msg.id)) {
-                messageHistory.push(msg);
+            const recentMessages = communicationManager
+                .getPendingMessages("all")
+                .slice(-5);
 
-                if (msg.fromAgent !== msg.toAgent && msg.toAgent) {
-                    createMessageAnimation(msg);
+            recentMessages.forEach((msg) => {
+                if (!messageHistory.find((m) => m.id === msg.id)) {
+                    messageHistory.push(msg);
+
+                    if (msg.fromAgent !== msg.toAgent && msg.toAgent) {
+                        createMessageAnimation(msg);
+                    }
                 }
-            }
-        });
+            });
+        } catch (error) {
+            console.warn("🎮 Failed to update communications:", error);
+        }
     }
 
     function createMessageAnimation(message: AgentMessage) {
@@ -563,6 +723,9 @@
                 drawCharacter(character, isActive);
             });
 
+            // Draw message transmission lines between agents
+            drawMessageTransmissionLines();
+
             // Draw animated messages on top
             drawAnimatedMessages();
 
@@ -625,22 +788,44 @@
     }
 
     onMount(() => {
-        // Initialize character manager with sample data
-        characterManager.initializeSampleData();
+        try {
+            // Initialize character manager with sample data
+            characterManager.initializeSampleData();
+            console.log("🎮 Canvas: Characters initialized");
 
-        // Setup simulation integration
-        setupSimulationIntegration();
+            // Setup simulation integration
+            setupSimulationIntegration();
 
-        resizeCanvas();
-        animate();
-        updateCommunications();
+            // Initialize canvas
+            if (canvas) {
+                resizeCanvas();
+                animate();
+                updateCommunications();
 
-        // Update communications every 2 seconds (still needed for fetching messages)
-        updateInterval = setInterval(updateCommunications, 2000);
+                // Update communications every 2 seconds (still needed for fetching messages)
+                updateInterval = setInterval(updateCommunications, 2000);
 
-        window.addEventListener("resize", resizeCanvas);
-        canvas.addEventListener("mousemove", handleMouseMove);
-        canvas.addEventListener("click", handleMouseClick);
+                // Add event listeners with error handling
+                try {
+                    window.addEventListener("resize", resizeCanvas);
+                    window.addEventListener("keydown", handleKeyPress);
+                    canvas.addEventListener("mousemove", handleMouseMove);
+                    canvas.addEventListener("click", handleMouseClick);
+                    console.log("🎮 Canvas: Event listeners added");
+                } catch (error) {
+                    console.warn(
+                        "🎮 Canvas: Failed to add some event listeners:",
+                        error,
+                    );
+                }
+
+                console.log("🎮 Canvas: Initialization complete");
+            } else {
+                console.error("🎮 Canvas: Canvas element not found");
+            }
+        } catch (error) {
+            console.error("🎮 Canvas: Critical initialization error:", error);
+        }
     });
 
     onDestroy(() => {
@@ -655,6 +840,7 @@
         unsubscribeSimulation.forEach((unsub) => unsub());
 
         window.removeEventListener("resize", resizeCanvas);
+        window.removeEventListener("keydown", handleKeyPress);
         if (canvas) {
             canvas.removeEventListener("mousemove", handleMouseMove);
             canvas.removeEventListener("click", handleMouseClick);
@@ -664,6 +850,15 @@
 
 <div class="canvas-container">
     <canvas bind:this={canvas} class="gaming-canvas"></canvas>
+
+    <!-- Test button for message transmission -->
+    <button
+        class="test-message-btn"
+        on:click={triggerTestMessage}
+        title="Send test message (or press T)"
+    >
+        📨 Test Message
+    </button>
 </div>
 
 <style>
@@ -686,5 +881,27 @@
         max-width: 85vw;
         max-height: 70vh;
         cursor: pointer;
+    }
+
+    .test-message-btn {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(0, 255, 136, 0.2);
+        border: 1px solid #00ff88;
+        border-radius: 6px;
+        color: #00ff88;
+        padding: 8px 12px;
+        font-size: 12px;
+        font-family: "Courier New", monospace;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        backdrop-filter: blur(5px);
+    }
+
+    .test-message-btn:hover {
+        background: rgba(0, 255, 136, 0.4);
+        box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        transform: translateY(-1px);
     }
 </style>

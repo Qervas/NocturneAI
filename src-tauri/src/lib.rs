@@ -131,36 +131,42 @@ async fn call_local_llm(model: &str, messages: Vec<ChatMessage>) -> Result<Strin
     let client = reqwest::Client::new();
     
     // Try Ollama first (default port 11434)
-    let ollama_url = "http://localhost:11434/api/chat";
-    let ollama_request = LLMRequest {
-        model: model.to_string(),
-        messages,
-        stream: false,
-        temperature: 0.7,
-        max_tokens: Some(500),
-    };
+    let ollama_url = "http://localhost:11434/api/generate";
+    
+    // Convert messages to a single prompt for Ollama's generate API
+    let mut prompt = String::new();
+    for message in &messages {
+        if message.role == "system" {
+            prompt.push_str(&format!("{}\n\n", message.content));
+        } else {
+            prompt.push_str(&format!("{}: {}\n", message.role, message.content));
+        }
+    }
+    
+    let ollama_request = serde_json::json!({
+        "model": model,
+        "prompt": prompt,
+        "stream": false,
+        "options": {
+            "temperature": 0.7,
+            "num_predict": 500
+        }
+    });
     
     match client.post(ollama_url).json(&ollama_request).send().await {
         Ok(response) => {
             if response.status().is_success() {
-                // Try JSON parsing first
-                let response_text = match response.text().await {
-                    Ok(text) => text,
-                    Err(_) => return Err("Failed to read response text".to_string())
-                };
-                
-                // Try to parse as JSON
-                if let Ok(llm_response) = serde_json::from_str::<LLMResponse>(&response_text) {
-                    return Ok(llm_response.message.content);
-                } else {
-                    // Return raw text if JSON parsing fails
-                    return Ok(response_text);
+                // Parse Ollama generate API response
+                if let Ok(json_response) = response.json::<serde_json::Value>().await {
+                    if let Some(response_text) = json_response["response"].as_str() {
+                        return Ok(response_text.to_string());
+                    }
                 }
             }
         }
         Err(_) => {
             // Ollama not available, try LM Studio (default port 1234)
-            return try_lm_studio(model, &ollama_request.messages).await;
+            return try_lm_studio(model, &messages).await;
         }
     }
     

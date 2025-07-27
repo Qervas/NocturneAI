@@ -121,53 +121,90 @@ export class LLMService {
         console.log(`Received response from agent ${agentId}:`, response);
         return response;
       } else {
-        // Development mode - connect directly to Ollama
+        // Development mode - use Tauri backend if available, otherwise fallback
         console.log(`[Dev Mode] Sending message to agent ${agentId}: "${message}"`);
         
-        const agent = this.getAgentConfig(agentId);
-        if (!agent) {
-          return `Agent ${agentId} not found.`;
-        }
-
         try {
-          // Call Ollama directly in development mode
-          const response = await this.callOllamaDirectly(agent, message, userName);
+          // Try to use Tauri backend even in development mode
+          const agentIdMap: { [key: string]: string } = {
+            'alpha': 'agent_alpha',
+            'beta': 'agent_beta', 
+            'gamma': 'agent_gamma'
+          };
+          
+          const backendAgentId = agentIdMap[agentId] || agentId;
+          
+          const response = await invoke<string>('send_message_to_agent', {
+            agentId: backendAgentId,
+            message,
+            userName
+          });
+          
           console.log(`[Dev Mode] Received response from agent ${agentId}:`, response);
           return response;
-        } catch (ollamaError) {
-          console.warn(`[Dev Mode] Ollama connection failed, falling back to mock:`, ollamaError);
+        } catch (tauriError) {
+          console.warn(`[Dev Mode] Tauri backend not available, trying direct Ollama:`, tauriError);
           
-          // Fallback to enhanced mock responses if Ollama isn't available
-          const messageLower = message.toLowerCase();
-          let response = "";
-          
-          if (agentId === 'alpha') {
-            if (messageLower.includes('data') || messageLower.includes('analyze')) {
-              response = "From an analytical perspective, I've examined the data patterns. The key metrics suggest we should focus on systematic evaluation.";
-            } else if (messageLower.includes('problem') || messageLower.includes('issue')) {
-              response = "Let me break this down methodically. Based on my analysis, the core problem requires a structured approach.";
-            } else {
-              response = "Interesting question! From a data-driven standpoint, I recommend we examine the underlying patterns first.";
-            }
-          } else if (agentId === 'beta') {
-            if (messageLower.includes('creative') || messageLower.includes('design')) {
-              response = "What an exciting creative challenge! I'm visualizing some innovative approaches that could work beautifully here.";
-            } else if (messageLower.includes('idea') || messageLower.includes('solution')) {
-              response = "I love brainstorming! Here's a fresh perspective: what if we completely reimagined the approach?";
-            } else {
-              response = "This sparks my imagination! Let me think outside the box and explore some unconventional possibilities.";
-            }
-          } else if (agentId === 'gamma') {
-            if (messageLower.includes('logic') || messageLower.includes('step')) {
-              response = "Logically speaking, we should approach this systematically. Let me outline the key steps in order.";
-            } else if (messageLower.includes('solve') || messageLower.includes('fix')) {
-              response = "From a logical standpoint, the most efficient solution requires following these systematic steps.";
-            } else {
-              response = "Let me apply systematic reasoning to this. The logical approach would be to evaluate each component methodically.";
-            }
+          // Fallback to direct Ollama connection
+          const agent = this.getAgentConfig(agentId);
+          if (!agent) {
+            return `Agent ${agentId} not found.`;
           }
-          
-          return `${response}\n\n*Note: Ollama connection failed, using fallback response. Start Ollama server for real AI chat!*`;
+
+          try {
+            const response = await this.callOllamaDirectly(agent, message, userName);
+            console.log(`[Dev Mode] Received response from agent ${agentId}:`, response);
+            return response;
+          } catch (ollamaError) {
+            console.warn(`[Dev Mode] Ollama connection failed, falling back to mock:`, ollamaError);
+            
+            // Check if Ollama is running but model might be wrong
+            let ollamaStatus = "Unknown error";
+            try {
+              const statusResponse = await fetch('http://localhost:11434/api/tags');
+              if (statusResponse.ok) {
+                const data = await statusResponse.json();
+                const availableModels = data.models?.map((m: any) => m.name) || [];
+                ollamaStatus = `Ollama running with models: ${availableModels.join(', ')}`;
+              } else {
+                ollamaStatus = "Ollama server not responding";
+              }
+            } catch {
+              ollamaStatus = "Ollama server not accessible";
+            }
+            
+            // Fallback to enhanced mock responses
+            const messageLower = message.toLowerCase();
+            let response = "";
+            
+            if (agentId === 'alpha') {
+              if (messageLower.includes('data') || messageLower.includes('analyze')) {
+                response = "From an analytical perspective, I've examined the data patterns. The key metrics suggest we should focus on systematic evaluation.";
+              } else if (messageLower.includes('problem') || messageLower.includes('issue')) {
+                response = "Let me break this down methodically. Based on my analysis, the core problem requires a structured approach.";
+              } else {
+                response = "Interesting question! From a data-driven standpoint, I recommend we examine the underlying patterns first.";
+              }
+            } else if (agentId === 'beta') {
+              if (messageLower.includes('creative') || messageLower.includes('design')) {
+                response = "What an exciting creative challenge! I'm visualizing some innovative approaches that could work beautifully here.";
+              } else if (messageLower.includes('idea') || messageLower.includes('solution')) {
+                response = "I love brainstorming! Here's a fresh perspective: what if we completely reimagined the approach?";
+              } else {
+                response = "This sparks my imagination! Let me think outside the box and explore some unconventional possibilities.";
+              }
+            } else if (agentId === 'gamma') {
+              if (messageLower.includes('logic') || messageLower.includes('step')) {
+                response = "Logically speaking, we should approach this systematically. Let me outline the key steps in order.";
+              } else if (messageLower.includes('solve') || messageLower.includes('fix')) {
+                response = "From a logical standpoint, the most efficient solution requires following these systematic steps.";
+              } else {
+                response = "Let me apply systematic reasoning to this. The logical approach would be to evaluate each component methodically.";
+              }
+            }
+            
+            return `${response}\n\n*Note: Ollama connection failed (${ollamaStatus}), using fallback response. Check model availability!*`;
+          }
         }
       }
     } catch (error) {
@@ -219,48 +256,63 @@ export class LLMService {
 
   async checkLLMConnectivity(): Promise<{ connected: boolean; service: string; message: string }> {
     try {
+      // Try Tauri backend first (works in both Tauri and development mode)
       if (typeof window !== 'undefined' && (window as any).__TAURI__) {
-        // Test connectivity by sending a simple message to alpha agent
-        const testResponse = await invoke<string>('send_message_to_agent', {
-          agentId: 'agent_alpha',
-          message: 'Hello! Just testing connection. Please respond briefly.',
-          userName: 'System'
-        });
-        
-        if (testResponse.includes('offline') || testResponse.includes('No local LLM server')) {
-          return {
-            connected: false,
-            service: 'none',
-            message: 'No LLM server detected. Please start Ollama or LM Studio.'
-          };
-        }
-        
-        return {
-          connected: true,
-          service: 'Ollama (Gemma)',
-          message: 'Connected to Ollama with Gemma models'
-        };
-      } else {
-        // Test direct Ollama connection in development mode
         try {
-          const response = await fetch('http://localhost:11434/api/tags');
-          if (response.ok) {
+          const testResponse = await invoke<string>('send_message_to_agent', {
+            agentId: 'agent_alpha',
+            message: 'Hello! Just testing connection. Please respond briefly.',
+            userName: 'System'
+          });
+          
+          if (testResponse.includes('offline') || testResponse.includes('No local LLM server')) {
+            return {
+              connected: false,
+              service: 'none',
+              message: 'No LLM server detected. Please start Ollama or LM Studio.'
+            };
+          }
+          
+          return {
+            connected: true,
+            service: 'Ollama (Tauri Backend)',
+            message: 'Connected to Ollama through Tauri backend'
+          };
+        } catch (tauriError) {
+          console.warn('Tauri backend test failed:', tauriError);
+        }
+      }
+      
+      // Fallback to direct Ollama connection in development mode
+      try {
+        const response = await fetch('http://localhost:11434/api/tags');
+        if (response.ok) {
+          const data = await response.json();
+          const availableModels = data.models?.map((m: any) => m.name) || [];
+          
+          if (availableModels.includes('gemma3:latest')) {
             return {
               connected: true,
               service: 'Ollama (Direct)',
-              message: 'Connected directly to Ollama server'
+              message: `Connected to Ollama with models: ${availableModels.join(', ')}`
+            };
+          } else {
+            return {
+              connected: false,
+              service: 'Ollama (No Gemma3)',
+              message: `Ollama running but gemma3:latest not available. Available: ${availableModels.join(', ')}`
             };
           }
-        } catch {
-          // Ollama not available
         }
-        
-        return {
-          connected: false,
-          service: 'development',
-          message: 'Running in development mode - start Ollama for real AI responses'
-        };
+      } catch {
+        // Ollama not available
       }
+      
+      return {
+        connected: false,
+        service: 'development',
+        message: 'Running in development mode - start Ollama for real AI responses'
+      };
     } catch (error) {
       return {
         connected: false,
@@ -271,7 +323,29 @@ export class LLMService {
   }
 
   private async callOllamaDirectly(agent: AgentConfig, message: string, userName: string): Promise<string> {
-    const model = 'gemma3n:latest'; // Use available Gemma model
+    // Try to get available models and use the best one
+    let model = 'gemma3:latest'; // Default model
+    
+    try {
+      const response = await fetch('http://localhost:11434/api/tags');
+      if (response.ok) {
+        const data = await response.json();
+        const availableModels = data.models?.map((m: any) => m.name) || [];
+        
+        // Prefer gemma3:latest, fallback to other models
+        if (availableModels.includes('gemma3:latest')) {
+          model = 'gemma3:latest';
+        } else if (availableModels.includes('gemma3n:e4b')) {
+          model = 'gemma3n:e4b';
+        } else if (availableModels.includes('qwen3:14b')) {
+          model = 'qwen3:14b';
+        } else if (availableModels.length > 0) {
+          model = availableModels[0]; // Use first available model
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to get available models, using default:', error);
+    }
     
     // Build system prompt with agent personality
     const systemPrompt = `You are ${agent.name}, ${agent.personality}. 
@@ -325,7 +399,18 @@ ${agent.name}:`;
     if (status.connected) {
       return `🟢 ${status.service} - Ready`;
     } else {
-      return `🔴 Offline - ${status.message}`;
+      // Try to get more specific error information
+      try {
+        const response = await fetch('http://localhost:11434/api/tags');
+        if (response.ok) {
+          const data = await response.json();
+          const availableModels = data.models?.map((m: any) => m.name) || [];
+          return `🔴 ${status.service} - ${status.message}. Available models: ${availableModels.join(', ')}`;
+        }
+      } catch {
+        // Ollama not accessible
+      }
+      return `🔴 ${status.service} - ${status.message}`;
     }
   }
 }

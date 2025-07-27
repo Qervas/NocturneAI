@@ -7,6 +7,7 @@
     import SimulationControls from "$lib/components/SimulationControls.svelte";
     import PerkPanel from "$lib/components/PerkPanel.svelte";
     import WorldResources from "$lib/components/WorldResources.svelte";
+    import ConversationConnections from "$lib/components/ConversationConnections.svelte";
     import { characterManager } from "$lib/services/CharacterManager";
     import { communicationManager } from "$lib/services/CommunicationManager";
     import { simulationController } from "$lib/services/SimulationController";
@@ -33,30 +34,81 @@
     }
 
     onMount(async () => {
-        // Initialize character data for the chat to work properly
-        characterManager.initializeSampleData();
-        console.log("Characters initialized:", characterManager.characters);
+        try {
+            // Initialize character data for the chat to work properly
+            characterManager.initializeSampleData();
+            console.log("Characters initialized:", characterManager.characters);
 
-        // Initialize LLM service
-        await llmService.initialize();
-        console.log("LLM service initialized");
+            // Initialize LLM service
+            try {
+                await llmService.initialize();
+                console.log("LLM service initialized");
+            } catch (error) {
+                console.warn("LLM service initialization failed:", error);
+            }
 
-        // Initialize communication manager
-        communicationManager.initializeAgentStyles();
+            // Initialize communication manager
+            try {
+                communicationManager.initializeAgentStyles();
+                console.log("Communication manager initialized");
+            } catch (error) {
+                console.warn(
+                    "Communication manager initialization failed:",
+                    error,
+                );
+            }
 
-        // Add agents to the communication system
-        communicationManager.addAgent("agent_alpha");
-        communicationManager.addAgent("agent_beta");
-        communicationManager.addAgent("agent_gamma");
+            // Add all NPCs to the communication system
+            try {
+                const npcs = characterManager.getNPCs();
+                if (npcs && npcs.length > 0) {
+                    npcs.forEach((npc) => {
+                        try {
+                            communicationManager.addAgent(npc.id);
+                            console.log(
+                                `🤖 Added ${npc.name} (${npc.id}) to communication system`,
+                            );
+                        } catch (error) {
+                            console.warn(
+                                `Failed to add agent ${npc.id}:`,
+                                error,
+                            );
+                        }
+                    });
 
-        // Initialize perk manager
-        console.log("Perk manager initialized");
+                    // Start natural conversation system
+                    try {
+                        communicationManager.startAutonomousInteractions();
+                        console.log("Natural conversation system started");
+                    } catch (error) {
+                        console.warn(
+                            "Failed to start conversation system:",
+                            error,
+                        );
+                    }
+                } else {
+                    console.warn(
+                        "No NPCs found to add to communication system",
+                    );
+                }
+            } catch (error) {
+                console.warn("Failed to initialize NPCs:", error);
+            }
 
-        // Note: Autonomous interactions are now controlled by the SimulationController
-        communicationActive = true;
-        console.log(
-            "System initialized - autonomous conversations controlled by simulation",
-        );
+            // Initialize perk manager
+            try {
+                console.log("Perk manager initialized");
+            } catch (error) {
+                console.warn("Perk manager initialization failed:", error);
+            }
+
+            // Note: Autonomous interactions are now controlled by the SimulationController
+            communicationActive = true;
+            console.log("System initialized successfully");
+        } catch (error) {
+            console.error("Critical initialization error:", error);
+            // Don't prevent the app from loading, just log the error
+        }
     });
 </script>
 
@@ -81,6 +133,9 @@
     <!-- Main Content Area -->
     <main class="app-main">
         <GamingCanvas />
+
+        <!-- Conversation Connections Overlay -->
+        <ConversationConnections />
 
         <!-- Game UI Components -->
         <PerkPanel />

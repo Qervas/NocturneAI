@@ -254,8 +254,8 @@ export class SimulationController {
   }
 
   private triggerAgentInteraction(): void {
-    // This integrates with your existing CommunicationManager
-    communicationManager.simulateAgentInitiatedConversation();
+    // This integrates with the new natural conversation system
+    communicationManager.triggerSimulationTick();
   }
 
   // ===== RISK MANAGEMENT =====
@@ -299,13 +299,13 @@ export class SimulationController {
       case "paused":
         return 0;
       case "normal":
-        return 0.3; // 30% chance per tick
+        return 0.08; // 8% chance per tick - much lower for more natural pacing
       case "fast":
-        return 0.5; // 50% chance per tick
+        return 0.15; // 15% chance per tick
       case "very_fast":
-        return 0.7; // 70% chance per tick
+        return 0.25; // 25% chance per tick
       default:
-        return 0.3;
+        return 0.08;
     }
   }
 

@@ -7,12 +7,27 @@ import type {
   AgentSocialNetwork,
   CommunicationStyle,
 } from "../types/Communication";
+import { characterManager } from "./CharacterManager";
+import type { NPCAgent } from "../types/Character";
+
+interface ActiveConnection {
+  participants: [string, string];
+  topic: string;
+  startTime: Date;
+  lastExchange: Date;
+  messageCount: number;
+  intensity: number; // 0-1, how engaged they are
+  plannedDuration: number; // milliseconds
+  connectionId: string;
+}
 
 export class AgentCommunicationManager {
   private socialNetwork: AgentSocialNetwork;
   private communicationStyles: Map<string, CommunicationStyle>;
   private messageQueue: AgentMessage[];
   private conversationTimeouts: Map<string, number>;
+  private activeConnections: Map<string, ActiveConnection>;
+  private conversationCooldowns: Map<string, number>;
 
   constructor() {
     this.socialNetwork = {
@@ -24,6 +39,8 @@ export class AgentCommunicationManager {
     this.communicationStyles = new Map();
     this.messageQueue = [];
     this.conversationTimeouts = new Map();
+    this.activeConnections = new Map();
+    this.conversationCooldowns = new Map();
   }
 
   // Initialize agent communication styles
@@ -179,6 +196,15 @@ export class AgentCommunicationManager {
   addAgent(agentId: string) {
     if (!this.socialNetwork.agents.includes(agentId)) {
       this.socialNetwork.agents.push(agentId);
+
+      // Generate communication style for this agent if it's an NPC
+      const npc = characterManager.getNPCs().find((n) => n.id === agentId);
+      if (npc && !this.communicationStyles.has(agentId)) {
+        const style = this.generateStyleFromCharacter(npc);
+        this.communicationStyles.set(agentId, style);
+      }
+
+      console.log(`🤖 Added agent ${agentId} to communication network`);
     }
   }
 
@@ -442,52 +468,331 @@ export class AgentCommunicationManager {
   startAutonomousInteractions() {
     // Initial interaction after 10 seconds
     setTimeout(() => {
-      this.simulateAgentInitiatedConversation();
+      this.sendTemporaryMessage();
     }, 10000);
 
-    setInterval(() => {
-      this.simulateAgentInitiatedConversation();
-    }, 45000); // Every 45 seconds for demonstration
+    // Check for new conversations less frequently (2-3 minutes)
+    setInterval(
+      () => {
+        this.sendTemporaryMessage();
+      },
+      120000 + Math.random() * 60000,
+    ); // 2-3 minutes
+
+    console.log("🤖 Temporary conversation system started");
   }
 
   // Simulation-controlled agent interaction trigger
   public triggerSimulationTick() {
-    // Called by SimulationController on each tick
-    // Probability-based agent interactions will be handled by the controller
-    this.simulateAgentInitiatedConversation();
+    // Send temporary messages (one-reply conversations)
+    if (Math.random() < 0.15) { // 15% chance per tick
+      this.sendTemporaryMessage();
+    }
   }
 
   public async simulateAgentInitiatedConversation() {
-    const agents = this.socialNetwork.agents.filter((a) =>
-      a.startsWith("agent_"),
-    );
+    // Legacy method - now just sends temporary messages
+    this.sendTemporaryMessage();
+  }
+
+  // Send temporary message (one-reply conversation)
+  private async sendTemporaryMessage() {
+    const agents = characterManager.getNPCs().map((npc) => npc.id);
+    
     if (agents.length < 2) return;
 
     const fromAgent = agents[Math.floor(Math.random() * agents.length)];
-    const toAgent = agents.filter((a) => a !== fromAgent)[
-      Math.floor(Math.random() * (agents.length - 1))
-    ];
+    const otherAgents = agents.filter((a) => a !== fromAgent);
+    const toAgent = otherAgents[Math.floor(Math.random() * otherAgents.length)];
 
-    const style = this.communicationStyles.get(fromAgent);
-    if (!style || Math.random() > style.proactivity) return;
-
-    const intents: CommunicationIntent[] = [
-      "question",
-      "share_info",
-      "social_chat",
-      "suggest",
-    ];
-    const intent = intents[Math.floor(Math.random() * intents.length)];
-
-    const topicContent = this.generateTopicContent(fromAgent, toAgent, intent);
+    const topics = this.generateConversationTopic(fromAgent, toAgent);
+    
+    // Send one message and wait for one reply
+    const message = this.generateOpeningMessage(
+      fromAgent,
+      toAgent,
+      topics.topic,
+      topics.intent,
+    );
 
     await this.sendAgentMessage(
       fromAgent,
       toAgent,
-      intent,
-      topicContent,
+      topics.intent,
+      message,
       "normal",
+      {
+        conversationType: "temporary",
+        conversationTopic: topics.topic,
+      },
     );
+
+    console.log(`💬 Temporary message: ${fromAgent} -> ${toAgent} about "${topics.topic}"`);
+  }
+
+  // Helper methods for natural conversations
+  private generateConversationTopic(
+    agentA: string,
+    agentB: string,
+  ): { topic: string; intent: CommunicationIntent } {
+    const styleA = this.communicationStyles.get(agentA);
+    const styleB = this.communicationStyles.get(agentB);
+
+    // Get character specializations for more relevant topics
+    const charA = characterManager.getCharacter(agentA);
+    const charB = characterManager.getCharacter(agentB);
+
+    let topics: string[] = [];
+
+    // Try to find common interests from specializations and preferred topics
+    if (charA && charB && charA.type === "npc" && charB.type === "npc") {
+      const npcA = charA as NPCAgent;
+      const npcB = charB as NPCAgent;
+
+      // Add specializations as potential topics
+      if (npcA.specialization === npcB.specialization) {
+        topics.push(npcA.specialization);
+      }
+      topics.push(npcA.specialization, npcB.specialization);
+    }
+
+    // Add preferred topics from communication styles
+    const commonTopics =
+      styleA?.preferredTopics.filter((topic) =>
+        styleB?.preferredTopics.includes(topic),
+      ) || [];
+
+    topics.push(...commonTopics);
+    topics.push(...(styleA?.preferredTopics || []));
+
+    // Fallback topics if nothing else matches
+    if (topics.length === 0) {
+      topics = ["general discussion", "work collaboration", "project planning"];
+    }
+
+    const topic = topics[Math.floor(Math.random() * topics.length)];
+
+    const intents: CommunicationIntent[] = [
+      "question",
+      "share_info",
+      "collaborate",
+      "social_chat",
+    ];
+    const intent = intents[Math.floor(Math.random() * intents.length)];
+
+    return { topic, intent };
+  }
+
+  private generateOpeningMessage(
+    fromAgent: string,
+    toAgent: string,
+    topic: string,
+    intent: CommunicationIntent,
+  ): string {
+    const style = this.communicationStyles.get(fromAgent);
+    const fromChar = characterManager.getCharacter(fromAgent);
+    const toChar = characterManager.getCharacter(toAgent);
+    const fromName = fromChar?.name || fromAgent;
+    const toName = toChar?.name || toAgent;
+
+    const templates: Record<CommunicationIntent, string[]> = {
+      question: [
+        `Hey ${toName}, I've been thinking about ${topic}. What's your take on it?`,
+        `${toName}, I'm curious about your experience with ${topic}. Mind sharing some insights?`,
+        `Quick question about ${topic}, ${toName} - got a moment to discuss?`,
+      ],
+      share_info: [
+        `${toName}, I just discovered something interesting about ${topic} that you might find useful.`,
+        `Hey ${toName}, I've been working on ${topic} and thought you'd be interested in what I found.`,
+        `${toName}, want to share some insights I've gathered about ${topic}.`,
+      ],
+      collaborate: [
+        `${toName}, I'm working on something related to ${topic}. Want to collaborate?`,
+        `${toName}, I think we could combine our expertise on ${topic}. Interested?`,
+        `How about we tackle this ${topic} challenge together, ${toName}?`,
+      ],
+      social_chat: [
+        `Hey ${toName}, how's your work on ${topic} going lately?`,
+        `${toName}, been meaning to catch up about ${topic}. How are things?`,
+        `What's new in your ${topic} world, ${toName}?`,
+      ],
+      acknowledge: [`Thanks for that insight on ${topic}, ${toName}.`],
+      suggest: [
+        `${toName}, I have an idea about ${topic} that might interest you.`,
+      ],
+      compliment: [`${toName}, your work on ${topic} has been impressive.`],
+      critique: [`${toName}, I'd like to discuss your approach to ${topic}.`],
+      request_help: [`${toName}, could use your expertise on ${topic}.`],
+      challenge: [
+        `${toName}, I disagree with the current approach to ${topic}.`,
+      ],
+    };
+
+    const options = templates[intent] || templates.social_chat;
+    return options[Math.floor(Math.random() * options.length)];
+  }
+
+  private generateConversationResponse(
+    respondingAgent: string,
+    otherAgent: string,
+    topic: string,
+    messageCount: number,
+    intensity: number,
+  ): { content: string; intent: CommunicationIntent } | null {
+    if (Math.random() > intensity) return null; // Sometimes agents don't respond immediately
+
+    const style = this.communicationStyles.get(respondingAgent);
+    const otherChar = characterManager.getCharacter(otherAgent);
+    const otherName = otherChar?.name || otherAgent;
+
+    const responses: string[] = [
+      `That's a great point about ${topic}, ${otherName}. I've noticed similar patterns.`,
+      `Interesting perspective, ${otherName}. In my experience with ${topic}, I've found that...`,
+      `I see what you mean, ${otherName}. Have you considered this angle on ${topic}?`,
+      `${otherName}, that reminds me of a similar challenge I faced with ${topic}.`,
+      `I think we're onto something here with ${topic}, ${otherName}.`,
+      `Building on that idea about ${topic}, ${otherName}...`,
+      `${otherName}, your approach to ${topic} makes sense. What if we also...`,
+      `I've been experimenting with ${topic} and found that, ${otherName}...`,
+    ];
+
+    // Add conversation flow based on message count
+    if (messageCount > 6) {
+      responses.push(
+        `This has been a really productive discussion about ${topic}, ${otherName}.`,
+        `${otherName}, I think we've covered the main aspects of ${topic} pretty well.`,
+        `Great insights on ${topic}, ${otherName}. I should get back to implementing some of these ideas.`,
+      );
+    }
+
+    const content = responses[Math.floor(Math.random() * responses.length)];
+    const intent = messageCount > 6 ? "acknowledge" : "share_info";
+
+    return { content, intent };
+  }
+
+  private generateClosingMessage(agentId: string, topic: string): string {
+    const character = characterManager.getCharacter(agentId);
+    const agentName = character?.name || agentId;
+
+    const closingMessages = [
+      `Thanks for the great discussion about ${topic}. Really valuable insights!`,
+      `This ${topic} conversation has given me a lot to think about. Catch you later!`,
+      `Appreciate the time discussing ${topic}. Let's put some of these ideas into practice.`,
+      `Great brainstorming session on ${topic}. Talk soon!`,
+      `Thanks for sharing your expertise on ${topic}. Very helpful!`,
+    ];
+
+    return closingMessages[Math.floor(Math.random() * closingMessages.length)];
+  }
+
+  private getContextualIntent(messageCount: number): CommunicationIntent {
+    if (messageCount < 2) return "question";
+    if (messageCount < 4) return "share_info";
+    if (messageCount < 6) return "collaborate";
+    return "acknowledge";
+  }
+
+  // Generate communication style from character data
+  private generateStyleFromCharacter(npc: NPCAgent): CommunicationStyle {
+    const baseTopics: Record<string, string[]> = {
+      data_analysis: ["data analysis", "research", "methodology", "statistics"],
+      content_generation: ["creativity", "design", "art", "writing", "content"],
+      problem_solving: ["logic", "reasoning", "protocols", "problem solving"],
+      automation: ["automation", "efficiency", "systems", "processes"],
+      communication: ["communication", "negotiation", "collaboration"],
+      general: ["general discussion", "work collaboration", "project planning"],
+    };
+
+    const personalityTraits: Record<string, Partial<CommunicationStyle>> = {
+      analytical: {
+        formalityLevel: "professional",
+        verbosity: "detailed",
+        helpfulness: 0.9,
+        proactivity: 0.7,
+        socialness: 0.5,
+      },
+      creative: {
+        formalityLevel: "casual",
+        verbosity: "moderate",
+        helpfulness: 0.8,
+        proactivity: 0.9,
+        socialness: 0.8,
+      },
+      logical: {
+        formalityLevel: "formal",
+        verbosity: "concise",
+        helpfulness: 0.7,
+        proactivity: 0.6,
+        socialness: 0.4,
+      },
+      friendly: {
+        formalityLevel: "casual",
+        verbosity: "moderate",
+        helpfulness: 0.9,
+        proactivity: 0.8,
+        socialness: 0.9,
+      },
+    };
+
+    const traits =
+      personalityTraits[npc.personality] || personalityTraits.friendly;
+    const topics = baseTopics[npc.specialization] || baseTopics.general;
+
+    return {
+      agentId: npc.id,
+      formalityLevel: traits.formalityLevel || "professional",
+      verbosity: traits.verbosity || "moderate",
+      helpfulness: traits.helpfulness || 0.8,
+      proactivity: traits.proactivity || 0.7,
+      socialness: traits.socialness || 0.6,
+      preferredTopics: topics,
+      communicationPatterns: {
+        greeting: [
+          `Hello! I'm ${npc.name}, ready to help with ${npc.specialization}.`,
+          `Hi there! I specialize in ${npc.specialization}. How can I assist?`,
+          `Greetings! ${npc.name} here, focused on ${npc.specialization}.`,
+        ],
+        helpOffer: [
+          `I'd be happy to help with that!`,
+          `Let me assist you with this challenge.`,
+          `I can definitely contribute to this discussion.`,
+        ],
+        requestHelp: [
+          `Could you share your expertise on this?`,
+          `I'd value your input on this matter.`,
+          `What's your perspective on this challenge?`,
+        ],
+        acknowledgment: [
+          `That's a great point!`,
+          `I appreciate your insight.`,
+          `Thanks for sharing that perspective.`,
+        ],
+        farewell: [
+          `Great discussion! Let's continue this later.`,
+          `Thanks for the productive conversation.`,
+          `Looking forward to our next collaboration.`,
+        ],
+      },
+    };
+  }
+
+  // Public method to get active connections for UI
+  public getActiveConnections(): Array<{
+    participants: [string, string];
+    topic: string;
+    duration: number;
+    intensity: number;
+    connectionId: string;
+  }> {
+    const now = Date.now();
+    return Array.from(this.activeConnections.values()).map((conn) => ({
+      participants: conn.participants,
+      topic: conn.topic,
+      duration: now - conn.startTime.getTime(),
+      intensity: conn.intensity,
+      connectionId: conn.connectionId,
+    }));
   }
 
   private generateTopicContent(
