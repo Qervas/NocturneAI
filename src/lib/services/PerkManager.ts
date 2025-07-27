@@ -1,685 +1,831 @@
-import { writable, type Writable } from "svelte/store";
-import type {
-  Perk,
-  Skill,
-  AgentPerks,
-  PerkCategory,
-  PerkAction,
-  WorldResources,
-  PerkDefinitions,
-} from "../types/Perks";
-import {
-  PERK_EXPERIENCE_REQUIREMENTS,
-  SKILL_EXPERIENCE_REQUIREMENTS,
-} from "../types/Perks";
+import { writable } from "svelte/store";
+import type { Character } from "../types/Character";
 
-export class PerkManager {
-  // Stores for reactive UI
-  public readonly agentPerks: Writable<Map<string, AgentPerks>> = writable(
-    new Map(),
-  );
-  public readonly worldResources: Writable<WorldResources> = writable({
-    totalAgents: 0,
-    activeAgents: 0,
-    completedTasks: 0,
+// RPG-Style Skill Trees for AI Agents
+export interface SkillNode {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  maxRank: number;
+  currentRank: number;
+  unlocked: boolean;
+  prerequisites: string[];
+  cost: number; // XP cost to unlock
+  category: SkillCategory;
+  effects: SkillEffect[];
+}
+
+export interface SkillEffect {
+  type: "ability" | "stat_boost" | "unlock_feature";
+  value: string | number;
+  description: string;
+}
+
+export type SkillCategory =
+  | "system_access"
+  | "web_operations"
+  | "communication"
+  | "analysis"
+  | "automation"
+  | "security";
+
+export interface AgentSkillTree {
+  agentId: string;
+  experience: number;
+  availablePoints: number;
+  skills: Record<string, SkillNode>;
+  unlockedAbilities: string[];
+}
+
+export interface SkillTreeDefinition {
+  category: SkillCategory;
+  name: string;
+  icon: string;
+  description: string;
+  skills: SkillNode[];
+}
+
+class SkillTreeManager {
+  // Reactive stores
+  public readonly agentSkills = writable<Record<string, AgentSkillTree>>({});
+  public readonly globalStats = writable({
     totalExperience: 0,
-    successRate: 100,
-    uptime: 0,
+    totalSkillsUnlocked: 0,
+    totalAbilitiesUnlocked: 0,
   });
 
-  private perksData = new Map<string, AgentPerks>();
-  private perkDefinitions: PerkDefinitions = {
-    cognitive: {} as any,
-    technical: {} as any,
-    creative: {} as any,
-    research: {} as any,
-    social: {} as any,
-    automation: {} as any,
-  };
+  private skillDefinitions: Record<SkillCategory, SkillTreeDefinition>;
 
   constructor() {
-    this.initializePerkDefinitions();
-    this.loadPerksData();
-    this.validateAndRepairPerks();
+    this.initializeSkillTrees();
+    this.loadSavedData();
   }
 
-  // ===== INITIALIZATION =====
-
-  private initializePerkDefinitions() {
-    this.perkDefinitions = {
-      cognitive: {
-        id: "cognitive",
-        name: "Cognitive",
-        description: "Mental processing and analytical thinking",
-        icon: "🧠",
-        color: "#4A90E2",
-        skills: {
-          research: {
-            id: "research",
-            name: "Research",
-            description: "Gather and analyze information effectively",
-            icon: "📚",
-          },
-          analysis: {
-            id: "analysis",
-            name: "Analysis",
-            description: "Break down complex problems into components",
-            icon: "📊",
-          },
-          problemSolving: {
-            id: "problem_solving",
-            name: "Problem Solving",
-            description: "Find creative solutions to challenges",
-            icon: "🧩",
-          },
-          memoryEnhancement: {
-            id: "memory_enhancement",
-            name: "Memory Enhancement",
-            description: "Retain and recall information efficiently",
-            icon: "🔄",
-          },
-        },
-      },
-      technical: {
-        id: "technical",
-        name: "Technical",
-        description: "Programming and technical implementation",
+  private initializeSkillTrees() {
+    this.skillDefinitions = {
+      system_access: {
+        category: "system_access",
+        name: "System Access",
         icon: "💻",
-        color: "#50C878",
-        skills: {
-          webDevelopment: {
-            id: "web_development",
-            name: "Web Development",
-            description: "Build web applications and interfaces",
-            icon: "🌐",
-          },
-          apiIntegration: {
-            id: "api_integration",
-            name: "API Integration",
-            description: "Connect and integrate external services",
-            icon: "🔌",
-          },
-          databaseManagement: {
-            id: "database_management",
-            name: "Database Management",
-            description: "Design and optimize data storage",
-            icon: "🗄️",
-          },
-          devops: {
-            id: "devops",
-            name: "DevOps",
-            description: "Deploy and maintain infrastructure",
-            icon: "⚙️",
-          },
-        },
-      },
-      creative: {
-        id: "creative",
-        name: "Creative",
-        description: "Innovation and artistic expression",
-        icon: "🎨",
-        color: "#FF6B9D",
-        skills: {
-          uiuxDesign: {
-            id: "uiux_design",
-            name: "UI/UX Design",
-            description: "Create intuitive user experiences",
-            icon: "🎨",
-          },
-          contentCreation: {
-            id: "content_creation",
-            name: "Content Creation",
-            description: "Generate engaging written and visual content",
-            icon: "✍️",
-          },
-          brainstorming: {
-            id: "brainstorming",
-            name: "Brainstorming",
-            description: "Generate innovative ideas and concepts",
-            icon: "💡",
-          },
-          storytelling: {
-            id: "storytelling",
-            name: "Storytelling",
-            description: "Craft compelling narratives and presentations",
+        description: "File operations and system control",
+        skills: [
+          {
+            id: "file_read",
+            name: "File Reader",
+            description: "Ability to read files from the system",
             icon: "📖",
+            maxRank: 3,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: [],
+            cost: 100,
+            category: "system_access",
+            effects: [
+              {
+                type: "ability",
+                value: "read_files",
+                description: "Can read text files",
+              },
+              {
+                type: "stat_boost",
+                value: 25,
+                description: "+25% file operation speed",
+              },
+            ],
           },
-        },
+          {
+            id: "file_write",
+            name: "File Writer",
+            description: "Ability to create and modify files",
+            icon: "✏️",
+            maxRank: 3,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["file_read"],
+            cost: 200,
+            category: "system_access",
+            effects: [
+              {
+                type: "ability",
+                value: "write_files",
+                description: "Can create and edit files",
+              },
+              {
+                type: "unlock_feature",
+                value: "file_manager",
+                description: "Unlocks file management UI",
+              },
+            ],
+          },
+          {
+            id: "directory_ops",
+            name: "Directory Master",
+            description: "Advanced directory and folder operations",
+            icon: "📁",
+            maxRank: 2,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["file_write"],
+            cost: 300,
+            category: "system_access",
+            effects: [
+              {
+                type: "ability",
+                value: "directory_operations",
+                description: "Can create/delete directories",
+              },
+              {
+                type: "ability",
+                value: "batch_operations",
+                description: "Can perform batch file operations",
+              },
+            ],
+          },
+          {
+            id: "system_commands",
+            name: "System Commander",
+            description: "Execute system commands and scripts",
+            icon: "⚡",
+            maxRank: 2,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["directory_ops"],
+            cost: 500,
+            category: "system_access",
+            effects: [
+              {
+                type: "ability",
+                value: "execute_commands",
+                description: "Can run system commands",
+              },
+              {
+                type: "unlock_feature",
+                value: "terminal_access",
+                description: "Unlocks terminal interface",
+              },
+            ],
+          },
+        ],
       },
-      research: {
-        id: "research",
-        name: "Research",
-        description: "Information gathering and validation",
-        icon: "🔍",
-        color: "#FFD700",
-        skills: {
-          webSearch: {
+
+      web_operations: {
+        category: "web_operations",
+        name: "Web Operations",
+        icon: "🌐",
+        description: "Internet and API interactions",
+        skills: [
+          {
             id: "web_search",
-            name: "Web Search",
-            description: "Find relevant information across the internet",
+            name: "Web Searcher",
+            description: "Search the internet for information",
             icon: "🔍",
+            maxRank: 3,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: [],
+            cost: 150,
+            category: "web_operations",
+            effects: [
+              {
+                type: "ability",
+                value: "web_search",
+                description: "Can search the web",
+              },
+              {
+                type: "stat_boost",
+                value: 30,
+                description: "+30% search accuracy",
+              },
+            ],
           },
-          dataMining: {
+          {
+            id: "api_calls",
+            name: "API Master",
+            description: "Make API calls and handle responses",
+            icon: "🔌",
+            maxRank: 3,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["web_search"],
+            cost: 250,
+            category: "web_operations",
+            effects: [
+              {
+                type: "ability",
+                value: "api_integration",
+                description: "Can make REST API calls",
+              },
+              {
+                type: "unlock_feature",
+                value: "api_manager",
+                description: "Unlocks API management interface",
+              },
+            ],
+          },
+          {
+            id: "web_scraping",
+            name: "Data Harvester",
+            description: "Extract data from websites",
+            icon: "🕷️",
+            maxRank: 2,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["api_calls"],
+            cost: 400,
+            category: "web_operations",
+            effects: [
+              {
+                type: "ability",
+                value: "web_scraping",
+                description: "Can scrape website data",
+              },
+              {
+                type: "ability",
+                value: "data_extraction",
+                description: "Advanced data extraction techniques",
+              },
+            ],
+          },
+          {
+            id: "real_time_data",
+            name: "Data Streamer",
+            description: "Access real-time data feeds",
+            icon: "📡",
+            maxRank: 2,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["web_scraping"],
+            cost: 600,
+            category: "web_operations",
+            effects: [
+              {
+                type: "ability",
+                value: "real_time_feeds",
+                description: "Can access live data streams",
+              },
+              {
+                type: "unlock_feature",
+                value: "dashboard_widgets",
+                description: "Unlocks real-time dashboards",
+              },
+            ],
+          },
+        ],
+      },
+
+      communication: {
+        category: "communication",
+        name: "Communication",
+        icon: "💬",
+        description: "Enhanced agent interaction abilities",
+        skills: [
+          {
+            id: "multi_agent_chat",
+            name: "Group Communicator",
+            description: "Participate in multi-agent conversations",
+            icon: "👥",
+            maxRank: 3,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: [],
+            cost: 100,
+            category: "communication",
+            effects: [
+              {
+                type: "ability",
+                value: "group_chat",
+                description: "Can join group conversations",
+              },
+              {
+                type: "stat_boost",
+                value: 20,
+                description: "+20% communication effectiveness",
+              },
+            ],
+          },
+          {
+            id: "context_memory",
+            name: "Memory Keeper",
+            description: "Remember conversation context longer",
+            icon: "🧠",
+            maxRank: 5,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["multi_agent_chat"],
+            cost: 200,
+            category: "communication",
+            effects: [
+              {
+                type: "stat_boost",
+                value: 50,
+                description: "+50% context retention",
+              },
+              {
+                type: "ability",
+                value: "long_term_memory",
+                description: "Extended conversation memory",
+              },
+            ],
+          },
+          {
+            id: "emotion_detection",
+            name: "Emotion Reader",
+            description: "Detect emotional context in messages",
+            icon: "😊",
+            maxRank: 3,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["context_memory"],
+            cost: 350,
+            category: "communication",
+            effects: [
+              {
+                type: "ability",
+                value: "emotion_analysis",
+                description: "Can detect emotional states",
+              },
+              {
+                type: "unlock_feature",
+                value: "mood_indicators",
+                description: "Shows agent mood in UI",
+              },
+            ],
+          },
+          {
+            id: "persuasion",
+            name: "Persuasion Master",
+            description: "Influence other agents effectively",
+            icon: "🎭",
+            maxRank: 2,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["emotion_detection"],
+            cost: 500,
+            category: "communication",
+            effects: [
+              {
+                type: "ability",
+                value: "influence_agents",
+                description: "Can influence agent decisions",
+              },
+              {
+                type: "stat_boost",
+                value: 75,
+                description: "+75% persuasion effectiveness",
+              },
+            ],
+          },
+        ],
+      },
+
+      analysis: {
+        category: "analysis",
+        name: "Data Analysis",
+        icon: "📊",
+        description: "Advanced data processing and pattern recognition",
+        skills: [
+          {
+            id: "pattern_recognition",
+            name: "Pattern Hunter",
+            description: "Identify patterns in data",
+            icon: "🔍",
+            maxRank: 4,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: [],
+            cost: 150,
+            category: "analysis",
+            effects: [
+              {
+                type: "ability",
+                value: "pattern_analysis",
+                description: "Can detect data patterns",
+              },
+              {
+                type: "stat_boost",
+                value: 30,
+                description: "+30% analysis speed",
+              },
+            ],
+          },
+          {
             id: "data_mining",
-            name: "Data Mining",
+            name: "Data Miner",
             description: "Extract insights from large datasets",
             icon: "⛏️",
+            maxRank: 3,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["pattern_recognition"],
+            cost: 300,
+            category: "analysis",
+            effects: [
+              {
+                type: "ability",
+                value: "data_mining",
+                description: "Can process large datasets",
+              },
+              {
+                type: "unlock_feature",
+                value: "data_visualizer",
+                description: "Unlocks data visualization tools",
+              },
+            ],
           },
-          factChecking: {
-            id: "fact_checking",
-            name: "Fact Checking",
-            description: "Verify information accuracy and credibility",
-            icon: "✅",
+          {
+            id: "predictive_modeling",
+            name: "Oracle",
+            description: "Predict future trends and outcomes",
+            icon: "🔮",
+            maxRank: 2,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["data_mining"],
+            cost: 500,
+            category: "analysis",
+            effects: [
+              {
+                type: "ability",
+                value: "prediction",
+                description: "Can make predictive models",
+              },
+              {
+                type: "ability",
+                value: "trend_analysis",
+                description: "Advanced trend detection",
+              },
+            ],
           },
-          marketResearch: {
-            id: "market_research",
-            name: "Market Research",
-            description: "Analyze market trends and opportunities",
-            icon: "📈",
-          },
-        },
+        ],
       },
-      social: {
-        id: "social",
-        name: "Social",
-        description: "Communication and interpersonal skills",
-        icon: "🤝",
-        color: "#9B59B6",
-        skills: {
-          negotiation: {
-            id: "negotiation",
-            name: "Negotiation",
-            description: "Reach mutually beneficial agreements",
-            icon: "🤝",
-          },
-          leadership: {
-            id: "leadership",
-            name: "Leadership",
-            description: "Guide and inspire team members",
-            icon: "👑",
-          },
-          teamCoordination: {
-            id: "team_coordination",
-            name: "Team Coordination",
-            description: "Organize and synchronize team efforts",
-            icon: "👥",
-          },
-          customerService: {
-            id: "customer_service",
-            name: "Customer Service",
-            description: "Provide excellent user support and assistance",
-            icon: "🎧",
-          },
-          temporaryConversation: {
-            id: "temporary_conversation",
-            name: "Temporary Conversation",
-            description: "Send simple one-reply messages to other agents",
-            icon: "💬",
-          },
 
-        },
-      },
       automation: {
-        id: "automation",
+        category: "automation",
         name: "Automation",
-        description: "Process optimization and efficiency",
-        icon: "⚙️",
-        color: "#F39C12",
-        skills: {
-          workflowDesign: {
-            id: "workflow_design",
-            name: "Workflow Design",
-            description: "Create efficient process flows",
-            icon: "🔄",
+        icon: "🤖",
+        description: "Task automation and workflow management",
+        skills: [
+          {
+            id: "task_chaining",
+            name: "Task Chainer",
+            description: "Chain multiple tasks together",
+            icon: "⛓️",
+            maxRank: 3,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: [],
+            cost: 200,
+            category: "automation",
+            effects: [
+              {
+                type: "ability",
+                value: "task_sequences",
+                description: "Can create task chains",
+              },
+              {
+                type: "stat_boost",
+                value: 40,
+                description: "+40% task efficiency",
+              },
+            ],
           },
-          taskAutomation: {
-            id: "task_automation",
-            name: "Task Automation",
-            description: "Automate repetitive tasks and processes",
-            icon: "🤖",
+          {
+            id: "scheduling",
+            name: "Time Master",
+            description: "Schedule and manage timed tasks",
+            icon: "⏰",
+            maxRank: 3,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["task_chaining"],
+            cost: 300,
+            category: "automation",
+            effects: [
+              {
+                type: "ability",
+                value: "task_scheduling",
+                description: "Can schedule tasks",
+              },
+              {
+                type: "unlock_feature",
+                value: "calendar_interface",
+                description: "Unlocks task calendar",
+              },
+            ],
           },
-          qualityAssurance: {
-            id: "quality_assurance",
-            name: "Quality Assurance",
-            description: "Ensure standards and catch errors",
+          {
+            id: "workflow_optimization",
+            name: "Efficiency Expert",
+            description: "Optimize workflows automatically",
+            icon: "⚙️",
+            maxRank: 2,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["scheduling"],
+            cost: 450,
+            category: "automation",
+            effects: [
+              {
+                type: "ability",
+                value: "workflow_optimization",
+                description: "Can optimize task workflows",
+              },
+              {
+                type: "stat_boost",
+                value: 60,
+                description: "+60% overall efficiency",
+              },
+            ],
+          },
+        ],
+      },
+
+      security: {
+        category: "security",
+        name: "Security",
+        icon: "🔒",
+        description: "Security and access control systems",
+        skills: [
+          {
+            id: "access_control",
+            name: "Gatekeeper",
+            description: "Manage access permissions",
+            icon: "🚪",
+            maxRank: 3,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: [],
+            cost: 250,
+            category: "security",
+            effects: [
+              {
+                type: "ability",
+                value: "permission_management",
+                description: "Can manage access controls",
+              },
+              {
+                type: "unlock_feature",
+                value: "security_dashboard",
+                description: "Unlocks security monitoring",
+              },
+            ],
+          },
+          {
+            id: "encryption",
+            name: "Cipher Master",
+            description: "Encrypt and decrypt data",
+            icon: "🔐",
+            maxRank: 3,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["access_control"],
+            cost: 400,
+            category: "security",
+            effects: [
+              {
+                type: "ability",
+                value: "data_encryption",
+                description: "Can encrypt sensitive data",
+              },
+              {
+                type: "ability",
+                value: "secure_communication",
+                description: "Encrypted agent communication",
+              },
+            ],
+          },
+          {
+            id: "threat_detection",
+            name: "Sentinel",
+            description: "Detect and respond to threats",
             icon: "🛡️",
+            maxRank: 2,
+            currentRank: 0,
+            unlocked: false,
+            prerequisites: ["encryption"],
+            cost: 600,
+            category: "security",
+            effects: [
+              {
+                type: "ability",
+                value: "threat_monitoring",
+                description: "Can detect security threats",
+              },
+              {
+                type: "ability",
+                value: "automated_response",
+                description: "Automatic threat response",
+              },
+            ],
           },
-          testing: {
-            id: "testing",
-            name: "Testing",
-            description: "Validate functionality and performance",
-            icon: "🧪",
-          },
-        },
+        ],
       },
     };
   }
 
-  // ===== AGENT PERK MANAGEMENT =====
-
-  public initializeAgentPerks(
-    agentId: string,
-    specialization?: PerkCategory,
-  ): void {
-    if (this.perksData.has(agentId)) return;
-
-    const agentPerks: AgentPerks = {
-      agentId,
-      perks: new Map(),
-      totalExperience: 0,
-      availablePoints: 5, // Starting points
-      specialization,
-    };
-
-    // Initialize all perks
-    Object.values(this.perkDefinitions).forEach((perkDef) => {
-      const perk: Perk = {
-        id: perkDef.id,
-        name: perkDef.name,
-        description: perkDef.description,
-        category: perkDef.id as PerkCategory,
-        icon: perkDef.icon,
-        color: perkDef.color,
-        level: 0,
-        experience: 0,
-        maxExperience: PERK_EXPERIENCE_REQUIREMENTS[1],
-        unlocked: specialization === perkDef.id, // Unlock specialization perk
-        skills: [],
-        prerequisites: [],
-      };
-
-      // Initialize skills for this perk
-      Object.values(perkDef.skills).forEach((skillDef: any) => {
-        const skill: Skill = {
-          id: skillDef.id,
-          name: skillDef.name,
-          description: skillDef.description,
-          icon: skillDef.icon,
-          level: 0,
+  // Initialize an agent's skill tree
+  public initializeAgent(agentId: string): void {
+    this.agentSkills.update((skills) => {
+      if (!skills[agentId]) {
+        const agentSkills: AgentSkillTree = {
+          agentId,
           experience: 0,
-          maxExperience: SKILL_EXPERIENCE_REQUIREMENTS[1],
-          unlocked: false,
-          prerequisites: [],
+          availablePoints: 5, // Starting points
+          skills: {},
+          unlockedAbilities: [],
         };
-        perk.skills.push(skill);
-      });
 
-      agentPerks.perks.set(perk.id, perk);
+        // Initialize all skills as locked
+        Object.values(this.skillDefinitions).forEach((category) => {
+          category.skills.forEach((skill) => {
+            agentSkills.skills[skill.id] = {
+              ...skill,
+              currentRank: 0,
+              unlocked: skill.prerequisites.length === 0 ? true : false, // Auto-unlock skills with no prerequisites
+            };
+          });
+        });
+
+        skills[agentId] = agentSkills;
+      }
+      return skills;
     });
-
-    // If agent has specialization, unlock first skill
-    if (specialization) {
-      const specPerk = agentPerks.perks.get(specialization);
-      if (specPerk && specPerk.skills.length > 0) {
-        specPerk.skills[0].unlocked = true;
-      }
-    }
-
-    // Enable temporary conversations for all agents by default
-    const socialPerk = agentPerks.perks.get('social');
-    if (socialPerk) {
-      const tempConversationSkill = socialPerk.skills.find(s => s.id === 'temporary_conversation');
-      if (tempConversationSkill) {
-        tempConversationSkill.unlocked = true;
-        tempConversationSkill.level = 1; // Give them level 1 to start
-        console.log(`💬 Enabled temporary conversations for ${agentId}`);
-      }
-    }
-
-    this.perksData.set(agentId, agentPerks);
-    this.updateStore();
-
-    console.log(
-      `🎯 Initialized perks for ${agentId} with specialization: ${specialization}`,
-    );
   }
 
-  // ===== EXPERIENCE & LEVELING =====
-
+  // Award experience to an agent
   public grantExperience(
     agentId: string,
-    perkCategory: PerkCategory,
-    skillId: string,
     amount: number,
-  ): boolean {
-    const agentPerks = this.perksData.get(agentId);
-    if (!agentPerks) return false;
+    reason?: string,
+  ): void {
+    this.agentSkills.update((skills) => {
+      if (skills[agentId]) {
+        skills[agentId].experience += amount;
+        skills[agentId].availablePoints += Math.floor(amount / 100); // 1 point per 100 XP
 
-    const perk = agentPerks.perks.get(perkCategory);
-    if (!perk) return false;
+        console.log(
+          `🌟 Agent ${agentId} gained ${amount} XP${reason ? ` for ${reason}` : ""}`,
+        );
 
-    const skill = perk.skills.find((s) => s.id === skillId);
-    if (!skill || !skill.unlocked) return false;
-
-    // Grant experience to skill
-    skill.experience += amount;
-    const skillLeveledUp = this.checkSkillLevelUp(skill);
-
-    // Grant partial experience to perk
-    perk.experience += Math.floor(amount * 0.3);
-    const perkLeveledUp = this.checkPerkLevelUp(perk);
-
-    // Update total experience
-    agentPerks.totalExperience += amount;
-
-    // Check for unlock opportunities
-    this.checkUnlockOpportunities(agentPerks);
-
-    // Update store
-    this.updateStore();
-
-    if (skillLeveledUp || perkLeveledUp) {
-      console.log(
-        `🎉 ${agentId} leveled up! Skill: ${skill.name} (${skill.level}) | Perk: ${perk.name} (${perk.level})`,
-      );
-    }
-
-    return true;
-  }
-
-  private checkSkillLevelUp(skill: Skill): boolean {
-    if (skill.level >= 5) return false;
-
-    const nextLevel = skill.level + 1;
-    const requiredExp =
-      SKILL_EXPERIENCE_REQUIREMENTS[
-        nextLevel as keyof typeof SKILL_EXPERIENCE_REQUIREMENTS
-      ];
-
-    if (skill.experience >= requiredExp) {
-      skill.level = nextLevel;
-      skill.experience = skill.experience - requiredExp;
-      skill.maxExperience =
-        SKILL_EXPERIENCE_REQUIREMENTS[
-          (nextLevel + 1) as keyof typeof SKILL_EXPERIENCE_REQUIREMENTS
-        ] || requiredExp;
-      return true;
-    }
-    return false;
-  }
-
-  private checkPerkLevelUp(perk: Perk): boolean {
-    if (perk.level >= 3) return false;
-
-    const nextLevel = perk.level + 1;
-    const requiredExp =
-      PERK_EXPERIENCE_REQUIREMENTS[
-        nextLevel as keyof typeof PERK_EXPERIENCE_REQUIREMENTS
-      ];
-
-    if (perk.experience >= requiredExp) {
-      perk.level = nextLevel;
-      perk.experience = perk.experience - requiredExp;
-      perk.maxExperience =
-        PERK_EXPERIENCE_REQUIREMENTS[
-          (nextLevel + 1) as keyof typeof PERK_EXPERIENCE_REQUIREMENTS
-        ] || requiredExp;
-      return true;
-    }
-    return false;
-  }
-
-  private checkUnlockOpportunities(agentPerks: AgentPerks): void {
-    agentPerks.perks.forEach((perk) => {
-      // Check if perk can be unlocked
-      if (!perk.unlocked && agentPerks.availablePoints > 0) {
-        // For now, simple unlock: any perk can be unlocked with points
-        // Later can add prerequisites
+        this.updateGlobalStats();
       }
-
-      // Check skills within unlocked perks
-      if (perk.unlocked && perk.level > 0) {
-        perk.skills.forEach((skill, index) => {
-          if (!skill.unlocked) {
-            // First skill always unlocked when perk is unlocked
-            // Others unlock based on previous skill level or perk level
-            if (
-              index === 0 ||
-              (index > 0 && perk.skills[index - 1].level >= 2)
-            ) {
-              skill.unlocked = true;
-            }
-          }
-        });
-      }
+      return skills;
     });
   }
 
-  // ===== PERK ACTIONS =====
+  // Unlock a skill for an agent
+  public unlockSkill(agentId: string, skillId: string): boolean {
+    let success = false;
 
-  public canPerformAction(agentId: string, action: PerkAction): boolean {
-    const agentPerks = this.perksData.get(agentId);
-    if (!agentPerks) return false;
+    this.agentSkills.update((skills) => {
+      const agentTree = skills[agentId];
+      if (!agentTree) return skills;
 
-    // Find the skill across all perks
-    for (const perk of agentPerks.perks.values()) {
-      const skill = perk.skills.find((s) => s.id === action.skillId);
-      if (skill && skill.unlocked && skill.level >= action.requiredLevel) {
-        return true;
+      const skill = agentTree.skills[skillId];
+      if (!skill) return skills;
+
+      // Check if already at max rank
+      if (skill.currentRank >= skill.maxRank) {
+        console.warn(`Skill ${skillId} is already at max rank`);
+        return skills;
       }
-    }
-    return false;
-  }
 
-  public performAction(agentId: string, action: PerkAction): boolean {
-    if (!this.canPerformAction(agentId, action)) return false;
-
-    // Calculate success probability based on skill level
-    const agentPerks = this.perksData.get(agentId)!;
-    let skill: Skill | undefined;
-    let perkCategory: PerkCategory | undefined;
-
-    for (const [category, perk] of agentPerks.perks.entries()) {
-      const foundSkill = perk.skills.find((s) => s.id === action.skillId);
-      if (foundSkill) {
-        skill = foundSkill;
-        perkCategory = category as PerkCategory;
-        break;
+      // Check if agent has enough points
+      if (agentTree.availablePoints < skill.cost) {
+        console.warn(`Not enough points to unlock ${skillId}`);
+        return skills;
       }
-    }
 
-    if (!skill || !perkCategory) return false;
+      // Check prerequisites
+      const prerequisitesMet = skill.prerequisites.every((prereqId) => {
+        const prereq = agentTree.skills[prereqId];
+        return prereq && prereq.currentRank > 0;
+      });
 
-    // Roll for success
-    const baseSuccessRate = action.successProbability;
-    const skillBonus = skill.level * 0.1; // +10% per skill level
-    const finalSuccessRate = Math.min(0.95, baseSuccessRate + skillBonus);
+      if (!prerequisitesMet) {
+        console.warn(`Prerequisites not met for ${skillId}`);
+        return skills;
+      }
 
-    const success = Math.random() < finalSuccessRate;
+      // Unlock the skill
+      skill.currentRank++;
+      skill.unlocked = true;
+      agentTree.availablePoints -= skill.cost;
 
-    // Grant experience regardless of success (learning from failure)
-    const expGain = success
-      ? action.experienceGain
-      : Math.floor(action.experienceGain * 0.5);
-    this.grantExperience(agentId, perkCategory, action.skillId, expGain);
+      // Add abilities to unlocked list
+      skill.effects.forEach((effect) => {
+        if (
+          effect.type === "ability" &&
+          !agentTree.unlockedAbilities.includes(effect.value as string)
+        ) {
+          agentTree.unlockedAbilities.push(effect.value as string);
+        }
+      });
 
-    // Update world resources
-    this.updateWorldResources(success);
+      console.log(
+        `✨ Agent ${agentId} unlocked ${skill.name} (Rank ${skill.currentRank})`,
+      );
+      success = true;
 
-    console.log(
-      `🎮 ${agentId} performed ${action.actionType} with ${skill.name}: ${success ? "SUCCESS" : "FAILED"} (+${expGain} XP)`,
-    );
+      this.updateGlobalStats();
+      return skills;
+    });
 
     return success;
   }
 
-  // ===== WORLD RESOURCES =====
-
-  private updateWorldResources(taskSuccess: boolean): void {
-    const current = this.getWorldResources();
-    const updated: WorldResources = {
-      ...current,
-      completedTasks: current.completedTasks + 1,
-      totalExperience: this.getTotalWorldExperience(),
-      successRate: this.calculateSuccessRate(taskSuccess),
-      uptime: current.uptime + 1,
-    };
-
-    this.worldResources.set(updated);
+  // Check if an agent has a specific ability
+  public hasAbility(agentId: string, ability: string): boolean {
+    let hasIt = false;
+    this.agentSkills.subscribe((skills) => {
+      const agentTree = skills[agentId];
+      hasIt = agentTree ? agentTree.unlockedAbilities.includes(ability) : false;
+    })();
+    return hasIt;
   }
 
-  private getTotalWorldExperience(): number {
-    let total = 0;
-    this.perksData.forEach((agentPerks) => {
-      total += agentPerks.totalExperience;
-    });
-    return total;
+  // Get skill tree for an agent
+  public getAgentSkills(agentId: string): AgentSkillTree | null {
+    let agentTree: AgentSkillTree | null = null;
+    this.agentSkills.subscribe((skills) => {
+      agentTree = skills[agentId] || null;
+    })();
+    return agentTree;
   }
 
-  private calculateSuccessRate(latestSuccess: boolean): number {
-    // Simple moving average of recent successes
-    // In a real implementation, you'd track this more precisely
-    const current = this.getWorldResources();
-    const weight = 0.1; // How much the latest result affects the rate
-    return (
-      current.successRate * (1 - weight) + (latestSuccess ? 100 : 0) * weight
-    );
+  // Get all skill categories
+  public getSkillCategories(): SkillTreeDefinition[] {
+    return Object.values(this.skillDefinitions);
   }
 
-  // ===== GETTERS =====
-
-  public getAgentPerks(agentId: string): AgentPerks | undefined {
-    return this.perksData.get(agentId);
+  // Get skills by category
+  public getSkillsByCategory(category: SkillCategory): SkillNode[] {
+    return this.skillDefinitions[category]?.skills || [];
   }
 
-  public getWorldResources(): WorldResources {
-    let current: WorldResources;
-    this.worldResources.subscribe((value) => (current = value))();
-    return current!;
-  }
+  private updateGlobalStats(): void {
+    this.agentSkills.subscribe((allSkills) => {
+      let totalXP = 0;
+      let totalSkills = 0;
+      let totalAbilities = 0;
 
-  public getPerkDefinitions(): PerkDefinitions {
-    console.log("🔍 PerkManager.getPerkDefinitions() called, categories:", Object.keys(this.perkDefinitions));
-    return this.perkDefinitions;
-  }
-
-  public getAgentSpecialization(agentId: string): PerkCategory | undefined {
-    return this.perksData.get(agentId)?.specialization;
-  }
-
-  public getAgentTopSkills(
-    agentId: string,
-    limit: number = 3,
-  ): Array<{ skill: Skill; perkCategory: PerkCategory }> {
-    const agentPerks = this.perksData.get(agentId);
-    if (!agentPerks) return [];
-
-    const allSkills: Array<{ skill: Skill; perkCategory: PerkCategory }> = [];
-
-    agentPerks.perks.forEach((perk, category) => {
-      perk.skills.forEach((skill) => {
-        if (skill.unlocked && skill.level > 0) {
-          allSkills.push({ skill, perkCategory: category as PerkCategory });
-        }
+      Object.values(allSkills).forEach((agentTree) => {
+        totalXP += agentTree.experience;
+        totalSkills += Object.values(agentTree.skills).filter(
+          (skill) => skill.currentRank > 0,
+        ).length;
+        totalAbilities += agentTree.unlockedAbilities.length;
       });
-    });
 
-    return allSkills
-      .sort((a, b) => b.skill.level - a.skill.level)
-      .slice(0, limit);
+      this.globalStats.set({
+        totalExperience: totalXP,
+        totalSkillsUnlocked: totalSkills,
+        totalAbilitiesUnlocked: totalAbilities,
+      });
+    })();
   }
 
-  // ===== PERSISTENCE =====
-
-  private savePerksData(): void {
+  private loadSavedData(): void {
     try {
-      const serialized = JSON.stringify(Array.from(this.perksData.entries()));
-      localStorage.setItem("nocturne_agent_perks", serialized);
-    } catch (error) {
-      console.warn("Failed to save perks data:", error);
-    }
-  }
-
-  private loadPerksData(): void {
-    try {
-      const saved = localStorage.getItem("nocturne_agent_perks");
+      const saved = localStorage.getItem("nocturne_skill_trees");
       if (saved) {
-        const entries = JSON.parse(saved);
-        this.perksData = new Map();
-
-        // Reconstruct the Map with proper Map objects for perks
-        entries.forEach(([agentId, agentPerksData]: [string, any]) => {
-          const agentPerks: AgentPerks = {
-            agentId: agentPerksData.agentId,
-            perks: new Map(), // Reconstruct the perks Map
-            totalExperience: agentPerksData.totalExperience || 0,
-            availablePoints: agentPerksData.availablePoints || 0,
-            specialization: agentPerksData.specialization,
-          };
-
-          // Convert the perks object back to a Map
-          if (
-            agentPerksData.perks &&
-            typeof agentPerksData.perks === "object"
-          ) {
-            Object.entries(agentPerksData.perks).forEach(
-              ([perkId, perkData]: [string, any]) => {
-                agentPerks.perks.set(perkId, perkData as Perk);
-              },
-            );
-          }
-
-          // Validate that the Map was properly reconstructed
-          if (typeof agentPerks.perks.get !== "function") {
-            console.warn(
-              `Invalid perks Map for agent ${agentId}, reinitializing...`,
-            );
-            this.initializeAgentPerks(agentId, agentPerks.specialization);
-            return;
-          }
-
-          this.perksData.set(agentId, agentPerks);
-        });
-
-        this.updateStore();
+        const data = JSON.parse(saved);
+        this.agentSkills.set(data.agentSkills || {});
+        this.updateGlobalStats();
       }
     } catch (error) {
-      console.warn("Failed to load perks data:", error);
+      console.warn("Failed to load skill tree data:", error);
     }
   }
 
-  // ===== UTILITY =====
-
-  private updateStore(): void {
-    this.agentPerks.set(new Map(this.perksData));
+  public saveData(): void {
+    try {
+      this.agentSkills.subscribe((skills) => {
+        const data = { agentSkills: skills };
+        localStorage.setItem("nocturne_skill_trees", JSON.stringify(data));
+      })();
+    } catch (error) {
+      console.warn("Failed to save skill tree data:", error);
+    }
   }
 
-  public resetAgentPerks(agentId: string): void {
-    this.perksData.delete(agentId);
-    this.updateStore();
-    this.savePerksData();
-  }
-
-  public exportAgentPerks(agentId: string): string {
-    const agentPerks = this.perksData.get(agentId);
-    return agentPerks ? JSON.stringify(agentPerks, null, 2) : "";
-  }
-
-  // Auto-save periodically
+  // Auto-save every 30 seconds
   public startAutoSave(): void {
-    setInterval(() => {
-      this.savePerksData();
-    }, 30000); // Every 30 seconds
+    setInterval(() => this.saveData(), 30000);
   }
 
-  // Validate and repair corrupted perk data
-  public validateAndRepairPerks(): void {
-    let hasCorruptedData = false;
-
-    this.perksData.forEach((agentPerks, agentId) => {
-      if (typeof agentPerks.perks.get !== "function") {
-        console.warn(`Repairing corrupted perks for agent ${agentId}`);
-        hasCorruptedData = true;
-        this.initializeAgentPerks(agentId, agentPerks.specialization);
+  // Reset an agent's skills
+  public resetAgent(agentId: string): void {
+    this.agentSkills.update((skills) => {
+      if (skills[agentId]) {
+        delete skills[agentId];
+        this.initializeAgent(agentId);
       }
+      return skills;
     });
-
-    if (hasCorruptedData) {
-      this.updateStore();
-      this.savePerksData();
-    }
   }
 }
 
 // Export singleton instance
-export const perkManager = new PerkManager();
+export const skillTreeManager = new SkillTreeManager();

@@ -1,5 +1,7 @@
 import { writable, type Writable } from "svelte/store";
 import { communicationManager } from "./CommunicationManager";
+import { skillTreeManager } from "./PerkManager";
+import { characterManager } from "./CharacterManager";
 
 export type SimulationSpeed = "paused" | "normal" | "fast" | "very_fast";
 export type SimulationState = "running" | "paused" | "loading";
@@ -222,6 +224,9 @@ export class SimulationController {
         this.triggerAgentInteraction();
         tick.eventsTriggered.push("agent_interaction");
         this.stats.agentActionCount++;
+
+        // Award XP for successful actions
+        this.awardExperienceForActions();
       } else {
         // Simulate agent "error" or fatigue
         tick.eventsTriggered.push("agent_error");
@@ -243,12 +248,14 @@ export class SimulationController {
   private processGamificationEvents(tick: SimulationTick): void {
     // Random XP gains, ability unlocks, etc.
     if (Math.random() < 0.1) {
-      // 10% chance per tick
+      // 10% chance per tick for bonus XP
+      this.awardBonusExperience();
       tick.eventsTriggered.push("xp_gain");
     }
 
     if (Math.random() < 0.02) {
-      // 2% chance per tick
+      // 2% chance per tick for milestone rewards
+      this.awardMilestoneRewards();
       tick.eventsTriggered.push("ability_unlock");
     }
   }
@@ -256,6 +263,69 @@ export class SimulationController {
   private triggerAgentInteraction(): void {
     // This integrates with the new natural conversation system
     communicationManager.triggerSimulationTick();
+  }
+
+  // ===== EXPERIENCE SYSTEM =====
+
+  private awardExperienceForActions(): void {
+    const npcs = characterManager.getNPCs();
+    const activeAgents = npcs.filter((npc) => npc.status === "online");
+
+    if (activeAgents.length > 0) {
+      // Award XP to random active agent(s)
+      const agentToReward =
+        activeAgents[Math.floor(Math.random() * activeAgents.length)];
+      const baseXP = this.getSpeedMultiplier() * 25; // 25 XP base, multiplied by speed
+      skillTreeManager.grantExperience(
+        agentToReward.id,
+        baseXP,
+        "agent interaction",
+      );
+
+      // Small chance for group XP
+      if (Math.random() < 0.3 && activeAgents.length > 1) {
+        const secondAgent = activeAgents.find((a) => a.id !== agentToReward.id);
+        if (secondAgent) {
+          skillTreeManager.grantExperience(
+            secondAgent.id,
+            baseXP * 0.5,
+            "collaboration",
+          );
+        }
+      }
+    }
+  }
+
+  private awardBonusExperience(): void {
+    const npcs = characterManager.getNPCs();
+    const activeAgents = npcs.filter((npc) => npc.status === "online");
+
+    if (activeAgents.length > 0) {
+      const bonusXP = Math.floor(Math.random() * 50) + 25; // 25-75 XP
+      const luckyAgent =
+        activeAgents[Math.floor(Math.random() * activeAgents.length)];
+      skillTreeManager.grantExperience(
+        luckyAgent.id,
+        bonusXP,
+        "performance bonus",
+      );
+    }
+  }
+
+  private awardMilestoneRewards(): void {
+    const npcs = characterManager.getNPCs();
+    const activeAgents = npcs.filter((npc) => npc.status === "online");
+
+    if (activeAgents.length > 0) {
+      const milestoneXP = 100; // Larger milestone reward
+      const topPerformer =
+        activeAgents[Math.floor(Math.random() * activeAgents.length)];
+      skillTreeManager.grantExperience(
+        topPerformer.id,
+        milestoneXP,
+        "milestone achievement",
+      );
+    }
   }
 
   // ===== RISK MANAGEMENT =====

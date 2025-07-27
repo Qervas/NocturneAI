@@ -1,338 +1,384 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { perkManager } from "../services/PerkManager";
-    import {
-        characterManager,
-        characters,
-        activeCharacter,
-    } from "../services/CharacterManager";
-    import type { Perk, Skill, PerkCategory, AgentPerks } from "../types/Perks";
+    import { skillTreeManager } from "../services/PerkManager";
+    import { characters } from "../services/CharacterManager";
+    import type {
+        AgentSkillTree,
+        SkillNode,
+        SkillCategory,
+    } from "../services/PerkManager";
 
-    // Component state
-    let showPerkPanel = false;
-    let selectedAgent = "";
-    let selectedPerkCategory: PerkCategory | null = null;
-    let agentPerksStore = perkManager.agentPerks;
+    let showSkillPanel = false;
+    let selectedAgent: string | null = null;
+    let selectedCategory: SkillCategory = "system_access";
+    let agentSkillTrees: Record<string, AgentSkillTree> = {};
+    let hoveredSkill: string | null = null;
 
-    // Reactive stores
-    $: agentList = $characters.filter((c) => c.type === "npc");
-    $: currentAgentPerks = selectedAgent
-        ? $agentPerksStore.get(selectedAgent)
-        : undefined;
-    $: selectedPerk =
-        selectedPerkCategory && currentAgentPerks?.perks && typeof currentAgentPerks.perks.get === 'function'
-            ? currentAgentPerks.perks.get(selectedPerkCategory)
-            : undefined;
+    // Subscribe to skill trees
+    skillTreeManager.agentSkills.subscribe((value) => {
+        agentSkillTrees = value;
+    });
 
-    function togglePerkPanel() {
-        showPerkPanel = !showPerkPanel;
-        if (showPerkPanel && agentList.length > 0 && !selectedAgent) {
-            selectedAgent = agentList[0].id;
+    // Get available agents (NPCs only)
+    $: availableAgents = $characters.filter((c) => c.type === "npc");
+
+    // Get current agent's skill tree
+    $: currentAgentSkills = selectedAgent
+        ? agentSkillTrees[selectedAgent]
+        : null;
+
+    // Get skills for selected category
+    $: categorySkills = skillTreeManager.getSkillsByCategory(selectedCategory);
+
+    // Skill categories with icons and colors
+    const categories = [
+        { id: "system_access", name: "System", icon: "💻", color: "#4CAF50" },
+        { id: "web_operations", name: "Web", icon: "🌐", color: "#2196F3" },
+        { id: "communication", name: "Social", icon: "💬", color: "#FF9800" },
+        { id: "analysis", name: "Analysis", icon: "📊", color: "#9C27B0" },
+        { id: "automation", name: "Auto", icon: "🤖", color: "#00BCD4" },
+        { id: "security", name: "Security", icon: "🔒", color: "#F44336" },
+    ];
+
+    function toggleSkillPanel() {
+        showSkillPanel = !showSkillPanel;
+        if (showSkillPanel && !selectedAgent && availableAgents.length > 0) {
+            selectedAgent = availableAgents[0].id;
         }
     }
 
     function selectAgent(agentId: string) {
         selectedAgent = agentId;
-        selectedPerkCategory = null;
-        // Ensure agent perks are initialized
-        perkManager.initializeAgentPerks(agentId);
-    }
-
-    function selectPerkCategory(category: PerkCategory) {
-        selectedPerkCategory = category;
-    }
-
-    function unlockPerk(perkId: string) {
-        if (
-            !currentAgentPerks ||
-            !currentAgentPerks.perks ||
-            typeof currentAgentPerks.perks.get !== 'function' ||
-            currentAgentPerks.availablePoints <= 0
-        )
-            return;
-
-        const perk = currentAgentPerks.perks.get(perkId);
-        if (perk && !perk.unlocked) {
-            perk.unlocked = true;
-            currentAgentPerks.availablePoints--;
-
-            // Unlock first skill
-            if (perk.skills.length > 0) {
-                perk.skills[0].unlocked = true;
-            }
-
-            console.log(`🎯 Unlocked perk ${perk.name} for ${selectedAgent}`);
+        // Initialize agent if not already done
+        if (!agentSkillTrees[agentId]) {
+            skillTreeManager.initializeAgent(agentId);
         }
     }
 
-    function getSkillProgressPercent(skill: Skill): number {
-        if (skill.maxExperience === 0) return 0;
-        return (skill.experience / skill.maxExperience) * 100;
+    function selectCategory(category: SkillCategory) {
+        selectedCategory = category;
     }
 
-    function getPerkProgressPercent(perk: Perk): number {
-        if (perk.maxExperience === 0) return 0;
-        return (perk.experience / perk.maxExperience) * 100;
+    function unlockSkill(skillId: string) {
+        if (selectedAgent) {
+            const success = skillTreeManager.unlockSkill(
+                selectedAgent,
+                skillId,
+            );
+            if (success) {
+                // Visual feedback for successful unlock
+                const skillElement = document.querySelector(
+                    `[data-skill="${skillId}"]`,
+                );
+                if (skillElement) {
+                    skillElement.classList.add("skill-unlocked-animation");
+                    setTimeout(() => {
+                        skillElement.classList.remove(
+                            "skill-unlocked-animation",
+                        );
+                    }, 1000);
+                }
+            }
+        }
     }
 
-    function getAgentSpecializationIcon(agentId: string): string {
-        const specialization = perkManager.getAgentSpecialization(agentId);
-        const perkDefs = perkManager.getPerkDefinitions();
-        return specialization ? perkDefs[specialization].icon : "🤖";
+    function getSkillState(
+        skill: SkillNode,
+    ): "locked" | "available" | "unlocked" | "maxed" {
+        if (!currentAgentSkills) return "locked";
+
+        const agentSkill = currentAgentSkills.skills[skill.id];
+        if (!agentSkill) return "locked";
+
+        if (agentSkill.currentRank >= agentSkill.maxRank) return "maxed";
+        if (agentSkill.currentRank > 0) return "unlocked";
+
+        // Check if prerequisites are met
+        const prerequisitesMet = skill.prerequisites.every((prereqId) => {
+            const prereq = currentAgentSkills.skills[prereqId];
+            return prereq && prereq.currentRank > 0;
+        });
+
+        if (
+            prerequisitesMet &&
+            currentAgentSkills.availablePoints >= skill.cost
+        ) {
+            return "available";
+        }
+
+        return "locked";
     }
 
-    function simulateSkillUse(skillId: string) {
-        if (!selectedAgent || !selectedPerkCategory) return;
+    function getSkillRank(skillId: string): number {
+        if (!currentAgentSkills) return 0;
+        return currentAgentSkills.skills[skillId]?.currentRank || 0;
+    }
 
-        // Grant some experience for testing
-        perkManager.grantExperience(
-            selectedAgent,
-            selectedPerkCategory,
-            skillId,
-            25,
-        );
+    function canAffordSkill(skill: SkillNode): boolean {
+        if (!currentAgentSkills) return false;
+        return currentAgentSkills.availablePoints >= skill.cost;
+    }
+
+    function getAgentColor(agentId: string): string {
+        const agent = availableAgents.find((a) => a.id === agentId);
+        return agent?.color || "#ffffff";
+    }
+
+    function getAgentName(agentId: string): string {
+        const agent = availableAgents.find((a) => a.id === agentId);
+        return agent?.name || agentId;
+    }
+
+    function getCategoryColor(categoryId: string): string {
+        return categories.find((c) => c.id === categoryId)?.color || "#ffffff";
+    }
+
+    function grantTestXP() {
+        if (selectedAgent) {
+            skillTreeManager.grantExperience(selectedAgent, 150, "testing");
+        }
     }
 
     onMount(() => {
-        // Initialize perks for all agents
-        agentList.forEach((agent) => {
-            let specialization: PerkCategory | undefined;
-
-            // Assign specializations based on agent
-            if (agent.id === "agent_alpha") specialization = "cognitive";
-            else if (agent.id === "agent_beta") specialization = "creative";
-            else if (agent.id === "agent_gamma") specialization = "technical";
-
-            perkManager.initializeAgentPerks(agent.id, specialization);
+        // Initialize skill trees for all agents
+        availableAgents.forEach((agent) => {
+            skillTreeManager.initializeAgent(agent.id);
         });
-
-        // Start auto-save
-        perkManager.startAutoSave();
     });
 </script>
 
-<!-- Perk Panel Toggle Button -->
+<!-- Skill Tree Toggle Button -->
 <button
-    class="perk-toggle-btn"
-    on:click={togglePerkPanel}
-    class:active={showPerkPanel}
-    title="Agent Perks & Skills"
+    class="skill-tree-toggle"
+    on:click={toggleSkillPanel}
+    class:active={showSkillPanel}
+    title="Agent Skill Trees"
 >
-    🎯
+    ⚡ Skills
 </button>
 
-<!-- Perk Management Panel -->
-{#if showPerkPanel}
-    <div class="perk-panel-overlay" on:click={togglePerkPanel}></div>
-    <div class="perk-panel">
-        <div class="perk-header">
-            <h2>🎯 Agent Perks & Skills</h2>
-            <button class="close-btn" on:click={togglePerkPanel}>✕</button>
-        </div>
+<!-- Skill Tree Panel -->
+{#if showSkillPanel}
+    <div class="skill-panel-overlay" on:click={toggleSkillPanel}>
+        <div class="skill-panel" on:click|stopPropagation>
+            <!-- Header -->
+            <div class="skill-header">
+                <h2>🎯 Agent Skill Trees</h2>
+                <div class="header-controls">
+                    <button
+                        class="test-xp-btn"
+                        on:click={grantTestXP}
+                        disabled={!selectedAgent}
+                    >
+                        +150 XP
+                    </button>
+                    <button class="close-btn" on:click={toggleSkillPanel}
+                        >✕</button
+                    >
+                </div>
+            </div>
 
-        <div class="perk-content">
             <!-- Agent Selection -->
             <div class="agent-selector">
-                <h3>Select Agent:</h3>
-                <div class="agent-list">
-                    {#each agentList as agent}
+                <h3>Select Agent</h3>
+                <div class="agent-grid">
+                    {#each availableAgents as agent}
                         <button
-                            class="agent-btn"
+                            class="agent-card"
                             class:selected={selectedAgent === agent.id}
                             on:click={() => selectAgent(agent.id)}
-                            style="border-color: {agent.color}"
+                            style="border-color: {getAgentColor(agent.id)}"
                         >
-                            <span class="agent-icon"
-                                >{getAgentSpecializationIcon(agent.id)}</span
+                            <div
+                                class="agent-icon"
+                                style="color: {getAgentColor(agent.id)}"
                             >
-                            <span class="agent-name">{agent.name}</span>
-                            {#if $agentPerksStore.get(agent.id)}
-                                <span class="agent-points">
-                                    {(() => {
-                                        const agentPerks = $agentPerksStore.get(agent.id);
-                                        return agentPerks && typeof agentPerks.availablePoints === 'number' 
-                                            ? agentPerks.availablePoints 
-                                            : 0;
-                                    })()} pts
-                                </span>
-                            {/if}
+                                {agent.name === "Alpha"
+                                    ? "🧠"
+                                    : agent.name === "Beta"
+                                      ? "🎨"
+                                      : "⚙️"}
+                            </div>
+                            <div class="agent-info">
+                                <div class="agent-name">
+                                    {getAgentName(agent.id)}
+                                </div>
+                                {#if agentSkillTrees[agent.id]}
+                                    <div class="agent-stats">
+                                        <span
+                                            >XP: {agentSkillTrees[agent.id]
+                                                .experience}</span
+                                        >
+                                        <span
+                                            >Points: {agentSkillTrees[agent.id]
+                                                .availablePoints}</span
+                                        >
+                                    </div>
+                                {/if}
+                            </div>
                         </button>
                     {/each}
                 </div>
             </div>
 
-            {#if currentAgentPerks}
-                <div class="perk-main">
-                    <!-- Perk Categories -->
-                    <div class="perk-categories">
-                        <h3>Perk Trees:</h3>
-                        <div class="category-grid">
-                            {#each Object.entries(perkManager.getPerkDefinitions()) as [categoryId, perkDef]}
-                                {@const perk =
-                                    currentAgentPerks?.perks && typeof currentAgentPerks.perks.get === 'function' 
-                                        ? currentAgentPerks.perks.get(categoryId)
-                                        : undefined}
+            {#if currentAgentSkills}
+                <!-- Category Tabs -->
+                <div class="category-tabs">
+                    {#each categories as category}
+                        <button
+                            class="category-tab"
+                            class:active={selectedCategory === category.id}
+                            on:click={() => selectCategory(category.id)}
+                            style="--category-color: {category.color}"
+                        >
+                            <span class="category-icon">{category.icon}</span>
+                            <span class="category-name">{category.name}</span>
+                        </button>
+                    {/each}
+                </div>
 
-                                {#if perk}
-                                    <div class="category-item">
-                                        <button
-                                            class="category-btn"
-                                            class:selected={selectedPerkCategory ===
-                                                categoryId}
-                                            class:unlocked={perk.unlocked}
-                                            class:locked={!perk.unlocked}
-                                            on:click={() =>
-                                                selectPerkCategory(
-                                                    categoryId as PerkCategory,
-                                                )}
-                                            style="--perk-color: {perkDef.color}"
-                                        >
-                                            <div class="category-icon">
-                                                {perkDef.icon}
-                                            </div>
-                                            <div class="category-name">
-                                                {perkDef.name}
-                                            </div>
-                                            <div class="category-level">
-                                                Level {perk.level}
-                                            </div>
-                                            {#if perk.unlocked}
-                                                <div class="category-progress">
-                                                    <div
-                                                        class="progress-bar"
-                                                        style="width: {getPerkProgressPercent(
-                                                            perk,
-                                                        )}%; background-color: {perkDef.color}"
-                                                    ></div>
-                                                </div>
-                                            {/if}
-                                        </button>
-                                        {#if !perk.unlocked && currentAgentPerks && currentAgentPerks.availablePoints > 0}
-                                            <button
-                                                class="unlock-btn"
-                                                on:click={() =>
-                                                    unlockPerk(categoryId)}
-                                            >
-                                                Unlock
-                                            </button>
-                                        {/if}
-                                    </div>
-                                {/if}
-                            {/each}
+                <!-- Skill Tree Grid -->
+                <div class="skill-tree-container">
+                    <div class="skill-tree-header">
+                        <h3 style="color: {getCategoryColor(selectedCategory)}">
+                            {categories.find((c) => c.id === selectedCategory)
+                                ?.icon}
+                            {categories.find((c) => c.id === selectedCategory)
+                                ?.name} Skills
+                        </h3>
+                        <div class="agent-resources">
+                            <span class="experience"
+                                >🌟 {currentAgentSkills.experience} XP</span
+                            >
+                            <span class="points"
+                                >💎 {currentAgentSkills.availablePoints} Points</span
+                            >
                         </div>
                     </div>
 
-                    <!-- Selected Perk Details -->
-                    {#if selectedPerk}
-                        <div class="perk-details">
-                            <div class="perk-info">
-                                <div class="perk-title">
-                                    <span
-                                        class="perk-icon"
-                                        style="color: {selectedPerk.color}"
-                                        >{selectedPerk.icon}</span
-                                    >
-                                    <h3>{selectedPerk.name}</h3>
-                                    <span class="perk-level"
-                                        >Level {selectedPerk.level}</span
-                                    >
+                    <div class="skill-grid">
+                        {#each categorySkills as skill, index}
+                            {@const skillState = getSkillState(skill)}
+                            {@const skillRank = getSkillRank(skill.id)}
+                            <div
+                                class="skill-node {skillState}"
+                                class:hoverable={skillState === "available"}
+                                data-skill={skill.id}
+                                on:click={() =>
+                                    skillState === "available" &&
+                                    unlockSkill(skill.id)}
+                                on:mouseenter={() => (hoveredSkill = skill.id)}
+                                on:mouseleave={() => (hoveredSkill = null)}
+                                style="--category-color: {getCategoryColor(
+                                    selectedCategory,
+                                )}"
+                            >
+                                <!-- Skill Icon -->
+                                <div class="skill-icon">
+                                    {skill.icon}
+                                    {#if skillRank > 0}
+                                        <div class="skill-rank">
+                                            {skillRank}
+                                        </div>
+                                    {/if}
                                 </div>
-                                <p class="perk-description">
-                                    {selectedPerk.description}
-                                </p>
 
-                                {#if selectedPerk.unlocked}
-                                    <div class="perk-progress-detail">
-                                        <div class="progress-label">
-                                            Experience: {selectedPerk.experience}
-                                            / {selectedPerk.maxExperience}
-                                        </div>
-                                        <div class="progress-container">
-                                            <div
-                                                class="progress-fill"
-                                                style="width: {getPerkProgressPercent(
-                                                    selectedPerk,
-                                                )}%; background-color: {selectedPerk.color}"
-                                            ></div>
-                                        </div>
+                                <!-- Skill Info -->
+                                <div class="skill-info">
+                                    <div class="skill-name">{skill.name}</div>
+                                    <div class="skill-description">
+                                        {skill.description}
                                     </div>
+
+                                    {#if skillState === "locked" && skill.prerequisites.length > 0}
+                                        <div class="prerequisites">
+                                            Requires: {skill.prerequisites
+                                                .map(
+                                                    (id) =>
+                                                        categorySkills.find(
+                                                            (s) => s.id === id,
+                                                        )?.name || id,
+                                                )
+                                                .join(", ")}
+                                        </div>
+                                    {/if}
+
+                                    {#if skillState === "available"}
+                                        <div class="skill-cost">
+                                            Cost: {skill.cost} points
+                                        </div>
+                                    {/if}
+
+                                    {#if skillRank > 0}
+                                        <div class="skill-effects">
+                                            {#each skill.effects as effect}
+                                                <div class="effect">
+                                                    • {effect.description}
+                                                </div>
+                                            {/each}
+                                        </div>
+                                    {/if}
+
+                                    {#if skillState === "unlocked" && skillRank < skill.maxRank}
+                                        <div class="upgrade-info">
+                                            Rank {skillRank}/{skill.maxRank} - Can
+                                            upgrade for {skill.cost} points
+                                        </div>
+                                    {/if}
+                                </div>
+
+                                <!-- Connection Lines -->
+                                {#if skill.prerequisites.length > 0}
+                                    {#each skill.prerequisites as prereqId}
+                                        {@const prereqIndex =
+                                            categorySkills.findIndex(
+                                                (s) => s.id === prereqId,
+                                            )}
+                                        {#if prereqIndex !== -1}
+                                            <div
+                                                class="skill-connection"
+                                                style="--prereq-index: {prereqIndex}; --current-index: {index}"
+                                            ></div>
+                                        {/if}
+                                    {/each}
                                 {/if}
                             </div>
+                        {/each}
+                    </div>
+                </div>
 
-                            <!-- Skills -->
-                            <div class="skills-section">
-                                <h4>Skills:</h4>
-                                <div class="skills-grid">
-                                    {#each selectedPerk.skills as skill}
-                                        <div
-                                            class="skill-card"
-                                            class:unlocked={skill.unlocked}
-                                            class:locked={!skill.unlocked}
-                                        >
-                                            <div class="skill-header">
-                                                <span class="skill-icon"
-                                                    >{skill.icon}</span
-                                                >
-                                                <div class="skill-info">
-                                                    <div class="skill-name">
-                                                        {skill.name}
-                                                    </div>
-                                                    <div class="skill-level">
-                                                        {skill.unlocked
-                                                            ? `Level ${skill.level}`
-                                                            : "Locked"}
-                                                    </div>
-                                                </div>
-                                                {#if skill.unlocked}
-                                                    <button
-                                                        class="test-skill-btn"
-                                                        on:click={() =>
-                                                            simulateSkillUse(
-                                                                skill.id,
-                                                            )}
-                                                        title="Test skill (gain XP)"
-                                                    >
-                                                        🎮
-                                                    </button>
-                                                {/if}
-                                            </div>
-
-                                            <p class="skill-description">
-                                                {skill.description}
-                                            </p>
-
-                                            {#if skill.unlocked}
-                                                <div class="skill-progress">
-                                                    <div class="progress-label">
-                                                        XP: {skill.experience} /
-                                                        {skill.maxExperience}
-                                                    </div>
-                                                    <div
-                                                        class="progress-container"
-                                                    >
-                                                        <div
-                                                            class="progress-fill"
-                                                            style="width: {getSkillProgressPercent(
-                                                                skill,
-                                                            )}%; background-color: {selectedPerk.color}"
-                                                        ></div>
-                                                    </div>
-                                                </div>
-                                            {/if}
-                                        </div>
-                                    {/each}
-                                </div>
+                <!-- Skill Tooltip -->
+                {#if hoveredSkill}
+                    {@const hoveredSkillData = categorySkills.find(
+                        (s) => s.id === hoveredSkill,
+                    )}
+                    {#if hoveredSkillData}
+                        <div class="skill-tooltip">
+                            <h4>
+                                {hoveredSkillData.icon}
+                                {hoveredSkillData.name}
+                            </h4>
+                            <p>{hoveredSkillData.description}</p>
+                            <div class="tooltip-effects">
+                                {#each hoveredSkillData.effects as effect}
+                                    <div class="tooltip-effect">
+                                        <strong>{effect.type}:</strong>
+                                        {effect.description}
+                                    </div>
+                                {/each}
+                            </div>
+                            <div class="tooltip-stats">
+                                <span>Max Rank: {hoveredSkillData.maxRank}</span
+                                >
+                                <span>Cost: {hoveredSkillData.cost} points</span
+                                >
                             </div>
                         </div>
-                    {:else}
-                        <div class="no-selection">
-                            <p>Select a perk category to view skills</p>
-                        </div>
                     {/if}
-                </div>
+                {/if}
             {:else}
-                <div class="no-agent">
-                    <p>Select an agent to manage their perks</p>
+                <div class="no-agent-selected">
+                    <p>Select an agent to view their skill tree</p>
                 </div>
             {/if}
         </div>
@@ -340,470 +386,490 @@
 {/if}
 
 <style>
-    .perk-toggle-btn {
-        position: fixed;
-        top: 20px;
-        left: 20px;
-        background: linear-gradient(
-            135deg,
-            rgba(0, 0, 0, 0.8) 0%,
-            rgba(0, 20, 40, 0.8) 100%
-        );
-        border: 1px solid rgba(255, 215, 0, 0.5);
-        border-radius: 50%;
-        color: #ffd700;
+    .skill-tree-toggle {
+        background: linear-gradient(135deg, #4caf50, #45a049);
+        border: none;
+        border-radius: 8px;
+        color: white;
+        padding: 10px 15px;
+        font-size: 14px;
+        font-weight: bold;
         cursor: pointer;
-        padding: 12px;
-        font-size: 20px;
         transition: all 0.3s ease;
-        backdrop-filter: blur(10px);
-        box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
-        z-index: 1001;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
     }
 
-    .perk-toggle-btn:hover,
-    .perk-toggle-btn.active {
-        background: linear-gradient(
-            135deg,
-            rgba(255, 215, 0, 0.2) 0%,
-            rgba(255, 140, 0, 0.8) 100%
-        );
-        box-shadow: 0 0 25px rgba(255, 215, 0, 0.6);
-        transform: scale(1.1);
+    .skill-tree-toggle:hover,
+    .skill-tree-toggle.active {
+        background: linear-gradient(135deg, #5cbf60, #4caf50);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
     }
 
-    .perk-panel-overlay {
+    .skill-panel-overlay {
         position: fixed;
         top: 0;
         left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.7);
-        z-index: 1100;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 2000;
+        animation: fadeIn 0.3s ease;
     }
 
-    .perk-panel {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: linear-gradient(
-            135deg,
-            rgba(15, 15, 25, 0.95),
-            rgba(25, 25, 40, 0.95)
-        );
-        border: 1px solid rgba(255, 215, 0, 0.3);
-        border-radius: 20px;
-        backdrop-filter: blur(15px);
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    .skill-panel {
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        border: 2px solid #4caf50;
+        border-radius: 15px;
         width: 90vw;
+        height: 85vh;
         max-width: 1200px;
-        height: 80vh;
-        max-height: 800px;
-        z-index: 1101;
-        font-family:
-            "Inter",
-            -apple-system,
-            BlinkMacSystemFont,
-            sans-serif;
-    }
-
-    .perk-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 20px 30px;
-        border-bottom: 1px solid rgba(255, 215, 0, 0.2);
-    }
-
-    .perk-header h2 {
-        color: #ffd700;
-        font-size: 24px;
-        font-weight: 700;
-        margin: 0;
-        text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
-    }
-
-    .close-btn {
-        background: none;
-        border: 1px solid rgba(255, 215, 0, 0.3);
-        border-radius: 50%;
-        color: #ffd700;
-        cursor: pointer;
-        padding: 8px 12px;
-        font-size: 16px;
-        transition: all 0.3s ease;
-    }
-
-    .close-btn:hover {
-        background: rgba(255, 215, 0, 0.1);
-        transform: scale(1.1);
-    }
-
-    .perk-content {
-        padding: 20px 30px;
-        height: calc(100% - 80px);
-        overflow-y: auto;
-    }
-
-    .agent-selector {
-        margin-bottom: 30px;
-    }
-
-    .agent-selector h3 {
-        color: #ffffff;
-        font-size: 18px;
-        margin-bottom: 15px;
-    }
-
-    .agent-list {
-        display: flex;
-        gap: 15px;
-        flex-wrap: wrap;
-    }
-
-    .agent-btn {
-        background: rgba(255, 255, 255, 0.05);
-        border: 2px solid;
-        border-radius: 12px;
-        color: #ffffff;
-        cursor: pointer;
-        padding: 12px 16px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        transition: all 0.3s ease;
-        min-width: 120px;
-    }
-
-    .agent-btn:hover {
-        background: rgba(255, 255, 255, 0.1);
-        transform: translateY(-2px);
-    }
-
-    .agent-btn.selected {
-        background: rgba(255, 215, 0, 0.1);
-        border-color: #ffd700;
-        box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
-    }
-
-    .agent-icon {
-        font-size: 20px;
-    }
-
-    .agent-name {
-        font-weight: 600;
-        flex: 1;
-    }
-
-    .agent-points {
-        font-size: 12px;
-        background: rgba(255, 215, 0, 0.2);
-        border: 1px solid rgba(255, 215, 0, 0.3);
-        border-radius: 6px;
-        padding: 2px 6px;
-        color: #ffd700;
-    }
-
-    .perk-main {
-        display: grid;
-        grid-template-columns: 1fr 2fr;
-        gap: 30px;
-        height: calc(100% - 120px);
-    }
-
-    .perk-categories h3 {
-        color: #ffffff;
-        font-size: 18px;
-        margin-bottom: 15px;
-    }
-
-    .category-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-        gap: 15px;
-    }
-
-    .category-item {
-        position: relative;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .category-btn {
-        background: rgba(255, 255, 255, 0.05);
-        border: 2px solid rgba(255, 255, 255, 0.1);
-        border-radius: 12px;
-        color: #ffffff;
-        cursor: pointer;
-        padding: 15px;
-        text-align: center;
-        transition: all 0.3s ease;
-        position: relative;
-        min-height: 120px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-    }
-
-    .category-btn:hover {
-        background: rgba(255, 255, 255, 0.1);
-        transform: translateY(-2px);
-    }
-
-    .category-btn.unlocked {
-        border-color: var(--perk-color);
-        background: rgba(255, 255, 255, 0.08);
-    }
-
-    .category-btn.selected {
-        border-color: #ffd700;
-        background: rgba(255, 215, 0, 0.1);
-        box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
-    }
-
-    .category-btn.locked {
-        opacity: 0.6;
-        filter: grayscale(100%);
-    }
-
-    .category-icon {
-        font-size: 28px;
-        margin-bottom: 8px;
-    }
-
-    .category-name {
-        font-weight: 600;
-        font-size: 14px;
-        margin-bottom: 4px;
-    }
-
-    .category-level {
-        font-size: 12px;
-        opacity: 0.8;
-        margin-bottom: 8px;
-    }
-
-    .category-progress {
-        height: 4px;
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 2px;
-        overflow: hidden;
-    }
-
-    .progress-bar {
-        height: 100%;
-        transition: width 0.3s ease;
-    }
-
-    .unlock-btn {
-        background: rgba(255, 215, 0, 0.2);
-        border: 1px solid rgba(255, 215, 0, 0.5);
-        border-radius: 6px;
-        color: #ffd700;
-        cursor: pointer;
-        padding: 6px 12px;
-        font-size: 12px;
-        margin-top: 8px;
-        transition: all 0.3s ease;
-        width: 100%;
-        text-align: center;
-    }
-
-    .unlock-btn:hover {
-        background: rgba(255, 215, 0, 0.3);
-        transform: scale(1.05);
-    }
-
-    .perk-details {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 12px;
         padding: 20px;
-        height: 100%;
         overflow-y: auto;
-    }
-
-    .perk-info {
-        margin-bottom: 25px;
-    }
-
-    .perk-title {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 12px;
-    }
-
-    .perk-icon {
-        font-size: 32px;
-    }
-
-    .perk-title h3 {
-        color: #ffffff;
-        font-size: 20px;
-        margin: 0;
-        flex: 1;
-    }
-
-    .perk-level {
-        background: rgba(255, 215, 0, 0.2);
-        border: 1px solid rgba(255, 215, 0, 0.3);
-        border-radius: 6px;
-        color: #ffd700;
-        padding: 4px 8px;
-        font-size: 12px;
-        font-weight: 600;
-    }
-
-    .perk-description {
-        color: #cccccc;
-        line-height: 1.5;
-        margin-bottom: 15px;
-    }
-
-    .perk-progress-detail {
-        margin-top: 15px;
-    }
-
-    .progress-label {
-        color: #ffffff;
-        font-size: 12px;
-        margin-bottom: 6px;
-    }
-
-    .progress-container {
-        height: 8px;
-        background: rgba(255, 255, 255, 0.1);
-        border-radius: 4px;
-        overflow: hidden;
-    }
-
-    .progress-fill {
-        height: 100%;
-        transition: width 0.3s ease;
-    }
-
-    .skills-section h4 {
-        color: #ffffff;
-        font-size: 18px;
-        margin-bottom: 15px;
-    }
-
-    .skills-grid {
-        display: grid;
-        gap: 15px;
-    }
-
-    .skill-card {
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 8px;
-        padding: 15px;
-        transition: all 0.3s ease;
-    }
-
-    .skill-card.unlocked {
-        border-color: rgba(255, 255, 255, 0.2);
-    }
-
-    .skill-card.locked {
-        opacity: 0.6;
-        filter: grayscale(100%);
-    }
-
-    .skill-card:hover {
-        background: rgba(255, 255, 255, 0.08);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        animation: slideIn 0.3s ease;
     }
 
     .skill-header {
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        gap: 12px;
-        margin-bottom: 8px;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #4caf50;
+    }
+
+    .skill-header h2 {
+        color: #4caf50;
+        margin: 0;
+        font-size: 24px;
+        text-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+    }
+
+    .header-controls {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .test-xp-btn {
+        background: #ff9800;
+        border: none;
+        border-radius: 6px;
+        color: white;
+        padding: 8px 12px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .test-xp-btn:hover:not(:disabled) {
+        background: #f57c00;
+        transform: scale(1.05);
+    }
+
+    .test-xp-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .close-btn {
+        background: #f44336;
+        border: none;
+        border-radius: 6px;
+        color: white;
+        padding: 8px 12px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .close-btn:hover {
+        background: #d32f2f;
+        transform: scale(1.1);
+    }
+
+    .agent-selector {
+        margin-bottom: 20px;
+    }
+
+    .agent-selector h3 {
+        color: #ffffff;
+        margin-bottom: 10px;
+        font-size: 16px;
+    }
+
+    .agent-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 10px;
+    }
+
+    .agent-card {
+        background: rgba(255, 255, 255, 0.05);
+        border: 2px solid transparent;
+        border-radius: 10px;
+        padding: 15px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .agent-card:hover {
+        background: rgba(255, 255, 255, 0.1);
+        transform: translateY(-2px);
+    }
+
+    .agent-card.selected {
+        border-color: currentColor;
+        background: rgba(255, 255, 255, 0.15);
+        box-shadow: 0 0 15px rgba(76, 175, 80, 0.3);
+    }
+
+    .agent-icon {
+        font-size: 24px;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 50%;
+    }
+
+    .agent-info {
+        flex: 1;
+    }
+
+    .agent-name {
+        color: #ffffff;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+
+    .agent-stats {
+        display: flex;
+        gap: 10px;
+        font-size: 12px;
+        color: #cccccc;
+    }
+
+    .category-tabs {
+        display: flex;
+        gap: 5px;
+        margin-bottom: 20px;
+        overflow-x: auto;
+    }
+
+    .category-tab {
+        background: rgba(255, 255, 255, 0.1);
+        border: 2px solid transparent;
+        border-radius: 8px;
+        padding: 10px 15px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        white-space: nowrap;
+        color: #ffffff;
+    }
+
+    .category-tab:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    .category-tab.active {
+        border-color: var(--category-color);
+        background: var(--category-color);
+        color: #000000;
+        box-shadow: 0 0 15px var(--category-color);
+    }
+
+    .category-icon {
+        font-size: 16px;
+    }
+
+    .category-name {
+        font-size: 14px;
+        font-weight: bold;
+    }
+
+    .skill-tree-container {
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 10px;
+        padding: 20px;
+    }
+
+    .skill-tree-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .skill-tree-header h3 {
+        margin: 0;
+        font-size: 18px;
+    }
+
+    .agent-resources {
+        display: flex;
+        gap: 15px;
+        font-size: 14px;
+        color: #ffffff;
+    }
+
+    .experience {
+        color: #ffd700;
+    }
+
+    .points {
+        color: #4caf50;
+    }
+
+    .skill-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 15px;
+        position: relative;
+    }
+
+    .skill-node {
+        background: linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.1) 0%,
+            rgba(255, 255, 255, 0.05) 100%
+        );
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        border-radius: 12px;
+        padding: 15px;
+        transition: all 0.3s ease;
+        position: relative;
+        cursor: default;
+    }
+
+    .skill-node.locked {
+        opacity: 0.4;
+        background: rgba(0, 0, 0, 0.3);
+        border-color: #666666;
+    }
+
+    .skill-node.available {
+        border-color: var(--category-color);
+        cursor: pointer;
+        animation: pulse 2s infinite;
+    }
+
+    .skill-node.available:hover {
+        background: rgba(76, 175, 80, 0.2);
+        transform: translateY(-3px);
+        box-shadow: 0 5px 20px rgba(76, 175, 80, 0.4);
+    }
+
+    .skill-node.unlocked {
+        border-color: var(--category-color);
+        background: linear-gradient(
+            135deg,
+            rgba(76, 175, 80, 0.2) 0%,
+            rgba(76, 175, 80, 0.1) 100%
+        );
+    }
+
+    .skill-node.maxed {
+        border-color: #ffd700;
+        background: linear-gradient(
+            135deg,
+            rgba(255, 215, 0, 0.3) 0%,
+            rgba(255, 215, 0, 0.1) 100%
+        );
+        box-shadow: 0 0 15px rgba(255, 215, 0, 0.3);
     }
 
     .skill-icon {
-        font-size: 20px;
+        font-size: 28px;
+        text-align: center;
+        margin-bottom: 10px;
+        position: relative;
+    }
+
+    .skill-rank {
+        position: absolute;
+        bottom: -5px;
+        right: -5px;
+        background: #4caf50;
+        color: white;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: bold;
     }
 
     .skill-info {
-        flex: 1;
+        text-align: center;
     }
 
     .skill-name {
         color: #ffffff;
-        font-weight: 600;
-        font-size: 14px;
-    }
-
-    .skill-level {
-        color: #cccccc;
-        font-size: 12px;
-    }
-
-    .test-skill-btn {
-        background: rgba(255, 215, 0, 0.2);
-        border: 1px solid rgba(255, 215, 0, 0.3);
-        border-radius: 4px;
-        color: #ffd700;
-        cursor: pointer;
-        padding: 4px 8px;
-        font-size: 12px;
-        transition: all 0.3s ease;
-    }
-
-    .test-skill-btn:hover {
-        background: rgba(255, 215, 0, 0.3);
-        transform: scale(1.1);
+        font-weight: bold;
+        font-size: 16px;
+        margin-bottom: 8px;
     }
 
     .skill-description {
         color: #cccccc;
         font-size: 13px;
         line-height: 1.4;
-        margin-bottom: 12px;
+        margin-bottom: 10px;
     }
 
-    .skill-progress {
+    .prerequisites,
+    .skill-cost,
+    .upgrade-info {
+        font-size: 12px;
+        color: #ff9800;
+        margin-top: 8px;
+    }
+
+    .skill-effects {
         margin-top: 10px;
+        text-align: left;
     }
 
-    .no-selection,
-    .no-agent {
+    .effect {
+        font-size: 11px;
+        color: #4caf50;
+        margin-bottom: 3px;
+    }
+
+    .skill-tooltip {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.95);
+        border: 2px solid #4caf50;
+        border-radius: 10px;
+        padding: 15px;
+        max-width: 300px;
+        z-index: 3000;
+        animation: fadeIn 0.3s ease;
+    }
+
+    .skill-tooltip h4 {
+        color: #4caf50;
+        margin: 0 0 10px 0;
+        font-size: 16px;
+    }
+
+    .skill-tooltip p {
+        color: #cccccc;
+        margin: 0 0 10px 0;
+        font-size: 13px;
+    }
+
+    .tooltip-effects {
+        margin-bottom: 10px;
+    }
+
+    .tooltip-effect {
+        font-size: 12px;
+        color: #ffffff;
+        margin-bottom: 3px;
+    }
+
+    .tooltip-stats {
         display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
+        justify-content: space-between;
+        font-size: 11px;
         color: #888888;
-        font-style: italic;
     }
 
-    /* Mobile responsiveness */
+    .no-agent-selected {
+        text-align: center;
+        color: #cccccc;
+        padding: 50px;
+        font-size: 18px;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(50px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes pulse {
+        0%,
+        100% {
+            box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+        }
+        50% {
+            box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+        }
+    }
+
+    .skill-unlocked-animation {
+        animation: skillUnlock 1s ease;
+    }
+
+    @keyframes skillUnlock {
+        0% {
+            transform: scale(1);
+            box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+        }
+        50% {
+            transform: scale(1.1);
+            box-shadow: 0 0 0 15px rgba(76, 175, 80, 0);
+        }
+        100% {
+            transform: scale(1);
+            box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+        }
+    }
+
+    /* Responsive design */
     @media (max-width: 768px) {
-        .perk-panel {
+        .skill-panel {
             width: 95vw;
             height: 90vh;
+            padding: 15px;
         }
 
-        .perk-main {
+        .skill-grid {
             grid-template-columns: 1fr;
-            gap: 20px;
         }
 
-        .category-grid {
-            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        .category-tabs {
+            flex-wrap: wrap;
         }
 
-        .agent-list {
-            justify-content: center;
-        }
-
-        .perk-toggle-btn {
-            top: 10px;
-            left: 10px;
-            padding: 10px;
-            font-size: 18px;
+        .skill-tooltip {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            max-width: 250px;
         }
     }
 </style>

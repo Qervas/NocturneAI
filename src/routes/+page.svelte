@@ -11,7 +11,7 @@
     import { characterManager } from "$lib/services/CharacterManager";
     import { communicationManager } from "$lib/services/CommunicationManager";
     import { simulationController } from "$lib/services/SimulationController";
-    import { perkManager } from "$lib/services/PerkManager";
+    import { skillTreeManager } from "$lib/services/PerkManager";
     import { llmService } from "$lib/services/LLMService";
 
     let name = $state("");
@@ -95,11 +95,20 @@
                 console.warn("Failed to initialize NPCs:", error);
             }
 
-            // Initialize perk manager
+            // Initialize skill tree manager
             try {
-                console.log("Perk manager initialized");
+                // Initialize skill trees for all NPCs
+                const npcs = characterManager.getNPCs();
+                npcs.forEach((npc) => {
+                    skillTreeManager.initializeAgent(npc.id);
+                });
+                skillTreeManager.startAutoSave();
+                console.log("Skill tree manager initialized");
             } catch (error) {
-                console.warn("Perk manager initialization failed:", error);
+                console.warn(
+                    "Skill tree manager initialization failed:",
+                    error,
+                );
             }
 
             // Note: Autonomous interactions are now controlled by the SimulationController
