@@ -14,6 +14,27 @@
   --bg-secondary: #1a1a2e;
   --bg-tertiary: #16213e;
   
+  /* Text Colors */
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+  --text-on-accent: #000000;
+  
+  /* Input Colors */
+  --input-bg: rgba(0, 0, 0, 0.8);
+  --input-border: rgba(0, 255, 136, 0.3);
+  --input-focus: rgba(0, 255, 136, 0.2);
+  
+  /* Panel Colors */
+  --panel-bg: rgba(26, 26, 46, 0.9);
+  --border-color: rgba(0, 255, 136, 0.2);
+  --hover-bg: rgba(0, 255, 136, 0.1);
+  
+  /* Button Colors */
+  --button-secondary-bg: rgba(255, 255, 255, 0.1);
+  --button-secondary-hover: rgba(255, 255, 255, 0.2);
+  --accent-color: #00ff88;
+  --accent-hover: #00cc6a;
+  
   /* Typography */
   --font-mono: 'Courier New', monospace;
   --font-size-sm: 0.875rem;
@@ -177,10 +198,10 @@ html, body {
 .ui-input {
   width: 100%;
   padding: var(--space-sm) var(--space-md);
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(0, 255, 136, 0.3);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: var(--radius-md);
-  color: var(--primary-green);
+  color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: var(--font-size-base);
   transition: all var(--transition-base);
@@ -188,8 +209,8 @@ html, body {
 
 .ui-input:focus {
   outline: none;
-  border-color: var(--primary-green);
-  box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2);
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--input-focus);
 }
 
 .ui-select {
@@ -200,6 +221,46 @@ html, body {
   color: var(--primary-green);
   font-family: var(--font-mono);
   cursor: pointer;
+}
+
+/* Global select styling for dark theme */
+select {
+  padding: var(--space-sm) var(--space-md);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-base);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--input-focus);
+}
+
+select:hover {
+  border-color: var(--accent-color);
+  background: rgba(0, 0, 0, 0.9);
+}
+
+/* Select option styling */
+select option {
+  background: var(--input-bg);
+  color: var(--text-primary);
+  padding: var(--space-sm) var(--space-md);
+}
+
+select option:hover {
+  background: var(--hover-bg);
+}
+
+select option:checked {
+  background: rgba(0, 255, 136, 0.2);
+  color: var(--text-primary);
 }
 
 /* Tab Components */

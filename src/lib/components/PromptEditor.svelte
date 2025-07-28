@@ -51,10 +51,9 @@
     
     function getCategoryIcon(category: string): string {
         switch (category) {
-            case 'system': return '⚙️';
+            case 'system': return '👤';
             case 'behavior': return '🧠';
-            case 'ability': return '🔧';
-            case 'custom': return '📝';
+            case 'custom': return '✨';
             default: return '📄';
         }
     }
@@ -63,7 +62,6 @@
         switch (category) {
             case 'system': return '#4CAF50';
             case 'behavior': return '#2196F3';
-            case 'ability': return '#FF9800';
             case 'custom': return '#9C27B0';
             default: return '#757575';
         }
@@ -74,7 +72,7 @@
     <div class="prompt-editor-overlay" on:click={onClose}>
         <div class="prompt-editor-modal" on:click|stopPropagation>
             <div class="modal-header">
-                <h3>📝 Agent Prompts</h3>
+                <h3>🧠 Agent Identity</h3>
                 <button class="close-btn" on:click={onClose}>×</button>
             </div>
             
@@ -82,8 +80,8 @@
                 {#if $selectedAgent && currentAgentPrompts}
                     <div class="prompts-section">
                         <div class="section-header">
-                            <h4>Active Prompts for {$selectedAgent}</h4>
-                            <button class="add-btn" on:click={openAddPrompt}>+ Add Prompt</button>
+                            <h4>Identity Configuration for {$selectedAgent}</h4>
+                            <button class="add-btn" on:click={openAddPrompt}>+ Add Identity Trait</button>
                         </div>
                         
                         <div class="prompts-list">
@@ -121,8 +119,8 @@
                     </div>
                 {:else}
                     <div class="no-agent-selected">
-                        <div class="no-agent-icon">🤖</div>
-                        <div class="no-agent-text">Select an agent to manage their prompts</div>
+                        <div class="no-agent-icon">🧠</div>
+                        <div class="no-agent-text">Select an agent to configure their identity</div>
                     </div>
                 {/if}
             </div>
@@ -130,7 +128,7 @@
             {#if editingPrompt}
                 <div class="edit-prompt-modal">
                     <div class="edit-header">
-                        <h4>{isAddingNew ? 'Add New Prompt' : 'Edit Prompt'}</h4>
+                        <h4>{isAddingNew ? 'Add Identity Trait' : 'Edit Identity Trait'}</h4>
                         <button class="close-btn" on:click={() => editingPrompt = null}>×</button>
                     </div>
                     
@@ -156,18 +154,17 @@
                         <div class="form-group">
                             <label>Category:</label>
                             <select bind:value={editingPrompt.category}>
-                                <option value="system">System</option>
-                                <option value="behavior">Behavior</option>
-                                <option value="ability">Ability</option>
-                                <option value="custom">Custom</option>
+                                <option value="system">Core Identity</option>
+                                <option value="behavior">Behavior Style</option>
+                                <option value="custom">Custom Trait</option>
                             </select>
                         </div>
                         
                         <div class="form-group">
-                            <label>Prompt:</label>
+                            <label>Identity Trait:</label>
                             <textarea 
                                 bind:value={editingPrompt.prompt}
-                                placeholder="Enter the prompt text..."
+                                placeholder="Describe this aspect of the agent's identity..."
                                 rows="6"
                             ></textarea>
                         </div>

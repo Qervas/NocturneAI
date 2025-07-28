@@ -6,7 +6,7 @@ export interface AgentPrompt {
     name: string;
     description: string;
     prompt: string;
-    category: 'system' | 'behavior' | 'ability' | 'custom';
+    category: 'system' | 'behavior' | 'custom';
     isEnabled: boolean;
 }
 

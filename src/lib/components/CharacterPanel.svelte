@@ -1,12 +1,15 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { characterManager, characters, selectedAgent } from "../services/CharacterManager";
+	import { settingsManager } from "../services/SettingsManager";
 	import type { Character, NPCAgent } from "../types/Character";
 	import PromptEditor from "./PromptEditor.svelte";
+	import BasicInfoEditor from "./BasicInfoEditor.svelte";
 
 	// Component state
 	let selectedAgentData: Character | null = null;
 	let showPromptEditor = false;
+	let showBasicInfoEditor = false;
 
 	// Reactive calculations
 	$: selectedAgentData = $selectedAgent ? $characters.find(c => c.id === $selectedAgent) || null : null;
@@ -39,6 +42,9 @@
 	}
 
 	function getAgentName(agentId: string): string {
+		const savedInfo = settingsManager.getAgentBasicInfo(agentId);
+		if (savedInfo?.name) return savedInfo.name;
+		
 		if (agentId.includes('alpha')) return 'Alpha';
 		if (agentId.includes('beta')) return 'Beta';
 		if (agentId.includes('gamma')) return 'Gamma';
@@ -46,6 +52,9 @@
 	}
 
 	function getSpecialization(agentId: string): string {
+		const savedInfo = settingsManager.getAgentBasicInfo(agentId);
+		if (savedInfo?.specialization) return savedInfo.specialization;
+		
 		if (agentId.includes('alpha')) return 'Data Analysis';
 		if (agentId.includes('beta')) return 'Content Generation';
 		if (agentId.includes('gamma')) return 'Problem Solving';
@@ -53,6 +62,9 @@
 	}
 
 	function getPersonality(agentId: string): string {
+		const savedInfo = settingsManager.getAgentBasicInfo(agentId);
+		if (savedInfo?.personality) return savedInfo.personality;
+		
 		if (agentId.includes('alpha')) return 'Analytical & Logical';
 		if (agentId.includes('beta')) return 'Creative & Expressive';
 		if (agentId.includes('gamma')) return 'Strategic & Adaptive';
@@ -60,6 +72,9 @@
 	}
 
 	function getAIModel(agentId: string): string {
+		const savedInfo = settingsManager.getAgentBasicInfo(agentId);
+		if (savedInfo?.aiModel) return savedInfo.aiModel;
+		
 		if (agentId.includes('alpha')) return 'GPT-4 Turbo';
 		if (agentId.includes('beta')) return 'Claude-3 Sonnet';
 		if (agentId.includes('gamma')) return 'Gemini Pro';
@@ -139,8 +154,11 @@
 					<button class="action-btn primary">
 						🔄 Restart Agent
 					</button>
+					<button class="action-btn secondary" on:click={() => showBasicInfoEditor = true}>
+						📋 Edit Basic Info
+					</button>
 					<button class="action-btn secondary" on:click={() => showPromptEditor = true}>
-						📝 Edit Settings
+						🧠 Agent Identity
 					</button>
 					<button class="action-btn warning">
 						⏸️ Pause Agent
@@ -148,6 +166,11 @@
 					<button class="action-btn danger">
 						🗑️ Reset Agent
 					</button>
+				</div>
+				<div class="settings-description">
+					<strong>Basic Info:</strong> Configure the agent's name, specialization, AI model, and personality traits.
+					<br>
+					<strong>Agent Identity:</strong> Configure the core personality, behavior, and capabilities that define this agent's unique character.
 				</div>
 			</div>
 
@@ -192,6 +215,13 @@
 <PromptEditor 
 	bind:isOpen={showPromptEditor}
 	onClose={() => showPromptEditor = false}
+/>
+
+<!-- Basic Info Editor Modal -->
+<BasicInfoEditor 
+	bind:isOpen={showBasicInfoEditor}
+	agentId={$selectedAgent || ''}
+	on:close={() => showBasicInfoEditor = false}
 />
 
 <style lang="css">
@@ -342,6 +372,17 @@
 
 	.action-btn.danger:hover {
 		background: rgba(244, 67, 54, 0.3);
+	}
+	
+	.settings-description {
+		margin-top: 12px;
+		padding: 8px 12px;
+		background: rgba(0, 255, 136, 0.1);
+		border: 1px solid rgba(0, 255, 136, 0.2);
+		border-radius: 6px;
+		font-size: 0.8rem;
+		color: rgba(255, 255, 255, 0.8);
+		line-height: 1.4;
 	}
 
 	.advanced-options {

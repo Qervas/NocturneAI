@@ -8,6 +8,9 @@ export interface SettingsData {
 	// Agent prompts
 	agentPrompts?: Record<string, any>; // agentId -> prompt configuration
 	
+	// Agent basic info
+	agentBasicInfo?: Record<string, any>; // agentId -> basic info (name, specialization, etc.)
+	
 	// Skill configurations
 	skillConfigs?: Record<string, any>; // skillKey -> skill configuration
 	
@@ -213,6 +216,22 @@ class SettingsManager {
 	getSkillConfig(skillKey: string): any {
 		const settings = this.getCurrentSettings();
 		return settings.skillConfigs?.[skillKey] || null;
+	}
+	
+	// Agent basic info methods
+	saveAgentBasicInfo(agentId: string, basicInfo: any): void {
+		this.settings.update(settings => ({
+			...settings,
+			agentBasicInfo: {
+				...settings.agentBasicInfo,
+				[agentId]: basicInfo
+			}
+		}));
+	}
+	
+	getAgentBasicInfo(agentId: string): any {
+		const settings = this.getCurrentSettings();
+		return settings.agentBasicInfo?.[agentId] || null;
 	}
 	
 	// Clear all settings (reset to defaults)
