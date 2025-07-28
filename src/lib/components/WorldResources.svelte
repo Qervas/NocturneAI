@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { skillTreeManager } from "../services/PerkManager";
-    import { characterManager, characters, selectedAgent } from "../services/CharacterManager";
+    import { characterManager, characters, selectedAgent, getAgentFullId } from "../services/CharacterManager";
     import { communicationManager } from "../services/CommunicationManager";
     import type { AgentSkillTree } from "../services/PerkManager";
 
@@ -11,8 +11,8 @@
 
     // Reactive calculations
     $: agentList = $characters.filter((c) => c.type === "npc");
-    $: selectedAgentData = $selectedAgent ? agentSkillTrees[$selectedAgent] : null;
-    $: selectedAgentCharacter = $selectedAgent ? agentList.find(c => c.id === $selectedAgent) : null;
+    $: selectedAgentData = $selectedAgent ? agentSkillTrees[getAgentFullId($selectedAgent)] : null;
+    $: selectedAgentCharacter = $selectedAgent ? agentList.find(c => c.id === getAgentFullId($selectedAgent)) : null;
 
     // Subscribe to stores
     skillTreeManager.agentSkills.subscribe((value) => {

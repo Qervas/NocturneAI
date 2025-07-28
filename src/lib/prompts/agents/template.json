@@ -1,0 +1,36 @@
+{
+  "agentId": "agent_template",
+  "name": "Template",
+  "description": "Template for creating new AI agents",
+  "version": "1.0.0",
+  "createdAt": "2025-07-28T20:51:00Z",
+  "updatedAt": "2025-07-28T20:51:00Z",
+  "prompts": [
+    {
+      "id": "system_prompt",
+      "name": "System Prompt",
+      "description": "Core identity and capabilities",
+      "category": "system",
+      "prompt": "You are [AGENT_NAME], an AI assistant specialized in [SPECIALIZATION].",
+      "isEnabled": true,
+      "createdAt": "2025-07-28T20:51:00Z",
+      "updatedAt": "2025-07-28T20:51:00Z"
+    },
+    {
+      "id": "behavior_prompt",
+      "name": "Behavior Prompt",
+      "description": "How to approach tasks and interact",
+      "category": "behavior",
+      "prompt": "I [BEHAVIOR_DESCRIPTION] while maintaining a [TONE] tone.",
+      "isEnabled": true,
+      "createdAt": "2025-07-28T20:51:00Z",
+      "updatedAt": "2025-07-28T20:51:00Z"
+    }
+  ],
+  "metadata": {
+    "personality": "template",
+    "specialization": "general",
+    "aiModel": "gpt-4",
+    "tags": ["template", "new-agent"]
+  }
+} 

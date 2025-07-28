@@ -1,6 +1,6 @@
 <script lang="ts">
     import { agentPromptManager, agentPromptsStore, type AgentPrompt } from '../services/AgentPromptManager';
-    import { selectedAgent } from '../services/CharacterManager';
+    import { selectedAgent, getAgentFullId } from '../services/CharacterManager';
     
     export let isOpen = false;
     export let onClose: () => void;
@@ -9,7 +9,7 @@
     let isAddingNew = false;
     
     // Reactive statement to get current agent prompts from the store
-    $: currentAgentPrompts = $selectedAgent ? $agentPromptsStore[$selectedAgent] : null;
+    $: currentAgentPrompts = $selectedAgent ? $agentPromptsStore[getAgentFullId($selectedAgent)] : null;
     
     function openEditPrompt(prompt: AgentPrompt) {
         editingPrompt = { ...prompt };
@@ -34,24 +34,27 @@
             return;
         }
         
+        const fullAgentId = getAgentFullId($selectedAgent);
+        
         console.log('💾 Saving prompt:', {
             agent: $selectedAgent,
+            fullAgentId: fullAgentId,
             prompt: editingPrompt,
             isAddingNew
         });
         
         try {
             if (isAddingNew) {
-                agentPromptManager.addAgentPrompt($selectedAgent, editingPrompt);
+                agentPromptManager.addAgentPrompt(fullAgentId, editingPrompt);
                 console.log('✅ Added new prompt');
             } else {
-                agentPromptManager.updateAgentPrompt($selectedAgent, editingPrompt.id, editingPrompt);
+                agentPromptManager.updateAgentPrompt(fullAgentId, editingPrompt.id, editingPrompt);
                 console.log('✅ Updated existing prompt');
             }
             
             // Test the saved prompt
-            const savedPrompts = agentPromptManager.getAgentPrompts($selectedAgent);
-            const combinedPrompt = agentPromptManager.getCombinedPrompt($selectedAgent);
+            const savedPrompts = agentPromptManager.getAgentPrompts(fullAgentId);
+            const combinedPrompt = agentPromptManager.getCombinedPrompt(fullAgentId);
             console.log('📝 Saved prompts:', savedPrompts);
             console.log('🔗 Combined prompt:', combinedPrompt);
             
@@ -63,12 +66,14 @@
     
     function deletePrompt(promptId: string) {
         if (!$selectedAgent) return;
-        agentPromptManager.removeAgentPrompt($selectedAgent, promptId);
+        const fullAgentId = getAgentFullId($selectedAgent);
+        agentPromptManager.removeAgentPrompt(fullAgentId, promptId);
     }
     
     function togglePrompt(promptId: string, isEnabled: boolean) {
         if (!$selectedAgent) return;
-        agentPromptManager.updateAgentPrompt($selectedAgent, promptId, { isEnabled });
+        const fullAgentId = getAgentFullId($selectedAgent);
+        agentPromptManager.updateAgentPrompt(fullAgentId, promptId, { isEnabled });
     }
     
     function getCategoryIcon(category: string): string {

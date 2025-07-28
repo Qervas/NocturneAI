@@ -261,8 +261,8 @@ export class SimulationController {
   }
 
   private triggerAgentInteraction(): void {
-    // This integrates with the new natural conversation system
-    communicationManager.triggerSimulationTick();
+    // DISABLED: Autonomous agent interactions are disabled until properly designed
+    // communicationManager.triggerSimulationTick();
   }
 
   // ===== EXPERIENCE SYSTEM =====

@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { settingsManager } from './SettingsManager';
+import { promptManager } from './PromptManager';
 
 export interface AgentPrompt {
     id: string;
@@ -26,79 +27,8 @@ class AgentPromptManager {
     }
     
     private initializeDefaultPrompts() {
-        const defaultPrompts: Record<string, AgentPrompts> = {
-            'agent_alpha': {
-                agentId: 'agent_alpha',
-                defaultSystemPrompt: `You are Alpha, an AI assistant.`,
-                defaultBehaviorPrompt: `Be helpful and direct.`,
-                prompts: [
-                    {
-                        id: 'system_prompt',
-                        name: 'System Prompt',
-                        description: 'Core identity and capabilities',
-                        prompt: `You are Alpha, an AI assistant.`,
-                        category: 'system',
-                        isEnabled: true
-                    },
-                    {
-                        id: 'behavior_prompt',
-                        name: 'Behavior Prompt',
-                        description: 'How to approach tasks and interact',
-                        prompt: `Be helpful and direct.`,
-                        category: 'behavior',
-                        isEnabled: true
-                    }
-                ]
-            },
-            'agent_beta': {
-                agentId: 'agent_beta',
-                defaultSystemPrompt: `You are Beta, an AI assistant.`,
-                defaultBehaviorPrompt: `Be helpful and direct.`,
-                prompts: [
-                    {
-                        id: 'system_prompt',
-                        name: 'System Prompt',
-                        description: 'Core identity and capabilities',
-                        prompt: `You are Beta, an AI assistant.`,
-                        category: 'system',
-                        isEnabled: true
-                    },
-                    {
-                        id: 'behavior_prompt',
-                        name: 'Behavior Prompt',
-                        description: 'How to approach tasks and interact',
-                        prompt: `Be helpful and direct.`,
-                        category: 'behavior',
-                        isEnabled: true
-                    }
-                ]
-            },
-            'agent_gamma': {
-                agentId: 'agent_gamma',
-                defaultSystemPrompt: `You are Gamma, an AI assistant.`,
-                defaultBehaviorPrompt: `Be helpful and direct.`,
-                prompts: [
-                    {
-                        id: 'system_prompt',
-                        name: 'System Prompt',
-                        description: 'Core identity and capabilities',
-                        prompt: `You are Gamma, an AI assistant.`,
-                        category: 'system',
-                        isEnabled: true
-                    },
-                    {
-                        id: 'behavior_prompt',
-                        name: 'Behavior Prompt',
-                        description: 'How to approach tasks and interact',
-                        prompt: `Be helpful and direct.`,
-                        category: 'behavior',
-                        isEnabled: true
-                    }
-                ]
-            }
-        };
-        
-        this.store.set(defaultPrompts);
+        // Initialize with empty prompts - they will be loaded from files
+        this.store.set({});
     }
     
     private loadPersistedPrompts() {
@@ -185,11 +115,23 @@ class AgentPromptManager {
     }
     
     getAgentPrompts(agentId: string): AgentPrompts | null {
-        let result: AgentPrompts | null = null;
-        this.store.subscribe(prompts => {
-            result = prompts[agentId] || null;
-        })();
-        return result;
+        const promptData = promptManager.getAgentPromptData(agentId);
+        if (!promptData) return null;
+        
+        // Convert PromptManager format to AgentPromptManager format
+        return {
+            agentId: promptData.agentId,
+            defaultSystemPrompt: promptData.prompts.find(p => p.category === 'system')?.prompt || '',
+            defaultBehaviorPrompt: promptData.prompts.find(p => p.category === 'behavior')?.prompt || '',
+            prompts: promptData.prompts.map(p => ({
+                id: p.id,
+                name: p.name,
+                description: p.description,
+                prompt: p.prompt,
+                category: p.category,
+                isEnabled: p.isEnabled
+            }))
+        };
     }
     
     updateAgentPrompt(agentId: string, promptId: string, updates: Partial<AgentPrompt>) {
@@ -282,8 +224,7 @@ class AgentPromptManager {
     }
     
     getCombinedPrompt(agentId: string): string {
-        const activePrompts = this.getActivePrompts(agentId);
-        return activePrompts.join('\n\n');
+        return promptManager.getCombinedPrompt(agentId);
     }
     
     exportData(): Record<string, AgentPrompts> {

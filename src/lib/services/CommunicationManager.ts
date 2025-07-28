@@ -464,70 +464,79 @@ export class AgentCommunicationManager {
     };
   }
 
-  // Start autonomous agent conversations (simulation)
+  // Start autonomous agent conversations (simulation) - DISABLED
   startAutonomousInteractions() {
-    // Initial interaction after 10 seconds
-    setTimeout(() => {
-      this.sendTemporaryMessage();
-    }, 10000);
+    // DISABLED: Autonomous agent interactions are disabled until properly designed
+    console.log("🤖 Autonomous interactions are disabled");
+    
+    // // Initial interaction after 10 seconds
+    // setTimeout(() => {
+    //   this.sendTemporaryMessage();
+    // }, 10000);
 
-    // Check for new conversations less frequently (2-3 minutes)
-    setInterval(
-      () => {
-        this.sendTemporaryMessage();
-      },
-      120000 + Math.random() * 60000,
-    ); // 2-3 minutes
+    // // Check for new conversations less frequently (2-3 minutes)
+    // setInterval(
+    //   () => {
+    //   this.sendTemporaryMessage();
+    //   },
+    //   120000 + Math.random() * 60000,
+    // ); // 2-3 minutes
 
-    console.log("🤖 Temporary conversation system started");
+    // console.log("🤖 Temporary conversation system started");
   }
 
-  // Simulation-controlled agent interaction trigger
+  // Simulation-controlled agent interaction trigger - DISABLED
   public triggerSimulationTick() {
-    // Send temporary messages (one-reply conversations)
-    if (Math.random() < 0.15) { // 15% chance per tick
-      this.sendTemporaryMessage();
-    }
+    // DISABLED: Autonomous agent interactions are disabled until properly designed
+    // // Send temporary messages (one-reply conversations)
+    // if (Math.random() < 0.15) { // 15% chance per tick
+    //   this.sendTemporaryMessage();
+    // }
   }
 
   public async simulateAgentInitiatedConversation() {
+    // DISABLED: Autonomous agent interactions are disabled until properly designed
     // Legacy method - now just sends temporary messages
-    this.sendTemporaryMessage();
+    // this.sendTemporaryMessage();
   }
 
-  // Send temporary message (one-reply conversation)
+  // Send temporary message (one-reply conversation) - DISABLED
   private async sendTemporaryMessage() {
-    const agents = characterManager.getNPCs().map((npc) => npc.id);
+    // DISABLED: Autonomous agent interactions are disabled until properly designed
+    console.log("🤖 Temporary message generation is disabled");
+    return;
     
-    if (agents.length < 2) return;
-
-    const fromAgent = agents[Math.floor(Math.random() * agents.length)];
-    const otherAgents = agents.filter((a) => a !== fromAgent);
-    const toAgent = otherAgents[Math.floor(Math.random() * otherAgents.length)];
-
-    const topics = this.generateConversationTopic(fromAgent, toAgent);
+    // const agents = characterManager.getNPCs().map((npc) => npc.id);
     
-    // Send one message and wait for one reply
-    const message = this.generateOpeningMessage(
-      fromAgent,
-      toAgent,
-      topics.topic,
-      topics.intent,
-    );
+    // if (agents.length < 2) return;
 
-    await this.sendAgentMessage(
-      fromAgent,
-      toAgent,
-      topics.intent,
-      message,
-      "normal",
-      {
-        conversationType: "temporary",
-        conversationTopic: topics.topic,
-      },
-    );
+    // const fromAgent = agents[Math.floor(Math.random() * agents.length)];
+    // const otherAgents = agents.filter((a) => a !== fromAgent);
+    // const toAgent = otherAgents[Math.floor(Math.random() * otherAgents.length)];
 
-    console.log(`💬 Temporary message: ${fromAgent} -> ${toAgent} about "${topics.topic}"`);
+    // const topics = this.generateConversationTopic(fromAgent, toAgent);
+    
+    // // Send one message and wait for one reply
+    // const message = this.generateOpeningMessage(
+    //   fromAgent,
+    //   toAgent,
+    //   topics.topic,
+    //   topics.intent,
+    // );
+
+    // await this.sendAgentMessage(
+    //   fromAgent,
+    //   toAgent,
+    //   topics.intent,
+    //   message,
+    //   "normal",
+    //   {
+    //     conversationType: "temporary",
+    //     conversationTopic: topics.topic,
+    //   },
+    // );
+
+    // console.log(`💬 Temporary message: ${fromAgent} -> ${toAgent} about "${topics.topic}"`);
   }
 
   // Helper methods for natural conversations

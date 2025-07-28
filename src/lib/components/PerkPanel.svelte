@@ -228,7 +228,9 @@
 				<div class="target-icon">🎯</div>
 				<p>Click on an agent in the simulation to view their skills.</p>
 			</div>
+			{/if}
 
+			{#if $selectedAgent}
 			<!-- Apply to All Toggle -->
 			<div class="apply-toggle-container" class:active={applyToAllAgents}>
 				<label class="apply-toggle">
@@ -241,8 +243,8 @@
 						{applyToAllAgents ? "🌐 Apply to All Agents" : "👤 Apply to Current Agent Only"}
 					</span>
 				</label>
-                                    </div>
-                                {/if}
+			</div>
+			{/if}
 
     {#if $selectedAgent && currentAgentSkills}
                 <!-- Category Tabs -->

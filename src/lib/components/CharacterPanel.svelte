@@ -1,18 +1,16 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-	import { characterManager, characters, selectedAgent } from "../services/CharacterManager";
+  	import { onMount } from "svelte";
+	import { characterManager, characters, selectedAgent, getAgentFullId } from "../services/CharacterManager";
 	import { settingsManager } from "../services/SettingsManager";
 	import type { Character, NPCAgent } from "../types/Character";
-	import PromptEditor from "./PromptEditor.svelte";
-	import BasicInfoEditor from "./BasicInfoEditor.svelte";
+	import AgentSettingsModal from "./AgentSettingsModal.svelte";
 
 	// Component state
 	let selectedAgentData: Character | null = null;
-	let showPromptEditor = false;
-	let showBasicInfoEditor = false;
+	let showAgentSettings = false;
 
 	// Reactive calculations
-	$: selectedAgentData = $selectedAgent ? $characters.find(c => c.id === $selectedAgent) || null : null;
+	$: selectedAgentData = $selectedAgent ? $characters.find(c => c.id === getAgentFullId($selectedAgent)) || null : null;
 
   function getStatusColor(status: string): string {
     switch (status) {
@@ -154,11 +152,8 @@
 					<button class="action-btn primary">
 						🔄 Restart Agent
 					</button>
-					<button class="action-btn secondary" on:click={() => showBasicInfoEditor = true}>
-						📋 Edit Basic Info
-					</button>
-					<button class="action-btn secondary" on:click={() => showPromptEditor = true}>
-						🧠 Agent Identity
+					<button class="action-btn secondary" on:click={() => showAgentSettings = true}>
+						⚙️ Agent Settings
 					</button>
 					<button class="action-btn warning">
 						⏸️ Pause Agent
@@ -168,9 +163,7 @@
 					</button>
 				</div>
 				<div class="settings-description">
-					<strong>Basic Info:</strong> Configure the agent's name, specialization, AI model, and personality traits.
-					<br>
-					<strong>Agent Identity:</strong> Configure the core personality, behavior, and capabilities that define this agent's unique character.
+					<strong>Agent Settings:</strong> Configure the agent's basic info, identity prompts, and manage all settings in one unified interface.
 				</div>
 			</div>
 
@@ -211,17 +204,10 @@
       {/if}
     </div>
 
-<!-- Prompt Editor Modal -->
-<PromptEditor 
-	bind:isOpen={showPromptEditor}
-	onClose={() => showPromptEditor = false}
-/>
-
-<!-- Basic Info Editor Modal -->
-<BasicInfoEditor 
-	bind:isOpen={showBasicInfoEditor}
-	agentId={$selectedAgent || ''}
-	on:close={() => showBasicInfoEditor = false}
+<!-- Agent Settings Modal -->
+<AgentSettingsModal 
+	isOpen={showAgentSettings}
+	onClose={() => showAgentSettings = false}
 />
 
 <style lang="css">

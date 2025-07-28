@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { abilityManager } from '../services/AbilityManager';
-	import { selectedAgent } from '../services/CharacterManager';
+	import { selectedAgent, getAgentFullId } from '../services/CharacterManager';
 	import { settingsManager } from '../services/SettingsManager';
 	import '../abilities'; // Import all abilities
 
@@ -14,7 +14,8 @@
 		
 		isTesting = true;
 		try {
-			const result = await abilityManager.executeAbility($selectedAgent, 'read_files', {
+			const fullAgentId = getAgentFullId($selectedAgent);
+			const result = await abilityManager.executeAbility(fullAgentId, 'read_files', {
 				filePath: 'example.txt'
 			});
 			
@@ -39,7 +40,8 @@
 		
 		isTesting = true;
 		try {
-			const result = await abilityManager.executeAbility($selectedAgent, 'write_files', {
+			const fullAgentId = getAgentFullId($selectedAgent);
+			const result = await abilityManager.executeAbility(fullAgentId, 'write_files', {
 				filePath: 'output.txt',
 				content: 'Hello from the FileWriter ability!\nThis is a test file created by an AI agent.',
 				mode: 'write'
@@ -66,7 +68,8 @@
 		
 		isTesting = true;
 		try {
-			const result = await abilityManager.executeAbility($selectedAgent, 'web_search', {
+			const fullAgentId = getAgentFullId($selectedAgent);
+			const result = await abilityManager.executeAbility(fullAgentId, 'web_search', {
 				query: 'artificial intelligence',
 				maxResults: 3
 			});
@@ -92,7 +95,8 @@
 		
 		isTesting = true;
 		try {
-			const result = await abilityManager.executeAbility($selectedAgent, 'group_chat', {
+			const fullAgentId = getAgentFullId($selectedAgent);
+			const result = await abilityManager.executeAbility(fullAgentId, 'group_chat', {
 				message: 'Hello everyone! How are you all doing today?',
 				roomId: 'general'
 			});
@@ -125,10 +129,10 @@
 	}
 
 	// Check if agent has abilities
-	$: hasFileReader = $selectedAgent ? abilityManager.hasAbility($selectedAgent, 'read_files') : false;
-	$: hasFileWriter = $selectedAgent ? abilityManager.hasAbility($selectedAgent, 'write_files') : false;
-	$: hasWebSearch = $selectedAgent ? abilityManager.hasAbility($selectedAgent, 'web_search') : false;
-	$: hasGroupChat = $selectedAgent ? abilityManager.hasAbility($selectedAgent, 'group_chat') : false;
+	$: hasFileReader = $selectedAgent ? abilityManager.hasAbility(getAgentFullId($selectedAgent), 'read_files') : false;
+	$: hasFileWriter = $selectedAgent ? abilityManager.hasAbility(getAgentFullId($selectedAgent), 'write_files') : false;
+	$: hasWebSearch = $selectedAgent ? abilityManager.hasAbility(getAgentFullId($selectedAgent), 'web_search') : false;
+	$: hasGroupChat = $selectedAgent ? abilityManager.hasAbility(getAgentFullId($selectedAgent), 'group_chat') : false;
 
 	onMount(() => {
 		// Grant test abilities on mount
