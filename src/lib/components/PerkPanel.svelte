@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { skillTreeManager } from "../services/PerkManager";
-    import { characterManager, characters, selectedAgent } from "../services/CharacterManager";
+    import { characterManager, characters, selectedAgent, getAgentFullId } from "../services/CharacterManager";
     import { settingsManager, settings } from "../services/SettingsManager";
     import SkillConfigModal from "./SkillConfigModal.svelte";
     import type {
@@ -27,8 +27,19 @@
 
     // Get current agent's skill tree
     $: currentAgentSkills = $selectedAgent
-        ? agentSkillTrees[$selectedAgent]
+        ? agentSkillTrees[getAgentFullId($selectedAgent)]
         : null;
+    
+    // Debug logging for agent selection
+    $: if ($selectedAgent) {
+        const fullAgentId = getAgentFullId($selectedAgent);
+        console.log('Agent selected:', { 
+            shortId: $selectedAgent, 
+            fullId: fullAgentId,
+            hasSkillTree: !!agentSkillTrees[fullAgentId],
+            skillTree: agentSkillTrees[fullAgentId]
+        });
+    }
 
     // Get skills for selected category
     $: categorySkills = skillTreeManager.getSkillsByCategory(selectedCategory);
@@ -72,38 +83,39 @@
             });
         } else {
             // Apply only to current agent
-            const success = skillTreeManager.unlockSkill($selectedAgent, skillId);
+            const fullAgentId = getAgentFullId($selectedAgent);
+            const success = skillTreeManager.unlockSkill(fullAgentId, skillId);
             if (success) {
-                settingsManager.ownSkill($selectedAgent, skillId);
+                settingsManager.ownSkill(fullAgentId, skillId);
             }
         }
         
-        // Visual feedback for successful unlock
+                // Visual feedback for successful unlock
         const skillElement = document.querySelector(`[data-skill="${skillId}"]`);
-        if (skillElement) {
-            skillElement.classList.add("skill-unlocked-animation");
-            setTimeout(() => {
+                if (skillElement) {
+                    skillElement.classList.add("skill-unlocked-animation");
+                    setTimeout(() => {
                 skillElement.classList.remove("skill-unlocked-animation");
-            }, 1000);
+                    }, 1000);
         }
     }
 
-    	function getSkillState(
-		skill: SkillNode,
-	): "locked" | "available" | "unlocked" | "maxed" {
-		if (!currentAgentSkills) return "locked";
+    function getSkillState(
+        skill: SkillNode,
+    ): "locked" | "available" | "unlocked" | "maxed" {
+        if (!currentAgentSkills) return "locked";
 
-		const agentSkill = currentAgentSkills.skills[skill.id];
-		if (!agentSkill) return "locked";
+        const agentSkill = currentAgentSkills.skills[skill.id];
+        if (!agentSkill) return "locked";
 
-		if (agentSkill.currentRank >= agentSkill.maxRank) return "maxed";
-		if (agentSkill.currentRank > 0) return "unlocked";
+        if (agentSkill.currentRank >= agentSkill.maxRank) return "maxed";
+        if (agentSkill.currentRank > 0) return "unlocked";
 
 		// Developer mode: all skills are available (bypass prerequisites)
 		return "available";
 		
 		// Original logic (commented out for developer mode):
-		// Check if prerequisites are met
+        // Check if prerequisites are met
 		// const prerequisitesMet = skill.prerequisites.every((prereqId) => {
 		// 	const prereq = currentAgentSkills.skills[prereqId];
 		// 	return prereq && prereq.currentRank > 0;
@@ -114,12 +126,14 @@
 	function hasSkill(skillId: string): boolean {
 		if (!$selectedAgent) return false;
 		// Check persistent settings first, then fall back to developer mode
-		return settingsManager.isSkillOwned($selectedAgent, skillId) || true; // true for developer mode
+		const fullAgentId = getAgentFullId($selectedAgent);
+		return settingsManager.isSkillOwned(fullAgentId, skillId) || true; // true for developer mode
 	}
 
 	function isSkillEnabled(skillId: string): boolean {
 		if (!$selectedAgent) return false;
-		return settingsManager.isSkillEnabled($selectedAgent, skillId);
+		const fullAgentId = getAgentFullId($selectedAgent);
+		return settingsManager.isSkillEnabled(fullAgentId, skillId);
 	}
 
 	function toggleSkill(skillId: string) {
@@ -132,16 +146,17 @@
 			});
 		} else {
 			// Apply only to current agent
-			settingsManager.toggleSkill($selectedAgent, skillId);
+			const fullAgentId = getAgentFullId($selectedAgent);
+			settingsManager.toggleSkill(fullAgentId, skillId);
 		}
-	}
+    }
 
-    	function getSkillRank(skillId: string): number {
-		if (!currentAgentSkills) return 0;
+    function getSkillRank(skillId: string): number {
+        if (!currentAgentSkills) return 0;
 		const skill = currentAgentSkills.skills[skillId];
 		if (!skill) return 0;
 		return skill.currentRank;
-	}
+    }
 
     function getAgentColor(agentId: string): string {
         if (agentId.includes("alpha")) return "#4CAF50";
@@ -164,16 +179,18 @@
 
     function grantTestXP() {
         if ($selectedAgent) {
-            skillTreeManager.grantExperience($selectedAgent, 150);
+            const fullAgentId = getAgentFullId($selectedAgent);
+            skillTreeManager.grantExperience(fullAgentId, 150);
         }
     }
 
     // Debug function to test persistence
     function debugSettings() {
         if ($selectedAgent) {
-            console.log('Current Settings for Agent:', $selectedAgent);
-            console.log('Enabled Skills:', settingsManager.getEnabledSkills($selectedAgent));
-            console.log('Owned Skills:', settingsManager.getOwnedSkills($selectedAgent));
+            const fullAgentId = getAgentFullId($selectedAgent);
+            console.log('Current Settings for Agent:', $selectedAgent, 'Full ID:', fullAgentId);
+            console.log('Enabled Skills:', settingsManager.getEnabledSkills(fullAgentId));
+            console.log('Owned Skills:', settingsManager.getOwnedSkills(fullAgentId));
             console.log('All Settings:', settingsManager.export());
         }
     }
@@ -184,6 +201,10 @@
         availableAgents.forEach((agent) => {
             skillTreeManager.initializeAgent(agent.id);
         });
+        
+        // Debug: Log available agents and skill trees
+        console.log('Available agents:', availableAgents.map(a => ({ id: a.id, name: a.name })));
+        console.log('Agent skill trees:', agentSkillTrees);
     });
 </script>
 
@@ -195,38 +216,49 @@
 				<span class="agent-xp">XP: {currentAgentSkills.experience}</span>
 				<span class="agent-points dev-mode">Points: ∞ (Developer Mode)</span>
 				<button class="debug-btn" on:click={debugSettings}>🔧 Debug</button>
+            </div>
+			{:else if $selectedAgent}
+			<div class="agent-info">
+				<span class="agent-name">{getAgentName($selectedAgent)}</span>
+				<span class="agent-xp">Loading skills...</span>
+				<button class="debug-btn" on:click={debugSettings}>🔧 Debug</button>
 			</div>
-			
+			{:else}
+			<div class="no-agent-selected">
+				<div class="target-icon">🎯</div>
+				<p>Click on an agent in the simulation to view their skills.</p>
+			</div>
+
 			<!-- Apply to All Toggle -->
 			<div class="apply-toggle-container" class:active={applyToAllAgents}>
 				<label class="apply-toggle">
 					<input 
 						type="checkbox" 
 						bind:checked={applyToAllAgents}
-					>
+                        >
 					<span class="toggle-slider"></span>
 					<span class="toggle-label">
 						{applyToAllAgents ? "🌐 Apply to All Agents" : "👤 Apply to Current Agent Only"}
 					</span>
 				</label>
-			</div>
-		{/if}
+                                    </div>
+                                {/if}
 
     {#if $selectedAgent && currentAgentSkills}
-        <!-- Category Tabs -->
-        <div class="category-tabs">
-            {#each categories as category}
-                <button
-                    class="category-tab"
-                    class:active={selectedCategory === category.id}
-                    on:click={() => selectCategory(category.id)}
-                    style="--category-color: {category.color}"
-                >
-                    <span class="category-icon">{category.icon}</span>
-                    <span class="category-name">{category.name}</span>
-                </button>
-            {/each}
-        </div>
+                <!-- Category Tabs -->
+                <div class="category-tabs">
+                    {#each categories as category}
+                        <button
+                            class="category-tab"
+                            class:active={selectedCategory === category.id}
+                            on:click={() => selectCategory(category.id)}
+                            style="--category-color: {category.color}"
+                        >
+                            <span class="category-icon">{category.icon}</span>
+                            <span class="category-name">{category.name}</span>
+                        </button>
+                    {/each}
+                </div>
 
         <!-- Skills Grid -->
         <div class="skills-grid">
@@ -244,20 +276,20 @@
 					class:maxed={skillState === "maxed"}
 					class:owned={owned}
 					class:enabled={enabled}
-					data-skill={skill.id}
+                                data-skill={skill.id}
 				>
 					{#if owned}
 						<div class="owned-badge">OWN</div>
-					{/if}
+                                    {/if}
 					<div class="skill-header">
 						<div class="skill-header-left">
 							<span class="skill-icon">{skill.icon}</span>
 							<span class="skill-name">{skill.name}</span>
-						</div>
+                                </div>
 						<div class="skill-controls">
 							{#if skillRank > 0}
 								<span class="skill-rank">Rank {skillRank}</span>
-							{/if}
+                                    {/if}
 							{#if owned}
 								<label 
 									class="ios-toggle"
@@ -281,9 +313,9 @@
 								>
 									⚙️
 								</button>
-							{/if}
-						</div>
-					</div>
+                                    {/if}
+                                                </div>
+                                        </div>
 					<div class="skill-description">{skill.description}</div>
 					<div class="skill-status">
 						{#if !owned}
@@ -292,8 +324,8 @@
 							<span class="status-enabled">✅ Enabled</span>
 						{:else}
 							<span class="status-disabled">⏸️ Disabled</span>
-						{/if}
-					</div>
+                                    {/if}
+                                </div>
 					<div class="skill-cost">
 						{#if owned}
 							<span class="cost-owned">OWNED</span>
@@ -304,22 +336,22 @@
 							>
 								Buy for {skill.cost} points
 							</button>
-						{/if}
-					</div>
-				</div>
-			{/each}
-        </div>
+                                {/if}
+                            </div>
+                                    </div>
+                                {/each}
+                            </div>
 
 
-    {:else}
-        <div class="no-agent-selected">
+            {:else}
+                <div class="no-agent-selected">
             <div class="no-agent-icon">🎯</div>
             <div class="no-agent-text">
                 Click on an agent in the simulation to view their skills
-            </div>
+                </div>
         </div>
     {/if}
-</div>
+    </div>
 
 <!-- Skill Configuration Modal -->
 <SkillConfigModal 
@@ -340,7 +372,7 @@
     }
 
     	.agent-info {
-		display: flex;
+        display: flex;
 		gap: 12px;
 		font-size: 0.8rem;
 		color: rgba(255, 255, 255, 0.8);
@@ -349,7 +381,7 @@
 		background: rgba(0, 0, 0, 0.3);
 		border-radius: 6px;
 		border: 1px solid rgba(0, 255, 136, 0.2);
-	}
+    }
 
     .agent-name {
         color: #00ff88;
@@ -367,7 +399,7 @@
 	.dev-mode {
 		color: #FFD700 !important;
 		font-weight: bold;
-	}
+    }
 
 	.debug-btn {
 		background: rgba(255, 255, 255, 0.1);
@@ -376,28 +408,28 @@
 		padding: 4px 8px;
 		border-radius: 4px;
 		font-size: 0.7rem;
-		cursor: pointer;
+        cursor: pointer;
 		transition: all 0.2s ease;
-	}
+    }
 
 	.debug-btn:hover {
 		background: rgba(255, 255, 255, 0.2);
 		color: rgba(255, 255, 255, 0.9);
-	}
+    }
 
 	.apply-toggle-container {
 		margin: 12px 0;
 		padding: 8px 12px;
 		background: rgba(0, 0, 0, 0.2);
-		border-radius: 6px;
+        border-radius: 6px;
 		border: 1px solid rgba(255, 255, 255, 0.1);
 		transition: all 0.2s ease;
-	}
+    }
 
 	.apply-toggle-container.active {
 		background: rgba(255, 152, 0, 0.1);
 		border-color: rgba(255, 152, 0, 0.3);
-	}
+    }
 
 	.apply-toggle {
 		display: flex;
@@ -406,7 +438,7 @@
 		cursor: pointer;
 		font-size: 0.85rem;
 		color: rgba(255, 255, 255, 0.8);
-	}
+    }
 
 	.apply-toggle input {
 		opacity: 0;
@@ -436,7 +468,7 @@
 		transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 		border-radius: 50%;
 		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-	}
+    }
 
 	.apply-toggle input:checked + .toggle-slider {
 		background-color: #FF9800;
@@ -450,20 +482,20 @@
 	.apply-toggle:hover .toggle-slider {
 		background-color: rgba(255, 255, 255, 0.3);
 		border-color: rgba(255, 255, 255, 0.5);
-	}
+    }
 
 	.apply-toggle input:checked + .toggle-slider:hover {
 		background-color: #FFB74D;
-	}
+    }
 
 	.toggle-label {
 		font-weight: 500;
 		transition: color 0.2s ease;
-	}
+    }
 
 	.apply-toggle:hover .toggle-label {
 		color: rgba(255, 255, 255, 0.9);
-	}
+    }
 
     .category-tabs {
         display: flex;
@@ -544,13 +576,13 @@
     	.skill-card.maxed {
 		border-color: #9C27B0;
 		background: rgba(156, 39, 176, 0.1);
-	}
+    }
 
 	.skill-card.owned {
 		border-color: #4CAF50;
 		background: rgba(76, 175, 80, 0.1);
-		position: relative;
-	}
+        position: relative;
+    }
 
 	.owned-badge {
 		position: absolute;
@@ -561,10 +593,10 @@
 		font-size: 0.7rem;
 		font-weight: bold;
 		padding: 4px 8px;
-		border-radius: 12px;
+        border-radius: 12px;
 		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 		z-index: 10;
-	}
+    }
 
     	.skill-header {
 		display: flex;
@@ -572,13 +604,13 @@
 		gap: 8px;
 		margin-bottom: 8px;
 		justify-content: space-between;
-	}
+    }
 
 	.skill-header-left {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-	}
+    }
 
 	.skill-controls {
 		display: flex;
@@ -595,13 +627,13 @@
 		border-radius: 4px;
 		font-size: 0.9rem;
 		transition: all 0.2s ease;
-	}
-	
+    }
+
 	.config-btn:hover {
 		background: rgba(0, 255, 136, 0.2);
 		color: #00ff88;
 		transform: scale(1.1);
-	}
+    }
 
     .skill-icon {
         font-size: 1.2rem;
@@ -611,14 +643,14 @@
 		font-weight: bold;
 		color: #ffffff;
 		font-size: 0.9rem;
-	}
+    }
 
-	.skill-rank {
+    .skill-rank {
 		font-size: 0.7rem;
 		color: #FFD700;
-		font-weight: bold;
+        font-weight: bold;
 		margin-left: auto;
-	}
+    }
 
 	.skill-description {
 		font-size: 0.8rem;
@@ -628,8 +660,8 @@
 	}
 
 	.skill-status {
-		margin-bottom: 8px;
-	}
+        margin-bottom: 8px;
+    }
 
 	.status-locked {
 		color: #666666;
@@ -641,7 +673,7 @@
 		color: #FF9800;
 		font-size: 0.7rem;
 		font-weight: 500;
-	}
+    }
 
 	.status-unlocked {
 		color: #4CAF50;
@@ -665,13 +697,13 @@
 		color: #FF9800;
 		font-size: 0.7rem;
 		font-weight: 500;
-	}
+    }
 
     	.skill-cost {
 		font-size: 0.7rem;
 		color: #2196F3;
 		font-weight: bold;
-	}
+    }
 
 	.cost-owned {
 		color: #4CAF50;
@@ -684,7 +716,7 @@
 		width: 44px;
 		height: 24px;
 		cursor: pointer;
-	}
+    }
 
 	.ios-toggle input {
 		opacity: 0;
@@ -716,7 +748,7 @@
 		transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 		border-radius: 50%;
 		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-	}
+    }
 
 	input:checked + .toggle-slider {
 		background-color: #4CAF50;
@@ -725,16 +757,16 @@
 
 	input:checked + .toggle-slider:before {
 		transform: translateX(20px);
-	}
+    }
 
 	.ios-toggle:hover .toggle-slider {
 		background-color: rgba(255, 255, 255, 0.3);
 		border-color: rgba(255, 255, 255, 0.5);
-	}
+    }
 
 	input:checked + .toggle-slider:hover {
 		background-color: #5CBF60;
-	}
+    }
 
 	.buy-btn {
 		background: #FF9800;
@@ -751,7 +783,7 @@
 	.buy-btn:hover {
 		background: #F57C00;
 		transform: translateY(-1px);
-	}
+    }
 
     .no-agent-selected {
         display: flex;
@@ -763,13 +795,13 @@
         color: rgba(255, 255, 255, 0.5);
     }
 
-    .no-agent-icon {
+    .target-icon {
         font-size: 3rem;
         margin-bottom: 12px;
         opacity: 0.7;
     }
 
-    .no-agent-text {
+    .no-agent-selected p {
         font-size: 0.9rem;
         line-height: 1.4;
     }

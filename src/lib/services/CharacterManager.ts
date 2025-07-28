@@ -24,6 +24,26 @@ const users = derived(characters, $characters =>
 // Selected agent store for UI state
 export const selectedAgent = writable<string | null>(null);
 
+// Utility functions for agent ID conversion
+export function getAgentShortName(fullId: string): string {
+  if (fullId.startsWith('agent_')) {
+    return fullId.replace('agent_', '');
+  }
+  return fullId;
+}
+
+export function getAgentFullId(shortName: string): string {
+  if (shortName.startsWith('agent_')) {
+    return shortName;
+  }
+  return `agent_${shortName}`;
+}
+
+export function getAgentDisplayName(fullId: string): string {
+  const shortName = getAgentShortName(fullId);
+  return shortName.charAt(0).toUpperCase() + shortName.slice(1);
+}
+
 // Character Manager Implementation
 class CharacterManagerService implements CharacterManager {
   get characters() {
@@ -97,7 +117,7 @@ class CharacterManagerService implements CharacterManager {
       role: 'agent',
       status: data.status || 'idle',
       position: data.position || { x: 0, y: 0 },
-      color: data.color || '#00ff88',
+      color: data.color || '#059669',
       level: data.level || 1,
       experience: data.experience || 0,
       skills: data.skills || [],
@@ -146,7 +166,7 @@ class CharacterManagerService implements CharacterManager {
       this.createNPCAgent({
         id: 'agent_alpha',
         name: 'Alpha',
-        color: '#00ff88',
+        color: '#059669',
         personality: 'analytical',
         specialization: 'data_analysis',
         position: { x: 250, y: 180 } // Adjusted for better canvas proportion
@@ -154,7 +174,7 @@ class CharacterManagerService implements CharacterManager {
       this.createNPCAgent({
         id: 'agent_beta',
         name: 'Beta', 
-        color: '#ff8800',
+        color: '#ea580c',
         personality: 'creative',
         specialization: 'content_generation',
         position: { x: 500, y: 120 } // Adjusted for better canvas proportion
@@ -162,7 +182,7 @@ class CharacterManagerService implements CharacterManager {
       this.createNPCAgent({
         id: 'agent_gamma',
         name: 'Gamma',
-        color: '#8800ff',
+        color: '#7c3aed',
         personality: 'logical',
         specialization: 'problem_solving',
         position: { x: 750, y: 180 } // Adjusted for better canvas proportion

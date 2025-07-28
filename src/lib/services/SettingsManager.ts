@@ -188,6 +188,7 @@ class SettingsManager {
 	
 	// Agent prompt methods
 	saveAgentPrompts(agentId: string, prompts: any): void {
+		console.log(`💾 Saving agent prompts for ${agentId}:`, prompts);
 		this.settings.update(settings => ({
 			...settings,
 			agentPrompts: {
@@ -195,6 +196,7 @@ class SettingsManager {
 				[agentId]: prompts
 			}
 		}));
+		console.log(`✅ Agent prompts saved for ${agentId}`);
 	}
 	
 	getAgentPrompts(agentId: string): any {

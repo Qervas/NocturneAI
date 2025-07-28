@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { agentPromptManager, type AgentPrompt } from '../services/AgentPromptManager';
+    import { agentPromptManager, agentPromptsStore, type AgentPrompt } from '../services/AgentPromptManager';
     import { selectedAgent } from '../services/CharacterManager';
     
     export let isOpen = false;
@@ -8,7 +8,8 @@
     let editingPrompt: AgentPrompt | null = null;
     let isAddingNew = false;
     
-    $: currentAgentPrompts = $selectedAgent ? agentPromptManager.getAgentPrompts($selectedAgent) : null;
+    // Reactive statement to get current agent prompts from the store
+    $: currentAgentPrompts = $selectedAgent ? $agentPromptsStore[$selectedAgent] : null;
     
     function openEditPrompt(prompt: AgentPrompt) {
         editingPrompt = { ...prompt };
@@ -28,15 +29,36 @@
     }
     
     function savePrompt() {
-        if (!$selectedAgent || !editingPrompt) return;
-        
-        if (isAddingNew) {
-            agentPromptManager.addAgentPrompt($selectedAgent, editingPrompt);
-        } else {
-            agentPromptManager.updateAgentPrompt($selectedAgent, editingPrompt.id, editingPrompt);
+        if (!$selectedAgent || !editingPrompt) {
+            console.error('❌ Cannot save: missing agent or editing prompt');
+            return;
         }
         
-        editingPrompt = null;
+        console.log('💾 Saving prompt:', {
+            agent: $selectedAgent,
+            prompt: editingPrompt,
+            isAddingNew
+        });
+        
+        try {
+            if (isAddingNew) {
+                agentPromptManager.addAgentPrompt($selectedAgent, editingPrompt);
+                console.log('✅ Added new prompt');
+            } else {
+                agentPromptManager.updateAgentPrompt($selectedAgent, editingPrompt.id, editingPrompt);
+                console.log('✅ Updated existing prompt');
+            }
+            
+            // Test the saved prompt
+            const savedPrompts = agentPromptManager.getAgentPrompts($selectedAgent);
+            const combinedPrompt = agentPromptManager.getCombinedPrompt($selectedAgent);
+            console.log('📝 Saved prompts:', savedPrompts);
+            console.log('🔗 Combined prompt:', combinedPrompt);
+            
+            editingPrompt = null;
+        } catch (error) {
+            console.error('❌ Error saving prompt:', error);
+        }
     }
     
     function deletePrompt(promptId: string) {

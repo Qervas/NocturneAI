@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+  import { onMount } from "svelte";
 	import { characterManager, characters, selectedAgent } from "../services/CharacterManager";
 	import { settingsManager } from "../services/SettingsManager";
 	import type { Character, NPCAgent } from "../types/Character";
@@ -14,25 +14,25 @@
 	// Reactive calculations
 	$: selectedAgentData = $selectedAgent ? $characters.find(c => c.id === $selectedAgent) || null : null;
 
-	function getStatusColor(status: string): string {
-		switch (status) {
-			case 'online': return '#00ff88';
-			case 'offline': return '#666666';
-			case 'busy': return '#ff8800';
-			case 'idle': return '#ffff00';
-			default: return '#ffffff';
-		}
-	}
+  function getStatusColor(status: string): string {
+    switch (status) {
+      case 'online': return '#00ff88';
+      case 'offline': return '#666666';
+      case 'busy': return '#ff8800';
+      case 'idle': return '#ffff00';
+      default: return '#ffffff';
+    }
+  }
 
-	function getCharacterIcon(character: Character): string {
-		if (character.type === 'npc') {
-			const npc = character as NPCAgent;
-			return npc.name === 'Alpha' ? '🧠' : 
-				   npc.name === 'Beta' ? '🎨' : 
-				   npc.name === 'Gamma' ? '⚙️' : '🤖';
-		}
-		return '👤';
-	}
+  function getCharacterIcon(character: Character): string {
+    if (character.type === 'npc') {
+      const npc = character as NPCAgent;
+      return npc.name === 'Alpha' ? '🧠' : 
+             npc.name === 'Beta' ? '🎨' : 
+             npc.name === 'Gamma' ? '⚙️' : '🤖';
+    }
+    return '👤';
+  }
 
 	function getAgentColor(agentId: string): string {
 		if (agentId.includes('alpha')) return '#4CAF50';
@@ -54,7 +54,7 @@
 	function getSpecialization(agentId: string): string {
 		const savedInfo = settingsManager.getAgentBasicInfo(agentId);
 		if (savedInfo?.specialization) return savedInfo.specialization;
-		
+    
 		if (agentId.includes('alpha')) return 'Data Analysis';
 		if (agentId.includes('beta')) return 'Content Generation';
 		if (agentId.includes('gamma')) return 'Problem Solving';
@@ -79,11 +79,11 @@
 		if (agentId.includes('beta')) return 'Claude-3 Sonnet';
 		if (agentId.includes('gamma')) return 'Gemini Pro';
 		return 'GPT-4';
-	}
+  }
 
-	onMount(() => {
-		characterManager.initializeSampleData();
-	});
+  onMount(() => {
+    characterManager.initializeSampleData();
+  });
 </script>
 
 <!-- Character Management Panel -->
@@ -93,34 +93,34 @@
 		<div class="agent-header">
 			<div class="agent-icon" style="color: {getAgentColor($selectedAgent || '')}">
 				{getCharacterIcon(selectedAgentData)}
-			</div>
+      </div>
 			<div class="agent-info">
 				<div class="agent-name">{getAgentName($selectedAgent || '')}</div>
 				<div class="agent-status">
 					Status: <span class="status-{selectedAgentData.status}">{selectedAgentData.status}</span>
-				</div>
-			</div>
-		</div>
+                </div>
+              </div>
+      </div>
 
 		<!-- Agent Details -->
 		<div class="agent-details">
 			<div class="detail-section">
 				<h4>📋 Basic Info</h4>
-				<div class="detail-grid">
-					<div class="detail-item">
-						<label>Type:</label>
+          <div class="detail-grid">
+            <div class="detail-item">
+              <label>Type:</label>
 						<span>NPC Agent</span>
-					</div>
-					<div class="detail-item">
+            </div>
+            <div class="detail-item">
 						<label>Specialization:</label>
 						<span>{getSpecialization($selectedAgent || '')}</span>
-					</div>
-					<div class="detail-item">
-						<label>AI Model:</label>
+            </div>
+              <div class="detail-item">
+                <label>AI Model:</label>
 						<span>{getAIModel($selectedAgent || '')}</span>
-					</div>
-					<div class="detail-item">
-						<label>Personality:</label>
+              </div>
+              <div class="detail-item">
+                <label>Personality:</label>
 						<span>{getPersonality($selectedAgent || '')}</span>
 					</div>
 				</div>
@@ -132,13 +132,13 @@
 					<div class="detail-item">
 						<label>Level:</label>
 						<span>Lv.{selectedAgentData.level}</span>
-					</div>
-					<div class="detail-item">
-						<label>Tasks Completed:</label>
+              </div>
+              <div class="detail-item">
+                <label>Tasks Completed:</label>
 						<span>{(selectedAgentData as NPCAgent)?.performance?.tasksCompleted || 0}</span>
-					</div>
-					<div class="detail-item">
-						<label>Success Rate:</label>
+              </div>
+              <div class="detail-item">
+                <label>Success Rate:</label>
 						<span>{((selectedAgentData as NPCAgent)?.performance?.successRate || 0) * 100}%</span>
 					</div>
 					<div class="detail-item">
@@ -200,16 +200,16 @@
 					</div>
 				</div>
 			</div>
-		</div>
+              </div>
 	{:else}
 		<div class="no-agent-selected">
 			<div class="no-agent-icon">👤</div>
 			<div class="no-agent-text">
 				Click on an agent in the simulation to manage their settings
-			</div>
-		</div>
-	{/if}
-</div>
+          </div>
+        </div>
+      {/if}
+    </div>
 
 <!-- Prompt Editor Modal -->
 <PromptEditor 
@@ -225,41 +225,41 @@
 />
 
 <style lang="css">
-	.character-panel {
+  .character-panel {
 		padding: 16px;
 		height: 100%;
-		overflow-y: auto;
-	}
+    overflow-y: auto;
+  }
 
 	.agent-header {
-		display: flex;
-		align-items: center;
+    display: flex;
+    align-items: center;
 		gap: 12px;
 		padding: 12px;
-		background: rgba(0, 0, 0, 0.3);
+    background: rgba(0, 0, 0, 0.3);
 		border-radius: 8px;
 		border: 1px solid rgba(0, 255, 136, 0.2);
 		margin-bottom: 16px;
-	}
+  }
 
 	.agent-icon {
 		font-size: 2rem;
 		width: 50px;
 		height: 50px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
 		border-radius: 50%;
-	}
+  }
 
 	.agent-info {
-		flex: 1;
-	}
+    flex: 1;
+  }
 
 	.agent-name {
 		font-size: 1.2rem;
-		font-weight: bold;
+    font-weight: bold;
 		color: #00ff88;
 		margin-bottom: 4px;
 	}
@@ -267,7 +267,7 @@
 	.agent-status {
 		font-size: 0.9rem;
 		color: rgba(255, 255, 255, 0.8);
-	}
+  }
 
 	.status-online { color: #4CAF50; }
 	.status-offline { color: #F44336; }
@@ -285,38 +285,38 @@
 		border-radius: 8px;
 		padding: 12px;
 		border: 1px solid rgba(0, 255, 136, 0.1);
-	}
+  }
 
 	.detail-section h4 {
 		margin: 0 0 12px 0;
 		color: #00ff88;
 		font-size: 0.9rem;
 		font-weight: bold;
-	}
+  }
 
-	.detail-grid {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
 		gap: 8px;
-	}
+  }
 
-	.detail-item {
-		display: flex;
-		justify-content: space-between;
+  .detail-item {
+    display: flex;
+    justify-content: space-between;
 		align-items: center;
 		padding: 6px 0;
 		font-size: 0.8rem;
-	}
+  }
 
-	.detail-item label {
+  .detail-item label {
 		color: rgba(255, 255, 255, 0.7);
-		font-weight: 500;
-	}
+    font-weight: 500;
+  }
 
-	.detail-item span {
+  .detail-item span {
 		color: #ffffff;
-		font-weight: 600;
-	}
+    font-weight: 600;
+  }
 
 	.management-actions {
 		display: grid;
@@ -389,8 +389,8 @@
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
-	}
-
+    }
+    
 	.option-item {
 		display: flex;
 		justify-content: space-between;
@@ -408,8 +408,8 @@
 		display: inline-block;
 		width: 40px;
 		height: 20px;
-	}
-
+    }
+    
 	.toggle-switch input {
 		opacity: 0;
 		width: 0;
@@ -467,5 +467,5 @@
 	.no-agent-text {
 		font-size: 0.9rem;
 		line-height: 1.4;
-	}
+  }
 </style> 

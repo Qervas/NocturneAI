@@ -60,12 +60,12 @@
     }
 
     onMount(() => {
-        // Initialize any new agents
-        agentList.forEach((agent) => {
-            if (!agentSkillTrees[agent.id]) {
-                skillTreeManager.initializeAgent(agent.id);
-            }
-        });
+            // Initialize any new agents
+            agentList.forEach((agent) => {
+                if (!agentSkillTrees[agent.id]) {
+                    skillTreeManager.initializeAgent(agent.id);
+                }
+            });
     });
 </script>
 
@@ -78,76 +78,76 @@
             <div class="agent-header">
                 <span class="agent-icon">{getAgentIcon($selectedAgent || '')}</span>
                 <span class="agent-name">{getAgentName($selectedAgent || '')}</span>
-            </div>
+        </div>
             <div class="agent-status">
                 Status: <span class="status-{selectedAgentCharacter.status}">{selectedAgentCharacter.status}</span>
+                </div>
             </div>
-        </div>
 
-        <!-- Experience Section -->
-        <div class="resource-section">
-            <div class="section-header">
-                <span class="section-icon">✨</span>
-                <span class="section-title">EXPERIENCE</span>
-            </div>
-            <div class="resource-stats">
-                <div class="stat-row">
+            <!-- Experience Section -->
+            <div class="resource-section">
+                <div class="section-header">
+                    <span class="section-icon">✨</span>
+                    <span class="section-title">EXPERIENCE</span>
+                </div>
+                <div class="resource-stats">
+                    <div class="stat-row">
                     <span class="stat-label">XP:</span>
-                    <span class="stat-value experience-value">
+                        <span class="stat-value experience-value">
                         {formatNumber(selectedAgentData.experience)}
-                    </span>
-                </div>
-                <div class="stat-row">
+                        </span>
+                    </div>
+                    <div class="stat-row">
                     <span class="stat-label">Points:</span>
-                    <span class="stat-value">
+                        <span class="stat-value">
                         {selectedAgentData.availablePoints}
-                    </span>
+                        </span>
+                    </div>
                 </div>
             </div>
-        </div>
 
         <!-- Skills Section -->
-        <div class="resource-section">
-            <div class="section-header">
+            <div class="resource-section">
+                <div class="section-header">
                 <span class="section-icon">🎯</span>
                 <span class="section-title">SKILLS</span>
-            </div>
-            <div class="resource-stats">
-                <div class="stat-row">
+                </div>
+                <div class="resource-stats">
+                    <div class="stat-row">
                     <span class="stat-label">Unlocked:</span>
                     <span class="stat-value">
                         {getUnlockedSkillsCount(selectedAgentData)}/{getTotalSkillsCount(selectedAgentData)}
-                    </span>
-                </div>
-                <div class="stat-row">
+                        </span>
+                    </div>
+                    <div class="stat-row">
                     <span class="stat-label">Progress:</span>
-                    <span class="stat-value">
+                        <span class="stat-value">
                         {getTotalSkillsCount(selectedAgentData) > 0 
                             ? Math.round((getUnlockedSkillsCount(selectedAgentData) / getTotalSkillsCount(selectedAgentData)) * 100)
                             : 0}%
-                    </span>
+                        </span>
+                    </div>
                 </div>
             </div>
-        </div>
 
         <!-- Communication Section -->
-        <div class="resource-section">
-            <div class="section-header">
+            <div class="resource-section">
+                <div class="section-header">
                 <span class="section-icon">💬</span>
                 <span class="section-title">COMMUNICATION</span>
-            </div>
-            <div class="resource-stats">
-                <div class="stat-row">
-                    <span class="stat-label">Messages:</span>
-                    <span class="stat-value">
-                        {communicationManager.getNetworkStats().totalMessages}
-                    </span>
                 </div>
-                <div class="stat-row">
+                <div class="resource-stats">
+                    <div class="stat-row">
+                        <span class="stat-label">Messages:</span>
+                        <span class="stat-value">
+                        {communicationManager.getNetworkStats().totalMessages}
+                        </span>
+                </div>
+                    <div class="stat-row">
                     <span class="stat-label">Active:</span>
-                    <span class="stat-value">
+                        <span class="stat-value">
                         {communicationManager.getNetworkStats().activeConversations}
-                    </span>
+                        </span>
                 </div>
             </div>
         </div>
@@ -161,7 +161,7 @@
             </div>
         </div>
     {/if}
-</div>
+    </div>
 
 <style lang="css">
     .agent-resources-panel {
@@ -279,13 +279,13 @@
         height: 200px;
         text-align: center;
         color: rgba(255, 255, 255, 0.5);
-    }
+        }
 
     .no-agent-icon {
         font-size: 3rem;
         margin-bottom: 12px;
         opacity: 0.7;
-    }
+        }
 
     .no-agent-text {
         font-size: 0.9rem;

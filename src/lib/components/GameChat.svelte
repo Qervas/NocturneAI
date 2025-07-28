@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from "svelte";
-  import { characterManager, characters, npcs, users, activeCharacter } from "../services/CharacterManager";
+  import { writable } from "svelte/store";
+  import { characterManager, characters, npcs, users, activeCharacter, selectedAgent, getAgentDisplayName } from "../services/CharacterManager";
   import { communicationManager } from "../services/CommunicationManager";
   import { llmService } from "../services/LLMService";
   import FileUploader from "./FileUploader.svelte";
@@ -8,25 +9,36 @@
   import type { Character, NPCAgent, UserPlayer } from "../types/Character";
   import type { CommunicationIntent } from "../types/Communication";
 
-  export let isVisible = true; // Always visible in sidebar
+
+
+  // Session Management
+  interface ChatSession {
+    id: string;
+    name: string;
+    agents: string[]; // Array of agent IDs (short names like 'alpha', 'beta')
+    messages: Array<{
+      id: string;
+      sender: string;
+      message: string;
+      timestamp: Date;
+      type: 'user' | 'agent' | 'system';
+    }>;
+    createdAt: Date;
+    lastActive: Date;
+  }
 
   let chatInput = "";
-  let chatHistory: Array<{
-    id: string;
-    type: 'global' | 'direct' | 'agent';
-    sender: string;
-    message: string;
-    timestamp: Date;
-    target?: string;
-  }> = [];
   let inputElement: HTMLInputElement;
   let chatContainer: HTMLDivElement;
-  let activeTab: 'global' | 'direct' | 'agent' = 'global';
-  let selectedAgent = "";
-  let availableAgents: string[] = [];
   let isInitialized = false;
   let llmStatus = "🔴 Checking...";
   let showConnectionHelp = false;
+
+  // Session Management
+  let sessions: ChatSession[] = [];
+  let currentSessionId: string | null = null;
+  let isCreatingSession = false;
+  let newSessionName = "";
 
   // CSGO/League of Legends style chat features
   let isChatFocused = false;
@@ -45,29 +57,106 @@
     url?: string;
   }> = [];
 
-  // Load chat history from localStorage
-  function loadChatHistory() {
+  // Get current session
+  $: currentSession = sessions.find(s => s.id === currentSessionId) || null;
+  $: currentMessages = currentSession?.messages || [];
+
+  // Load sessions from localStorage
+  function loadSessions() {
     try {
-      const saved = localStorage.getItem('chatHistory');
+      const saved = localStorage.getItem('chatSessions');
       if (saved) {
         const parsed = JSON.parse(saved);
-        chatHistory = parsed.map((msg: any) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp)
+        sessions = parsed.map((session: any) => ({
+          ...session,
+          createdAt: new Date(session.createdAt),
+          lastActive: new Date(session.lastActive),
+          messages: session.messages.map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          }))
         }));
       }
     } catch (error) {
-      console.warn('Failed to load chat history:', error);
+      console.warn('Failed to load sessions:', error);
     }
   }
 
-  // Save chat history to localStorage
-  function saveChatHistory() {
+  // Save sessions to localStorage
+  function saveSessions() {
     try {
-      localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+      localStorage.setItem('chatSessions', JSON.stringify(sessions));
     } catch (error) {
-      console.warn('Failed to save chat history:', error);
+      console.warn('Failed to save sessions:', error);
     }
+  }
+
+  // Create new session
+  function createSession(name: string, initialAgents: string[] = []) {
+    const session: ChatSession = {
+      id: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: name || `Chat ${sessions.length + 1}`,
+      agents: initialAgents,
+      messages: [],
+      createdAt: new Date(),
+      lastActive: new Date()
+    };
+    
+    sessions = [...sessions, session];
+    currentSessionId = session.id;
+    saveSessions();
+    console.log('✅ Created new session:', session);
+  }
+
+  // Delete session
+  function deleteSession(sessionId: string) {
+    sessions = sessions.filter(s => s.id !== sessionId);
+    if (currentSessionId === sessionId) {
+      currentSessionId = sessions.length > 0 ? sessions[0].id : null;
+    }
+    saveSessions();
+    console.log('🗑️ Deleted session:', sessionId);
+  }
+
+  // Add agent to session
+  function addAgentToSession(sessionId: string, agentId: string) {
+    sessions = sessions.map(s => {
+      if (s.id === sessionId && !s.agents.includes(agentId)) {
+        return { ...s, agents: [...s.agents, agentId], lastActive: new Date() };
+      }
+      return s;
+    });
+    saveSessions();
+    console.log('➕ Added agent to session:', agentId);
+  }
+
+  // Remove agent from session
+  function removeAgentFromSession(sessionId: string, agentId: string) {
+    sessions = sessions.map(s => {
+      if (s.id === sessionId) {
+        return { ...s, agents: s.agents.filter(a => a !== agentId), lastActive: new Date() };
+      }
+      return s;
+    });
+    saveSessions();
+    console.log('➖ Removed agent from session:', agentId);
+  }
+
+  // Add message to current session
+  function addMessageToSession(message: any) {
+    if (!currentSession) return;
+    
+    sessions = sessions.map(s => {
+      if (s.id === currentSessionId) {
+        return {
+          ...s,
+          messages: [...s.messages, message],
+          lastActive: new Date()
+        };
+      }
+      return s;
+    });
+    saveSessions();
   }
 
   // Generate unique message ID
@@ -101,7 +190,7 @@
       clearTimeout(fadeTimeout);
     }
     
-    // Set fade timeout
+    // Set new timeout for fade
     fadeTimeout = setTimeout(() => {
       updateChatOpacity();
     }, 3000);
@@ -109,7 +198,7 @@
 
   function handleChatFocus() {
     isChatFocused = true;
-    chatOpacity = 1.0;
+    updateChatOpacity();
   }
 
   function handleChatBlur() {
@@ -127,12 +216,10 @@
     updateChatOpacity();
   }
 
-
-
   onMount(() => {
     // Initialize async operations
     const initAsync = async () => {
-      loadChatHistory();
+      loadSessions();
       
       // Initialize character manager and LLM service
       characterManager.initializeSampleData();
@@ -141,69 +228,33 @@
       // Check LLM connectivity status
       llmStatus = await llmService.getConnectionStatus();
       
-          // Set up available agents
-    availableAgents = ['Alpha', 'Beta', 'Gamma'];
-    isInitialized = true;
-    console.log('Chat initialized, isInitialized:', isInitialized);
+      isInitialized = true;
+      console.log('Chat initialized, isInitialized:', isInitialized);
       
-      // Add welcome message if chat history is empty
-      if (chatHistory.length === 0) {
-        const welcomeMessage = llmStatus.includes('🟢') 
-          ? 'Welcome to Multi-Agent System! The AI agents are ready to chat. Switch to Direct tab to start conversations.'
-          : 'Welcome to Multi-Agent System! For real AI conversations, please start a local LLM server (Ollama or LM Studio). Check the connection status in the Direct tab.';
-          
-        chatHistory = [
-          {
-            id: generateMessageId(),
-            type: 'global',
-            sender: 'System',
-            message: welcomeMessage,
-            timestamp: new Date()
-          }
-        ];
-        saveChatHistory();
+      // Create default session if none exist
+      if (sessions.length === 0) {
+        createSession('Welcome Chat', ['alpha']);
+      } else {
+        currentSessionId = sessions[0].id;
       }
 
-          // Focus input when component mounts
-    setTimeout(() => {
-      if (inputElement) {
-        inputElement.focus();
-        console.log('Chat input focused');
-      }
-    }, 100);
+      // Focus input when component mounts
+      setTimeout(() => {
+        if (inputElement) {
+          inputElement.focus();
+          console.log('Chat input focused');
+        }
+      }, 100);
     };
 
     // Start async initialization
     initAsync();
     
-    // Subscribe to agent communications for the agents tab
-    const agentMessageInterval = setInterval(() => {
-      const recentAgentMessages = communicationManager.getPendingMessages('all').slice(-10);
-      recentAgentMessages.forEach(msg => {
-        // Only add agent-to-agent messages
-        if (msg.fromAgent.startsWith('agent_') && msg.toAgent?.startsWith('agent_') && 
-            !chatHistory.find(h => h.id === msg.id)) {
-          const agentMessage = {
-            id: msg.id,
-            type: 'agent' as const,
-            sender: msg.fromAgent.replace('agent_', '').charAt(0).toUpperCase() + msg.fromAgent.replace('agent_', '').slice(1),
-            message: msg.content,
-            timestamp: msg.timestamp,
-            target: msg.toAgent.replace('agent_', '').charAt(0).toUpperCase() + msg.toAgent.replace('agent_', '').slice(1)
-          };
-          chatHistory = [...chatHistory, agentMessage];
-          saveChatHistory();
-          handleChatActivity(); // Trigger fade reset on new messages
-        }
-      });
-    }, 2000);
-
     // Start opacity update loop
     const opacityInterval = setInterval(updateChatOpacity, 100);
 
     return () => {
       clearInterval(opacityInterval);
-      clearInterval(agentMessageInterval);
       if (fadeTimeout) {
         clearTimeout(fadeTimeout);
       }
@@ -221,43 +272,28 @@
   }
 
   async function sendMessage() {
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() || !currentSession) return;
 
-    const messageType = activeTab;
-    let target = '';
-    
-    // For direct messages, use selected agent
-    if (activeTab === 'direct' && selectedAgent) {
-      target = selectedAgent;
-    }
+    console.log('📤 Sending message:', { chatInput: chatInput.trim(), session: currentSession.name });
 
     const message = {
       id: generateMessageId(),
-      type: messageType,
       sender: 'You',
       message: chatInput.trim(),
       timestamp: new Date(),
-      target: target || undefined
+      type: 'user' as const
     };
 
-    chatHistory = [...chatHistory, message];
+    addMessageToSession(message);
     const currentMessage = chatInput.trim();
     
     // Send through communication manager for visualization
-    if (messageType === 'direct' && target) {
-      // Direct message to specific agent
-      const agentId = 'agent_' + target.toLowerCase();
-      communicationManager.sendUserMessage('player_main', agentId, currentMessage, 'question');
-    } else {
-      // Global message - send to all agents
-      const agents = ['agent_alpha', 'agent_beta', 'agent_gamma'];
-      agents.forEach(agentId => {
-        communicationManager.sendUserMessage('player_main', agentId, currentMessage, 'social_chat');
-      });
-    }
+    currentSession.agents.forEach(agentId => {
+      const fullAgentId = `agent_${agentId}`;
+      communicationManager.sendUserMessage('player_main', fullAgentId, currentMessage, 'question');
+    });
     
     chatInput = "";
-    saveChatHistory();
     handleChatActivity(); // Reset fade on message send
     handleTypingEnd();
     
@@ -265,74 +301,71 @@
     await tick();
     scrollToBottom();
 
-    // Send to AI agent for direct messages
-    if (messageType === 'direct' && target) {
-      setTimeout(() => sendToAIAgent(target, currentMessage, false), 500 + Math.random() * 1000);
-    } else if (messageType === 'global') {
-      // For global messages, trigger responses from random agents after a delay
-      const agents = ['Alpha', 'Beta', 'Gamma'];
-      const respondingAgents = agents.filter(() => Math.random() > 0.3); // 70% chance each agent responds
-      
-      // Ensure at least one agent responds
-      if (respondingAgents.length === 0) {
-        respondingAgents.push(agents[Math.floor(Math.random() * agents.length)]);
-      }
-      
-      respondingAgents.forEach((agentName, index) => {
-        setTimeout(() => sendToAIAgent(agentName, currentMessage, true), 1000 + (index * 800) + Math.random() * 1200);
-      });
-    }
+    // Send to all agents in the session
+    currentSession.agents.forEach((agentId, index) => {
+      setTimeout(() => sendToAIAgent(agentId, currentMessage, index), 500 + (index * 800) + Math.random() * 1000);
+    });
   }
 
-  async function sendToAIAgent(agentName: string, originalMessage: string, isGlobalResponse: boolean = false) {
+  async function sendToAIAgent(agentId: string, originalMessage: string, responseIndex: number = 0) {
+    console.log('🤖 Starting AI agent response:', { agentId, originalMessage, responseIndex });
+    
     try {
       // Show typing indicator
       const typingMessage = {
         id: generateMessageId(),
-        type: isGlobalResponse ? 'global' as const : 'direct' as const,
-        sender: agentName,
+        sender: getAgentDisplayName(agentId),
         message: '💭 Thinking...',
         timestamp: new Date(),
-        target: isGlobalResponse ? undefined : 'You'
+        type: 'agent' as const
       };
 
-      chatHistory = [...chatHistory, typingMessage];
-      saveChatHistory();
+      addMessageToSession(typingMessage);
       scrollToBottom();
       handleChatActivity(); // Reset fade on new message
 
       // Build context with uploaded files
       let contextMessage = originalMessage;
-      if (uploadedFiles.length > 0 && !isGlobalResponse) {
+      if (uploadedFiles.length > 0) {
         const fileList = uploadedFiles.map(file => 
           `📎 ${file.name} (${formatFileSize(file.size)})`
         ).join('\n');
         contextMessage = `Message: ${originalMessage}\n\nAttached Files:\n${fileList}`;
       }
 
+      console.log('📤 Sending to LLM service:', { agentId, contextMessage });
+      
       // Get response from LLM service
-      const agentId = agentName.toLowerCase();
       const llmResponse = await llmService.sendMessageToAgent(agentId, contextMessage, 'You');
+      
+      console.log('📥 Received LLM response:', llmResponse);
 
       // Remove typing indicator and add real response
-      chatHistory = chatHistory.filter(msg => msg.id !== typingMessage.id);
+      sessions = sessions.map(s => {
+        if (s.id === currentSessionId) {
+          return {
+            ...s,
+            messages: s.messages.filter(msg => msg.id !== typingMessage.id)
+          };
+        }
+        return s;
+      });
+      saveSessions();
       
       const response = {
         id: generateMessageId(),
-        type: isGlobalResponse ? 'global' as const : 'direct' as const,
-        sender: agentName,
+        sender: getAgentDisplayName(agentId),
         message: llmResponse,
         timestamp: new Date(),
-        target: isGlobalResponse ? undefined : 'You'
+        type: 'agent' as const
       };
 
-      chatHistory = [...chatHistory, response];
+      addMessageToSession(response);
       
       // Send agent response through communication manager for visualization
-      const fullAgentId = 'agent_' + agentId;
+      const fullAgentId = `agent_${agentId}`;
       communicationManager.sendAgentMessage(fullAgentId, 'player_main', 'acknowledge', llmResponse, 'normal');
       
-      saveChatHistory();
       scrollToBottom();
       handleChatActivity(); // Reset fade on response
 
@@ -342,27 +375,35 @@
       }
 
     } catch (error) {
-      console.error('Failed to get AI response:', error);
+      console.error('❌ Failed to get AI response:', error);
+      console.error('🔍 Error details:', { agentId, originalMessage, responseIndex, error: error instanceof Error ? error.message : 'Unknown error' });
       
       // Remove typing indicator
-      chatHistory = chatHistory.filter(msg => !msg.message.includes('💭 Thinking...'));
+      sessions = sessions.map(s => {
+        if (s.id === currentSessionId) {
+          return {
+            ...s,
+            messages: s.messages.filter(msg => !msg.message.includes('💭 Thinking...'))
+          };
+        }
+        return s;
+      });
+      saveSessions();
       
       // Add error message with helpful guidance
       const errorResponse = {
         id: generateMessageId(),
-        type: isGlobalResponse ? 'global' as const : 'direct' as const,
-        sender: agentName,
+        sender: getAgentDisplayName(agentId),
         message: `I'm having trouble connecting right now! 🔌\n\n` +
                 `To chat with me, please start a local LLM server:\n` +
                 `• **Ollama**: Run 'ollama run llama3.2'\n` +
                 `• **LM Studio**: Start the local server\n\n` +
                 `Click the ❓ button above for detailed setup instructions!`,
         timestamp: new Date(),
-        target: isGlobalResponse ? undefined : 'You'
+        type: 'agent' as const
       };
 
-      chatHistory = [...chatHistory, errorResponse];
-      saveChatHistory();
+      addMessageToSession(errorResponse);
       scrollToBottom();
       handleChatActivity(); // Reset fade on error message
       
@@ -384,41 +425,12 @@
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  function toggleChat() {
-    // Not needed in sidebar layout - chat is always visible
-    handleChatActivity(); // Reset fade on any interaction
-  }
-
-  function getCharacterColor(sender: string): string {
-    if (sender === 'System') return '#ffaa00';
-    if (sender === 'You') return '#ffffff';
-    if (sender === 'Alpha') return '#00ff88';  // Match agent colors
-    if (sender === 'Beta') return '#ff8800';   // Match agent colors
-    if (sender === 'Gamma') return '#8800ff';  // Match agent colors
-    return '#00ff88';
-  }
-
-  function isOwnMessage(sender: string): boolean {
-    return sender === 'You';
-  }
-
-  function changeTab(tab: 'global' | 'direct' | 'agent') {
-    activeTab = tab;
-    if (tab === 'direct' && !selectedAgent) {
-      selectedAgent = availableAgents[0] || 'Alpha';
-    }
-    // Clear uploaded files when switching tabs
-    if (tab !== activeTab) {
-      uploadedFiles = [];
-    }
-    handleChatActivity(); // Reset fade on tab change
-  }
-
-  function clearChat() {
-    chatHistory = [];
-    uploadedFiles = [];
-    saveChatHistory();
-    handleChatActivity(); // Reset fade on clear
+  function formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 
   async function refreshLLMStatus() {
@@ -444,14 +456,12 @@
     // Add file message to chat
     const fileMessage = {
       id: generateMessageId(),
-      type: 'direct' as const,
       sender: 'You',
       message: `📎 Uploaded: ${fileInfo.name} (${formatFileSize(fileInfo.size)})`,
       timestamp: new Date(),
-      target: selectedAgent || undefined
+      type: 'user' as const
     };
-    chatHistory = [...chatHistory, fileMessage];
-    saveChatHistory();
+    addMessageToSession(fileMessage);
     scrollToBottom();
     handleChatActivity();
   }
@@ -460,14 +470,12 @@
     const { file, fileInfo, error } = event.detail;
     const errorMessage = {
       id: generateMessageId(),
-      type: 'direct' as const,
       sender: 'System',
       message: `❌ Upload failed: ${fileInfo.name} - ${error}`,
       timestamp: new Date(),
-      target: selectedAgent || undefined
+      type: 'system' as const
     };
-    chatHistory = [...chatHistory, errorMessage];
-    saveChatHistory();
+    addMessageToSession(errorMessage);
     scrollToBottom();
     handleChatActivity();
   }
@@ -482,145 +490,121 @@
     showFileUploader = !showFileUploader;
     handleChatActivity();
   }
-  
-  function formatFileSize(bytes: number): string {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+
+  function getCharacterColor(sender: string): string {
+    if (sender === 'System') return '#f59e0b';
+    if (sender === 'You') return '#ffffff';
+    if (sender === 'Alpha') return '#059669';  // Dark green
+    if (sender === 'Beta') return '#ea580c';   // Dark orange
+    if (sender === 'Gamma') return '#7c3aed';  // Dark purple
+    return '#059669';
   }
 
-  // Filter messages based on active tab
-  $: filteredMessages = chatHistory.filter(msg => {
-    if (activeTab === 'global') return msg.type === 'global';
-    if (activeTab === 'direct') {
-      return msg.type === 'direct' && (
-        msg.target === 'You' || msg.sender === 'You'
-      );
-    }
-    if (activeTab === 'agent') return msg.type === 'agent';
-    return true;
-  });
+  function isOwnMessage(sender: string): boolean {
+    return sender === 'You';
+  }
 
-  // Get message counts for tabs
-  $: globalCount = chatHistory.filter(msg => msg.type === 'global').length;
-  $: directCount = chatHistory.filter(msg => 
-    msg.type === 'direct' && (msg.target === 'You' || msg.sender === 'You')
-  ).length;
-  $: agentCount = chatHistory.filter(msg => msg.type === 'agent').length;
-  
   // Auto-scroll when messages change
-  $: if (filteredMessages.length > 0) {
+  $: if (currentMessages.length > 0) {
     setTimeout(() => scrollToBottom(), 10);
   }
 </script>
 
-<!-- Game Chat Widget -->
-<div class="game-chat-widget">
-  <!-- Chat Interface -->
-  <div class="chat-panel" 
-       bind:this={chatContainer}
-       on:focus={handleChatFocus}
-       on:blur={handleChatBlur}
-       on:mouseenter={handleChatActivity}
-       on:click={handleChatActivity}>
-    
-    <!-- Chat Header -->
-    <div class="chat-header">
-      <div class="chat-tabs">
-        <button 
-          class="chat-tab {activeTab === 'global' ? 'active' : ''}"
-          on:click={() => changeTab('global')}
-        >
-          Global {#if globalCount > 0}<span class="tab-count">({globalCount})</span>{/if}
-        </button>
-        <button 
-          class="chat-tab {activeTab === 'direct' ? 'active' : ''}"
-          on:click={() => changeTab('direct')}
-        >
-          AI Chat {#if directCount > 0}<span class="tab-count">({directCount})</span>{/if}
-        </button>
-        <button 
-          class="chat-tab {activeTab === 'agent' ? 'active' : ''}"
-          on:click={() => changeTab('agent')}
-        >
-          Agents {#if agentCount > 0}<span class="tab-count">({agentCount})</span>{/if}
-        </button>
-      </div>
-      <div class="chat-controls">
-        <button class="control-btn" on:click={clearChat} title="Clear chat">🗑️</button>
-      </div>
-    </div>
-
-    {#if activeTab === 'direct'}
-      <!-- LLM Status Bar -->
-      <div class="llm-status-bar">
-        <div class="status-content">
-          <span class="status-indicator" title="LLM Connection Status">{llmStatus}</span>
-          <button class="status-btn" on:click={refreshLLMStatus} title="Refresh status">🔄</button>
-          <button class="status-btn" on:click={toggleConnectionHelp} title="Connection help">❓</button>
-        </div>
-      </div>
-
-      <!-- Connection Help Panel -->
-      {#if showConnectionHelp}
-        <div class="connection-help">
-          <h4>🤖 How to Connect AI Agents</h4>
-          <p><strong>Option 1: Ollama (Recommended)</strong></p>
-          <ol>
-            <li>Download Ollama from <code>ollama.ai</code></li>
-            <li>Install and run: <code>ollama run llama3.2</code></li>
-            <li>Agents will connect automatically!</li>
-          </ol>
-          <p><strong>Option 2: LM Studio</strong></p>
-          <ol>
-            <li>Download LM Studio from <code>lmstudio.ai</code></li>
-            <li>Load a model and start the local server</li>
-            <li>Use port 1234 (default)</li>
-          </ol>
-          <button class="help-close-btn" on:click={toggleConnectionHelp}>Close Help</button>
-        </div>
-      {/if}
-
-      <!-- Agent Selector -->
-      <div class="agent-selector">
-        <label for="agent-select">Chat with:</label>
-        <select id="agent-select" bind:value={selectedAgent} class="agent-select">
-          {#each availableAgents as agent}
-            <option value={agent}>{agent}</option>
-          {/each}
-        </select>
-      </div>
-    {/if}
-
-    <!-- Messages Container -->
-    <div class="messages-container">
-      {#if filteredMessages.length === 0}
-        <div class="no-messages">
-          {#if activeTab === 'global'}
-            No global messages yet. Start a conversation!
-          {:else if activeTab === 'direct'}
-            No direct messages yet. Select an AI agent and start chatting!
-          {:else if activeTab === 'agent'}
-            No agent conversations yet. Agents will start chatting autonomously!
-          {/if}
+<!-- ChatGPT-Style Chat Interface -->
+<div class="chat-interface">
+  <!-- Chat Header (Fixed at top) -->
+  <div class="chat-header">
+    <div class="chat-title">
+      {#if currentSession}
+        <h3>{currentSession.name}</h3>
+        <div class="session-agents">
+          {currentSession.agents.map(agentId => getAgentDisplayName(agentId)).join(', ')}
         </div>
       {:else}
-        {#each filteredMessages as message (message.id)}
+        <h3>No Session Selected</h3>
+      {/if}
+    </div>
+    
+    <div class="chat-controls">
+      {#if currentSession}
+        <button class="control-btn" on:click={() => isCreatingSession = true} title="Add agent">
+          ➕
+        </button>
+        <button class="control-btn" on:click={() => showConnectionHelp = !showConnectionHelp} title="Connection help">
+          ❓
+        </button>
+      {/if}
+    </div>
+  </div>
+
+  <!-- Connection Status -->
+  <div class="connection-status">
+    <span class="status-indicator">{llmStatus}</span>
+    <button class="status-btn" on:click={refreshLLMStatus} title="Refresh status">🔄</button>
+  </div>
+
+  <!-- Connection Help -->
+  {#if showConnectionHelp}
+    <div class="connection-help">
+      <h4>🤖 How to Connect AI Agents</h4>
+      <p><strong>Option 1: Ollama (Recommended)</strong></p>
+      <ol>
+        <li>Download Ollama from <code>ollama.ai</code></li>
+        <li>Install and run: <code>ollama run llama3.2</code></li>
+        <li>Agents will connect automatically!</li>
+      </ol>
+      <p><strong>Option 2: LM Studio</strong></p>
+      <ol>
+        <li>Download LM Studio from <code>lmstudio.ai</code></li>
+        <li>Load a model and start the local server</li>
+        <li>Use port 1234 (default)</li>
+      </ol>
+      <button class="help-close-btn" on:click={() => showConnectionHelp = false}>Close Help</button>
+    </div>
+  {/if}
+
+  <!-- Sessions List (Compact) -->
+  <div class="sessions-list">
+    {#each sessions as session (session.id)}
+      <div class="session-item" class:active={session.id === currentSessionId} on:click={() => currentSessionId = session.id}>
+        <div class="session-info">
+          <div class="session-name">{session.name}</div>
+          <div class="session-agents">
+            {session.agents.map(agentId => getAgentDisplayName(agentId)).join(', ')}
+          </div>
+        </div>
+        <button class="delete-session-btn" on:click={(e) => { e.stopPropagation(); deleteSession(session.id); }}>
+          🗑️
+        </button>
+      </div>
+    {/each}
+    <button class="new-session-btn" on:click={() => isCreatingSession = true}>
+      + New Chat
+    </button>
+  </div>
+
+  <!-- Scrollable Messages Area -->
+  <div class="messages-scroll-area">
+    <div class="messages-container" bind:this={chatContainer}>
+      {#if currentMessages.length === 0}
+        <div class="no-messages">
+          <div class="welcome-message">
+            <h2>🤖 Multi-Agent Chat</h2>
+            <p>Start a conversation with your AI agents!</p>
+            {#if currentSession}
+              <p>Current session: <strong>{currentSession.name}</strong></p>
+              <p>Agents: {currentSession.agents.map(agentId => getAgentDisplayName(agentId)).join(', ')}</p>
+            {/if}
+          </div>
+        </div>
+      {:else}
+        {#each currentMessages as message (message.id)}
           {@const isOwn = isOwnMessage(message.sender)}
           {@const charColor = getCharacterColor(message.sender)}
-          <div class="game-message {isOwn ? 'own-message' : 'other-message'}" style="--char-color: {charColor}">
+          <div class="chat-message {isOwn ? 'own-message' : 'other-message'}" style="--char-color: {charColor}">
             <div class="message-header">
               <span class="sender" style="color: {charColor}">
-                {#if message.type === 'agent' && message.target}
-                  {message.sender} → <span style="color: {getCharacterColor(message.target)}">{message.target}</span>
-                {:else}
-                  {message.sender}
-                  {#if message.type === 'direct' && message.target && !isOwn}
-                    → <span style="color: {getCharacterColor(message.target)}">{message.target}</span>
-                  {/if}
-                {/if}
+                {message.sender}
               </span>
               <span class="time">{formatTime(message.timestamp)}</span>
             </div>
@@ -631,660 +615,606 @@
         {/each}
       {/if}
     </div>
+  </div>
 
-    {#if activeTab !== 'agent'}
-      <!-- Chat Input -->
-      <div class="chat-input-container">
-        <!-- Uploaded Files Indicator -->
-        {#if uploadedFiles.length > 0}
-          <div class="uploaded-files-indicator">
-            <span class="files-label">📎 Attached Files ({uploadedFiles.length}):</span>
-            <div class="files-list">
-              {#each uploadedFiles as file}
-                <span class="file-tag">
-                  {file.name}
-                  <button class="remove-file-btn" on:click={() => {
-                    uploadedFiles = uploadedFiles.filter(f => f.id !== file.id);
-                  }}>×</button>
-                </span>
-              {/each}
-            </div>
-          </div>
-        {/if}
-        
-        <div class="input-row">
-          <input
-            bind:this={inputElement}
-            bind:value={chatInput}
-            on:keydown={handleKeydown}
-            on:input={handleChatActivity}
-            placeholder={activeTab === 'direct' ? `Message ${selectedAgent}...` : "Type your message..."}
-            class="chat-input"
-            maxlength="500"
-            disabled={!isInitialized}
-            autocomplete="off"
-          />
-          <div class="input-actions">
-            <button 
-              class="action-btn file-btn" 
-              on:click={toggleFileUploader}
-              title="Attach files"
-              disabled={!isInitialized}
-            >
-              📎
-            </button>
-            <button 
-              class="send-btn" 
-              on:click={sendMessage} 
-              disabled={!chatInput.trim() || !isInitialized}
-            >
-              ➤
-            </button>
-          </div>
+  <!-- Chat Input (Fixed at bottom) -->
+  <div class="chat-input-container">
+    <!-- Uploaded Files Indicator -->
+    {#if uploadedFiles.length > 0}
+      <div class="uploaded-files-indicator">
+        <span class="files-label">📎 Attached Files ({uploadedFiles.length}):</span>
+        <div class="files-list">
+          {#each uploadedFiles as file}
+            <span class="file-tag">
+              {file.name}
+              <button class="remove-file-btn" on:click={() => {
+                uploadedFiles = uploadedFiles.filter(f => f.id !== file.id);
+              }}>×</button>
+            </span>
+          {/each}
         </div>
-        
-        <!-- File Uploader -->
-        {#if showFileUploader}
-          <div class="file-uploader-container">
-            <FileUploader 
-              multiple={true}
-              accept="*"
-              maxSize={50 * 1024 * 1024}
-              on:fileUploaded={handleFileUploaded}
-              on:fileError={handleFileError}
-              on:fileRemoved={handleFileRemoved}
-            />
-          </div>
-        {/if}
       </div>
     {/if}
+    
+    <div class="input-row">
+      <input
+        bind:this={inputElement}
+        bind:value={chatInput}
+        on:keydown={handleKeydown}
+        on:input={handleChatActivity}
+        placeholder={currentSession ? "Type your message..." : "Select a session to start chatting..."}
+        class="chat-input"
+        maxlength="500"
+        disabled={!isInitialized || !currentSession}
+        autocomplete="off"
+      />
+      <div class="input-actions">
+        <button 
+          class="action-btn file-btn" 
+          on:click={toggleFileUploader}
+          title="Attach files"
+          disabled={!isInitialized}
+        >
+          📎
+        </button>
+        <button 
+          class="send-btn" 
+          on:click={sendMessage} 
+          disabled={!chatInput.trim() || !isInitialized || !currentSession}
+        >
+          ➤
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
-<style lang="css">
-  .game-chat-widget {
+<!-- Create Session Modal -->
+{#if isCreatingSession}
+  <div class="modal-overlay" on:click={() => isCreatingSession = false}>
+    <div class="modal-content" on:click={(e) => e.stopPropagation()}>
+      <h3>Create New Chat Session</h3>
+      <div class="form-group">
+        <label for="session-name">Session Name:</label>
+        <input 
+          id="session-name"
+          bind:value={newSessionName}
+          placeholder="Enter session name..."
+          on:keydown={(e) => {
+            if (e.key === 'Enter') {
+              createSession(newSessionName);
+              newSessionName = '';
+              isCreatingSession = false;
+            }
+          }}
+        />
+      </div>
+      <div class="form-group">
+        <label>Select Agents:</label>
+        <div class="agent-selection">
+          {#each ['alpha', 'beta', 'gamma'] as agentId}
+            <label class="agent-checkbox">
+              <input type="checkbox" value={agentId} />
+              {getAgentDisplayName(agentId)}
+            </label>
+          {/each}
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" on:click={() => isCreatingSession = false}>Cancel</button>
+        <button class="btn-primary" on:click={() => {
+          const selectedAgents = Array.from(document.querySelectorAll('.agent-selection input:checked')).map((input: any) => input.value);
+          createSession(newSessionName, selectedAgents);
+          newSessionName = '';
+          isCreatingSession = false;
+        }}>Create Session</button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- File Uploader Modal -->
+{#if showFileUploader}
+  <div class="modal-overlay" on:click={toggleFileUploader}>
+    <div class="modal-content" on:click={(e) => e.stopPropagation()}>
+      <FileUploader 
+        on:fileUploaded={handleFileUploaded}
+        on:fileError={handleFileError}
+        on:fileRemoved={handleFileRemoved}
+      />
+    </div>
+  </div>
+{/if}
+
+<style>
+  .chat-interface {
     height: 100%;
+    background: var(--bg-dark);
     display: flex;
     flex-direction: column;
-    margin: 0;
-    padding: 0;
-    min-height: 0; /* Allow flex child to shrink */
-  }
-
-  .chat-panel {
-    height: 100%;
-    max-height: calc(100vh); /* Responsive to viewport height */
-    background: rgba(10, 10, 10, 0.95);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(0, 255, 136, 0.3);
-    border-radius: 8px;
-    display: flex;
-    flex-direction: column;
-    transition: all 0.3s ease;
-  }
-
-  .chat-panel:hover {
-    border-color: rgba(0, 255, 136, 0.6);
+    overflow: hidden;
   }
 
   .chat-header {
+    flex-shrink: 0;
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    padding: 12px 16px;
-    background: linear-gradient(135deg, rgba(26, 26, 46, 0.9) 0%, rgba(22, 33, 62, 0.9) 100%);
-    border-bottom: 1px solid rgba(0, 255, 136, 0.2);
-    border-radius: 8px 8px 0 0;
+    background: var(--bg-darker);
   }
 
-  .chat-tabs {
+  .connection-status {
+    flex-shrink: 0;
+    padding: 0.25rem 0.5rem;
+    background: var(--bg-darker);
+    border-bottom: 1px solid var(--border-color);
     display: flex;
-    flex: 1;
-    gap: 4px;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8rem;
   }
 
-  .chat-tab {
-    background: transparent;
+  .sessions-list {
+    flex-shrink: 0;
+    padding: 0.5rem;
+    border-bottom: 1px solid var(--border-color);
+    max-height: 120px;
+    overflow-y: auto;
+    background: var(--bg-darker);
+  }
+
+  .new-session-btn {
+    background: var(--accent-color);
+    color: white;
     border: none;
-    color: rgba(255, 255, 255, 0.7);
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 0.85rem;
+    padding: 0.5rem;
+    border-radius: 0.25rem;
     cursor: pointer;
-    transition: all 0.2s ease;
-    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    width: 100%;
+    margin-top: 0.5rem;
   }
 
-  .chat-tab:hover {
-    background: rgba(0, 255, 136, 0.1);
-    color: rgba(255, 255, 255, 0.9);
+  .session-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem;
+    margin-bottom: 0.25rem;
+    background: var(--bg-dark);
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    font-size: 0.8rem;
   }
 
-  .chat-tab.active {
-    background: rgba(0, 255, 136, 0.2);
-    color: var(--primary-green);
-    font-weight: 600;
+  .session-item:hover {
+    background: var(--bg-hover);
   }
 
-  .tab-count {
-    opacity: 0.7;
-    font-size: 0.75em;
+  .session-item.active {
+    background: var(--accent-color);
+    color: white;
+  }
+
+  .session-info {
+    flex: 1;
+  }
+
+  .session-name {
+    font-weight: bold;
+    margin-bottom: 0.1rem;
+  }
+
+  .session-agents {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+  }
+
+  .delete-session-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.25rem;
+    font-size: 0.8rem;
+  }
+
+
+
+  .chat-title h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 1rem;
+  }
+
+  .chat-title .session-agents {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
   }
 
   .chat-controls {
     display: flex;
-    gap: 4px;
+    gap: 0.5rem;
   }
 
   .control-btn {
-    background: transparent;
-    border: none;
-    color: rgba(255, 255, 255, 0.7);
-    padding: 4px 8px;
-    border-radius: 4px;
+    background: none;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 0.5rem;
+    border-radius: 0.25rem;
     cursor: pointer;
-    transition: all 0.2s ease;
-    font-size: 0.9rem;
   }
 
-  .control-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.9);
-  }
-
-  .llm-status-bar {
-    padding: 8px 16px;
-    background: rgba(26, 26, 46, 0.8);
-    border-bottom: 1px solid rgba(0, 255, 136, 0.1);
-  }
-
-  .status-content {
+  .connection-status {
+    padding: 0.25rem 0.5rem;
+    background: var(--bg-darker);
+    border-bottom: 1px solid var(--border-color);
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 8px;
+    font-size: 0.8rem;
   }
 
   .status-indicator {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: rgba(255, 255, 255, 0.8);
+    color: var(--text-secondary);
   }
 
   .status-btn {
-    background: transparent;
+    background: none;
     border: none;
-    color: rgba(255, 255, 255, 0.7);
-    padding: 2px 6px;
-    border-radius: 4px;
+    color: var(--text-secondary);
     cursor: pointer;
-    transition: all 0.2s ease;
-    font-size: 0.8rem;
   }
 
-  .status-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: rgba(255, 255, 255, 0.9);
-  }
-
-  .connection-help {
-    background: rgba(26, 26, 46, 0.9);
-    border: 1px solid rgba(0, 255, 136, 0.3);
-    border-radius: 8px;
-    padding: 12px;
-    margin: 8px 16px;
-    font-size: 0.8rem;
-  }
-
-  .connection-help h4 {
-    margin: 0 0 8px 0;
-    color: var(--primary-green);
-    font-size: 0.9rem;
-  }
-
-  .connection-help p {
-    margin: 6px 0;
-    color: rgba(255, 255, 255, 0.8);
-  }
-
-  .connection-help ol {
-    margin: 6px 0;
-    padding-left: 16px;
-  }
-
-  .connection-help li {
-    margin: 4px 0;
-    color: rgba(255, 255, 255, 0.7);
-  }
-
-  .connection-help code {
-    background: rgba(0, 0, 0, 0.3);
-    padding: 2px 4px;
-    border-radius: 4px;
-    font-family: monospace;
-    font-size: 0.85em;
-    color: var(--primary-green);
-  }
-
-  .help-close-btn {
-    background: rgba(0, 255, 136, 0.2);
-    border: 1px solid rgba(0, 255, 136, 0.3);
-    color: var(--primary-green);
-    padding: 4px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.8rem;
-    margin-top: 8px;
-    transition: all 0.2s ease;
-  }
-
-  .help-close-btn:hover {
-    background: rgba(0, 255, 136, 0.3);
-  }
-
-  .agent-selector {
+  .messages-scroll-area {
+    flex: 1;
+    overflow: hidden;
     display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    background: rgba(26, 26, 46, 0.6);
-    border-bottom: 1px solid rgba(0, 255, 136, 0.1);
-  }
-
-  .agent-selector label {
-    font-size: 0.8rem;
-    color: var(--primary-green);
-    white-space: nowrap;
-    font-weight: 500;
-  }
-
-  .agent-select {
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(0, 255, 136, 0.3);
-    color: rgba(255, 255, 255, 0.9);
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.8rem;
-    font-family: var(--font-mono);
+    flex-direction: column;
+    min-height: 0;
   }
 
   .messages-container {
     flex: 1;
     overflow-y: auto;
-    padding: 12px 16px;
-    min-height: 200px;
-    max-height: calc(100vh - 250px); /* Account for header and other elements */
-    scrollbar-width: thin;
-    scrollbar-color: var(--primary-green) transparent;
-    margin: 0;
+    overflow-x: hidden;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 0;
   }
 
-  .messages-container::-webkit-scrollbar {
-    width: 4px;
+  .no-messages {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    color: var(--text-secondary);
   }
 
-  .messages-container::-webkit-scrollbar-track {
-    background: transparent;
+  .welcome-message {
+    text-align: center;
   }
 
-  .messages-container::-webkit-scrollbar-thumb {
-    background: var(--primary-green);
-    border-radius: 2px;
+  .welcome-message h2 {
+    color: var(--accent-color);
+    margin-bottom: 1rem;
   }
 
-  .game-message {
-    margin-bottom: 12px;
-    padding: 8px 12px;
-    border-radius: 8px;
-    background: rgba(0, 0, 0, 0.3);
-    border-left: 3px solid var(--char-color);
-    animation: slideIn 0.3s ease;
+  .chat-message {
+    display: flex;
+    flex-direction: column;
+    max-width: 80%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  /* Responsive design for smaller screens */
+  @media (max-width: 768px) {
+    .chat-message {
+      max-width: 95%;
+    }
+    
+    .message-content {
+      padding: 0.75rem;
+      font-size: 0.9rem;
+    }
+    
+    .message-header {
+      font-size: 0.8rem;
+    }
   }
 
   .own-message {
-    background: rgba(0, 255, 136, 0.1);
-    border-left-color: var(--primary-green);
+    align-self: flex-end;
   }
 
   .other-message {
-    background: rgba(255, 255, 255, 0.05);
+    align-self: flex-start;
   }
 
   .message-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 4px;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
   .sender {
-    font-weight: 600;
-    font-size: 0.85rem;
+    font-weight: bold;
   }
 
   .time {
-    font-size: 0.75rem;
-    opacity: 0.6;
-    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
   }
 
   .message-content {
-    line-height: 1.4;
-    font-size: 0.9rem;
-    color: rgba(255, 255, 255, 0.9);
+    background: var(--bg-dark);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    border-left: 3px solid var(--char-color, var(--accent-color));
     word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+    line-height: 1.4;
+    max-width: 100%;
+    overflow: hidden;
+    hyphens: auto;
   }
-  
-  /* Markdown Styles */
-  .message-content strong {
-    font-weight: 600;
-    color: var(--primary-green);
+
+  /* Handle very long words/URLs */
+  .message-content * {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
-  
-  .message-content em {
-    font-style: italic;
-    color: rgba(255, 255, 255, 0.8);
-  }
-  
+
+  /* Code blocks in messages */
   .message-content code {
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(0, 255, 136, 0.3);
-    border-radius: 3px;
-    padding: 2px 4px;
-    font-family: 'Courier New', monospace;
-    font-size: 0.85rem;
-    color: #00ff88;
+    word-break: break-all;
+    white-space: pre-wrap;
   }
-  
-  .message-content .inline-code {
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(0, 255, 136, 0.3);
-    border-radius: 3px;
-    padding: 2px 4px;
-    font-family: 'Courier New', monospace;
-    font-size: 0.85rem;
-    color: #00ff88;
-  }
-  
-  .message-content .code-block {
-    background: rgba(0, 0, 0, 0.6);
-    border: 1px solid rgba(0, 255, 136, 0.3);
-    border-radius: 6px;
-    padding: 12px;
-    margin: 8px 0;
-    overflow-x: auto;
-    font-family: 'Courier New', monospace;
-    font-size: 0.85rem;
-    line-height: 1.3;
-  }
-  
-  .message-content .code-block code {
-    background: none;
-    border: none;
-    padding: 0;
-    color: #00ff88;
-    font-size: inherit;
-  }
-  
-  /* Syntax Highlighting */
-  .message-content .code-block .keyword {
-    color: #ff6b6b;
-    font-weight: bold;
-  }
-  
-  .message-content .code-block .string {
-    color: #51cf66;
-  }
-  
-  .message-content .code-block .number {
-    color: #ffd43b;
-  }
-  
-  .message-content .code-block .comment {
-    color: #868e96;
-    font-style: italic;
-  }
-  
-  .message-content .code-block .literal {
-    color: #ff922b;
-  }
-  
-  .message-content .code-block .tag {
-    color: #339af0;
-  }
-  
-  .message-content .code-block .attr {
-    color: #ffd43b;
-  }
-  
-  .message-content .code-block .property {
-    color: #51cf66;
-  }
-  
-  .message-content .code-block .punctuation {
-    color: #adb5bd;
-  }
-  
+
+  /* Links in messages */
   .message-content a {
-    color: var(--primary-green);
-    text-decoration: none;
-    border-bottom: 1px solid transparent;
-    transition: border-color 0.2s;
-  }
-  
-  .message-content a:hover {
-    border-bottom-color: var(--primary-green);
-  }
-  
-  .message-content br {
-    margin-bottom: 4px;
+    word-break: break-all;
   }
 
-  .thinking {
-    font-style: italic;
-    opacity: 0.8;
-    animation: pulse 1.5s infinite;
+  .own-message .message-content {
+    background: var(--accent-color);
+    color: white;
   }
 
-  .no-messages {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    flex: 1;
-    color: rgba(255, 255, 255, 0.5);
-    text-align: center;
+  .thinking .message-content {
+    opacity: 0.7;
     font-style: italic;
-    font-size: 0.9rem;
-    padding: 20px;
   }
 
   .chat-input-container {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 12px 16px;
-    background: rgba(26, 26, 46, 0.8);
-    border-top: 1px solid rgba(0, 255, 136, 0.1);
-    border-radius: 0 0 8px 8px;
+    flex-shrink: 0;
+    padding: 0.5rem;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-darker);
   }
-  
-  .input-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-  
-  .input-actions {
-    display: flex;
-    gap: 4px;
-    align-items: center;
-  }
-  
-  .action-btn {
-    background: transparent;
-    border: 1px solid rgba(0, 255, 136, 0.3);
-    color: rgba(255, 255, 255, 0.8);
-    padding: 8px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 14px;
-    transition: all 0.2s ease;
-  }
-  
-  .action-btn:hover:not(:disabled) {
-    background: rgba(0, 255, 136, 0.1);
-    border-color: var(--primary-green);
-    color: var(--primary-green);
-  }
-  
-  .action-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  
-  .file-btn {
-    font-size: 16px;
-  }
-  
-  .file-uploader-container {
-    margin-top: 8px;
-    padding: 8px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 6px;
-    border: 1px solid rgba(0, 255, 136, 0.2);
-  }
-  
+
   .uploaded-files-indicator {
-    padding: 8px 12px;
-    background: rgba(0, 255, 136, 0.1);
-    border: 1px solid rgba(0, 255, 136, 0.3);
-    border-radius: 6px;
-    margin-bottom: 8px;
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    background: var(--bg-darker);
+    border-radius: 0.25rem;
   }
-  
+
   .files-label {
-    font-size: 12px;
-    color: var(--primary-green);
-    font-weight: 500;
-    margin-bottom: 6px;
-    display: block;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
   }
-  
+
   .files-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
   }
-  
+
   .file-tag {
-    display: inline-flex;
+    background: var(--accent-color);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+    display: flex;
     align-items: center;
-    gap: 4px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(0, 255, 136, 0.3);
-    border-radius: 4px;
-    padding: 2px 6px;
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.8);
+    gap: 0.25rem;
   }
-  
+
   .remove-file-btn {
     background: none;
     border: none;
-    color: rgba(255, 255, 255, 0.6);
+    color: white;
     cursor: pointer;
-    font-size: 12px;
-    padding: 0;
-    width: 16px;
-    height: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    transition: all 0.2s;
+    font-size: 1rem;
   }
-  
-  .remove-file-btn:hover {
-    background: rgba(255, 0, 0, 0.2);
-    color: #ff4444;
+
+  .input-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
   }
 
   .chat-input {
     flex: 1;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(0, 255, 136, 0.3);
-    color: rgba(255, 255, 255, 0.9);
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    font-family: var(--font-mono);
-    transition: all 0.2s ease;
-    outline: none;
+    background: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 1rem;
   }
 
   .chat-input:focus {
     outline: none;
-    border-color: var(--primary-green);
-    box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2);
+    border-color: var(--accent-color);
   }
 
-  .chat-input:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  .input-actions {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .action-btn, .send-btn {
+    background: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 0.75rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    font-size: 1rem;
+  }
+
+  .action-btn:hover, .send-btn:hover {
+    background: var(--bg-hover);
   }
 
   .send-btn {
-    background: linear-gradient(135deg, var(--primary-green) 0%, #00cc6a 100%);
-    border: none;
-    color: #000;
-    padding: 8px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: 600;
-    transition: all 0.2s ease;
-  }
-
-  .send-btn:hover:not(:disabled) {
-    transform: scale(1.05);
-    box-shadow: 0 2px 8px rgba(0, 255, 136, 0.4);
+    background: var(--accent-color);
+    color: white;
+    border-color: var(--accent-color);
   }
 
   .send-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    transform: none;
   }
 
-  /* Animations */
-  @keyframes slideIn {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
   }
 
-  @keyframes pulse {
-    0%, 100% {
-      opacity: 0.6;
-    }
-    50% {
-      opacity: 1;
-    }
+  .modal-content {
+    background: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    padding: 2rem;
+    max-width: 500px;
+    width: 90%;
   }
 
-  /* Responsive Adjustments */
-  @media (max-width: 768px) {
-    .floating-chat-panel {
-      width: 320px;
-      max-height: 400px;
-    }
-    
-    .messages-container {
-      max-height: 250px;
-    }
+  .form-group {
+    margin-bottom: 1rem;
   }
+
+  .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+  }
+
+  .form-group input {
+    width: 100%;
+    background: var(--bg-darker);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.75rem;
+    border-radius: 0.25rem;
+  }
+
+  .agent-selection {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .agent-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+
+  .btn-primary, .btn-secondary {
+    padding: 0.75rem 1.5rem;
+    border-radius: 0.25rem;
+    border: none;
+    cursor: pointer;
+  }
+
+  .btn-primary {
+    background: var(--accent-color);
+    color: white;
+  }
+
+  .btn-secondary {
+    background: var(--bg-darker);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+  }
+
+  .connection-help {
+    padding: 1rem;
+    background: var(--bg-darker);
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .connection-help h4 {
+    margin: 0 0 1rem 0;
+    color: var(--accent-color);
+  }
+
+  .connection-help ol {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+  }
+
+  .connection-help code {
+    background: var(--bg-dark);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-family: monospace;
+  }
+
+  .help-close-btn {
+    background: var(--accent-color);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    margin-top: 1rem;
+  }
+
+     /* CSS Variables */
+   :global(:root) {
+     --bg-dark: #1a1a1a;
+     --bg-darker: #0f0f0f;
+     --bg-hover: #2a2a2a;
+     --text-primary: #ffffff;
+     --text-secondary: #cccccc;
+     --border-color: #333333;
+     --accent-color: #059669;
+   }
 </style>

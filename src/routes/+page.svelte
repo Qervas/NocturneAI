@@ -9,11 +9,31 @@
 	import CharacterPanel from "../lib/components/CharacterPanel.svelte";
 
 	import { selectedAgent } from "../lib/services/CharacterManager";
+	import { layout, layoutManager } from "../lib/services/LayoutManager";
+	import LayoutDebug from "../lib/components/LayoutDebug.svelte";
 
 	let activeTab = "skills"; // "skills" | "character" | "resources" | "strategy"
+	
+	// Layout management
+	let chatContainer: HTMLElement | undefined;
+	let propertiesContainer: HTMLElement | undefined;
+	let canvasContainer: HTMLElement | undefined;
+	
+	// Observe layout components
+	$: if (chatContainer) {
+		layoutManager.observeElement(chatContainer, 'chat');
+	}
+	
+	$: if (propertiesContainer) {
+		layoutManager.observeElement(propertiesContainer, 'properties');
+	}
+	
+	$: if (canvasContainer) {
+		layoutManager.observeElement(canvasContainer, 'canvas');
+	}
 </script>
 
-<div class="game-layout">
+<div class="game-layout" style="grid-template-rows: {$layout.gridTemplateRows};">
 	<!-- Game Header -->
 	<header class="game-header">
 		<div class="header-left">
@@ -27,6 +47,12 @@
 		</div>
 		<div class="header-right">
 			<div class="header-controls">
+				<button class="game-btn" on:click={() => layoutManager.toggleSidebar('left')} title="Toggle Chat">
+					💬
+				</button>
+				<button class="game-btn" on:click={() => layoutManager.toggleSidebar('right')} title="Toggle Properties">
+					⚙️
+				</button>
 				<button class="game-btn">Settings</button>
 				<button class="game-btn">Help</button>
 			</div>
@@ -34,18 +60,25 @@
 	</header>
 
 	<!-- Main Game Area -->
-	<main class="game-main">
+	<main class="game-main" style="grid-template-columns: {$layout.gridTemplateColumns};">
 		<!-- Left Sidebar - Chat -->
-		<aside class="game-sidebar left-sidebar">
-			<div class="sidebar-header">
-				<h3>💬 Chat</h3>
-			</div>
-			<GameChat />
-		</aside>
+		{#if $layout.leftSidebar.visible}
+			<aside class="game-sidebar left-sidebar" style="width: {$layout.leftSidebar.width}px;">
+				<div class="sidebar-header">
+					<h3>💬 Chat</h3>
+					{#if $layout.chatOverflow}
+						<span class="overflow-indicator" title="Content overflow detected">⚠️</span>
+					{/if}
+				</div>
+				<div class="sidebar-content" bind:this={chatContainer}>
+					<GameChat />
+				</div>
+			</aside>
+		{/if}
 
 		<!-- Center - Simulation -->
-		<section class="game-center">
-			<div class="simulation-container">
+		<section class="game-center" style="width: {$layout.center.width}px;">
+			<div class="simulation-container" bind:this={canvasContainer}>
 				<GamingCanvas />
 				<ConversationConnections />
 			</div>
@@ -55,56 +88,63 @@
 		</section>
 
 		<!-- Right Sidebar - Properties Panel -->
-		<aside class="game-sidebar right-sidebar">
-			<div class="properties-panel">
-				<!-- Properties Header -->
-				<div class="properties-header">
-					<h3>⚙️ Properties</h3>
-					{#if $selectedAgent}
-						<span class="selected-agent">Selected: {$selectedAgent}</span>
-					{/if}
-				</div>
+		{#if $layout.rightSidebar.visible}
+			<aside class="game-sidebar right-sidebar" style="width: {$layout.rightSidebar.width}px;">
+				<div class="properties-panel" bind:this={propertiesContainer}>
+					<!-- Properties Header -->
+					<div class="properties-header">
+						<h3>⚙️ Properties</h3>
+						{#if $selectedAgent}
+							<span class="selected-agent">Selected: {$selectedAgent}</span>
+						{/if}
+						{#if $layout.propertiesOverflow}
+							<span class="overflow-indicator" title="Content overflow detected">⚠️</span>
+						{/if}
+					</div>
 
-				<!-- Properties Tabs -->
-				<div class="properties-tabs">
-					<button 
-						class="property-tab" 
-						class:active={activeTab === "skills"}
-						on:click={() => activeTab = "skills"}
-					>
-						⚡ Skills
-					</button>
-					<button 
-						class="property-tab" 
-						class:active={activeTab === "character"}
-						on:click={() => activeTab = "character"}
-					>
-						👤 Character
-					</button>
-					<button 
-						class="property-tab" 
-						class:active={activeTab === "resources"}
-						on:click={() => activeTab = "resources"}
-					>
-						🌎 Resources
-					</button>
+					<!-- Properties Tabs -->
+					<div class="properties-tabs">
+						<button 
+							class="property-tab" 
+							class:active={activeTab === "skills"}
+							on:click={() => activeTab = "skills"}
+						>
+							⚡ Skills
+						</button>
+						<button 
+							class="property-tab" 
+							class:active={activeTab === "character"}
+							on:click={() => activeTab = "character"}
+						>
+							👤 Character
+						</button>
+						<button 
+							class="property-tab" 
+							class:active={activeTab === "resources"}
+							on:click={() => activeTab = "resources"}
+						>
+							🌎 Resources
+						</button>
+					</div>
 
+					<!-- Properties Content -->
+					<div class="properties-content">
+						{#if activeTab === "skills"}
+							<PerkPanel />
+						{:else if activeTab === "character"}
+							<CharacterPanel />
+						{:else if activeTab === "resources"}
+							<WorldResources />
+						{/if}
+					</div>
 				</div>
-
-				<!-- Properties Content -->
-				<div class="properties-content">
-					{#if activeTab === "skills"}
-						<PerkPanel />
-					{:else if activeTab === "character"}
-						<CharacterPanel />
-					{:else if activeTab === "resources"}
-						<WorldResources />
-					{/if}
-				</div>
-			</div>
-		</aside>
+			</aside>
+		{/if}
 	</main>
 </div>
+
+<!-- Layout Debug Component -->
+<LayoutDebug />
 
 <style lang="css">
 	.game-layout {
@@ -187,9 +227,9 @@
 
 	.game-main {
 		display: grid;
-		grid-template-columns: 350px 1fr 350px;
 		height: 100%;
 		overflow: hidden;
+		transition: grid-template-columns 0.3s ease;
 	}
 
 	.game-sidebar {
@@ -199,6 +239,7 @@
 		flex-direction: column;
 		height: 100%;
 		overflow: hidden;
+		transition: width 0.3s ease;
 	}
 
 	.right-sidebar {
@@ -210,6 +251,10 @@
 		padding: 12px 16px;
 		border-bottom: 1px solid rgba(0, 255, 136, 0.2);
 		background: rgba(0, 0, 0, 0.3);
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		flex-shrink: 0;
 	}
 
 	.sidebar-header h3 {
@@ -217,6 +262,19 @@
 		font-size: 1rem;
 		color: #00ff88;
 		font-weight: bold;
+	}
+
+	.sidebar-content {
+		flex: 1;
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.overflow-indicator {
+		color: #ff6b6b;
+		font-size: 0.8rem;
+		cursor: help;
 	}
 
 	.game-center {

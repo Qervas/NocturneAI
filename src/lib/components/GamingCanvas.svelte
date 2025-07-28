@@ -1,11 +1,12 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import {
-    characterManager,
-    characters,
-    activeCharacter,
-    selectedAgent,
-} from "../services/CharacterManager";
+        characterManager,
+        characters,
+        activeCharacter,
+        selectedAgent,
+        getAgentShortName,
+    } from "../services/CharacterManager";
     import { communicationManager } from "../services/CommunicationManager";
     import {
         simulationController,
@@ -118,9 +119,11 @@
                 )
             ) {
                 console.log(`Clicked on ${character.name}!`);
-                // Set selected agent for UI
-                selectedAgent.set(character.id);
+                // Set selected agent for UI - use short name for chat compatibility
+                const shortName = getAgentShortName(character.id);
+                selectedAgent.set(shortName);
                 characterManager.setActiveCharacter(character.id);
+                console.log(`Selected agent: ${character.name} (${character.id} -> ${shortName})`);
             }
         });
 

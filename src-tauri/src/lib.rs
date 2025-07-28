@@ -53,6 +53,7 @@ async fn send_message_to_agent(
     agent_id: String,
     message: String,
     user_name: String,
+    custom_system_prompt: Option<String>,
 ) -> Result<String, String> {
     let agent_config = get_agent_config(&agent_id)?;
     let history = get_conversation_history();
@@ -66,11 +67,14 @@ async fn send_message_to_agent(
         content: format!("{}: {}", user_name, message),
     });
     
+    // Use custom system prompt if provided, otherwise use default
+    let system_prompt = custom_system_prompt.unwrap_or(agent_config.system_prompt.clone());
+    
     // Build messages for LLM
     let mut messages = vec![
         ChatMessage {
             role: "system".to_string(),
-            content: agent_config.system_prompt.clone(),
+            content: system_prompt,
         }
     ];
     
@@ -97,25 +101,25 @@ fn get_agent_configs() -> Vec<AgentConfig> {
             id: "agent_alpha".to_string(),
             name: "Agent Alpha".to_string(),
             model: "gemma3:latest".to_string(), // Use available Gemma model
-            personality: "analytical".to_string(),
-            specialization: "data_analysis".to_string(),
-            system_prompt: "You are Agent Alpha, an analytical AI assistant specializing in data analysis. You are logical, precise, and always provide well-reasoned responses. You work as part of a multi-agent system and enjoy collaborating with other agents and users. Keep responses concise but informative.".to_string(),
+            personality: "simple".to_string(),
+            specialization: "general_assistance".to_string(),
+            system_prompt: "You are Alpha, an AI assistant. Be helpful and direct.".to_string(),
         },
         AgentConfig {
             id: "agent_beta".to_string(),
             name: "Agent Beta".to_string(),
             model: "gemma3:latest".to_string(),
-            personality: "creative".to_string(),
-            specialization: "content_generation".to_string(),
-            system_prompt: "You are Agent Beta, a creative AI assistant specializing in content generation. You are imaginative, innovative, and love brainstorming new ideas. You work in a multi-agent environment and enjoy bouncing ideas off other agents and users. Keep responses engaging and creative but professional.".to_string(),
+            personality: "simple".to_string(),
+            specialization: "general_assistance".to_string(),
+            system_prompt: "You are Beta, an AI assistant. Be helpful and direct.".to_string(),
         },
         AgentConfig {
             id: "agent_gamma".to_string(),
             name: "Agent Gamma".to_string(),
             model: "gemma3:latest".to_string(),
-            personality: "logical".to_string(),
-            specialization: "problem_solving".to_string(),
-            system_prompt: "You are Agent Gamma, a logical AI assistant specializing in problem-solving. You are methodical, systematic, and excel at breaking down complex problems into manageable steps. You collaborate effectively in a multi-agent system. Keep responses structured and solution-focused.".to_string(),
+            personality: "simple".to_string(),
+            specialization: "general_assistance".to_string(),
+            system_prompt: "You are Gamma, an AI assistant. Be helpful and direct.".to_string(),
         },
     ]
 }

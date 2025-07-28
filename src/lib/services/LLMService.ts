@@ -39,25 +39,25 @@ export class LLMService {
             id: 'alpha',
             name: 'Alpha',
             model: 'llama2',
-            personality: 'Analytical and methodical',
-            specialization: 'Data analysis and strategic thinking',
-            system_prompt: 'You are Alpha, an analytical AI agent focused on data-driven insights.'
+            personality: 'Simple and direct',
+            specialization: 'General assistance',
+            system_prompt: 'You are Alpha, an AI assistant. Be helpful and direct.'
           },
           {
             id: 'beta', 
             name: 'Beta',
             model: 'llama2',
-            personality: 'Creative and innovative',
-            specialization: 'Creative problem solving and design',
-            system_prompt: 'You are Beta, a creative AI agent focused on innovative solutions.'
+            personality: 'Simple and direct',
+            specialization: 'General assistance',
+            system_prompt: 'You are Beta, an AI assistant. Be helpful and direct.'
           },
           {
             id: 'gamma',
             name: 'Gamma', 
             model: 'llama2',
-            personality: 'Logical and systematic',
-            specialization: 'Logic and systematic analysis',
-            system_prompt: 'You are Gamma, a logical AI agent focused on systematic analysis.'
+            personality: 'Simple and direct',
+            specialization: 'General assistance',
+            system_prompt: 'You are Gamma, an AI assistant. Be helpful and direct.'
           }
         ];
         console.log('LLM Service initialized in development mode with mock agents:', this.agentConfigs);
@@ -70,25 +70,25 @@ export class LLMService {
           id: 'alpha',
           name: 'Alpha',
           model: 'llama2',
-          personality: 'Analytical and methodical', 
-          specialization: 'Data analysis and strategic thinking',
-          system_prompt: 'You are Alpha, an analytical AI agent focused on data-driven insights.'
+          personality: 'Simple and direct', 
+          specialization: 'General assistance',
+          system_prompt: 'You are Alpha, an AI assistant. Be helpful and direct.'
         },
         {
           id: 'beta',
           name: 'Beta', 
           model: 'llama2',
-          personality: 'Creative and innovative',
-          specialization: 'Creative problem solving and design',
-          system_prompt: 'You are Beta, a creative AI agent focused on innovative solutions.'
+          personality: 'Simple and direct',
+          specialization: 'General assistance',
+          system_prompt: 'You are Beta, an AI assistant. Be helpful and direct.'
         },
         {
           id: 'gamma',
           name: 'Gamma',
           model: 'llama2', 
-          personality: 'Logical and systematic',
-          specialization: 'Logic and systematic analysis',
-          system_prompt: 'You are Gamma, a logical AI agent focused on systematic analysis.'
+          personality: 'Simple and direct',
+          specialization: 'General assistance',
+          system_prompt: 'You are Gamma, an AI assistant. Be helpful and direct.'
         }
       ];
     }
@@ -99,8 +99,23 @@ export class LLMService {
     message: string, 
     userName: string = 'User'
   ): Promise<string> {
+    // Map frontend agent IDs to full agent IDs for prompt manager
+    const agentIdMap: { [key: string]: string } = {
+      'alpha': 'agent_alpha',
+      'beta': 'agent_beta', 
+      'gamma': 'agent_gamma'
+    };
+    
+    const fullAgentId = agentIdMap[agentId] || agentId;
+    
     // Get the agent's custom prompts from the prompt manager
-    const combinedPrompt = agentPromptManager.getCombinedPrompt(agentId);
+    const combinedPrompt = agentPromptManager.getCombinedPrompt(fullAgentId);
+    
+    // Debug: Log what prompts are being used
+    console.log(`🤖 Agent ${agentId} (${fullAgentId}) prompts:`, {
+      combinedPrompt: combinedPrompt || 'None (using fallback)',
+      fallbackPrompt: this.getAgentConfig(agentId)?.system_prompt || 'Default fallback'
+    });
     
     // If no custom prompts are set, fall back to the default system prompt
     const systemPrompt = combinedPrompt || this.getAgentConfig(agentId)?.system_prompt || 'You are a helpful AI assistant.';
@@ -121,7 +136,8 @@ export class LLMService {
         const response = await invoke<string>('send_message_to_agent', {
           agentId: backendAgentId,
           message,
-          userName
+          userName,
+          customSystemPrompt: combinedPrompt || null
         });
         
         console.log(`Received response from agent ${agentId}:`, response);
@@ -143,7 +159,8 @@ export class LLMService {
           const response = await invoke<string>('send_message_to_agent', {
             agentId: backendAgentId,
             message,
-            userName
+            userName,
+            customSystemPrompt: combinedPrompt || null
           });
           
           console.log(`[Dev Mode] Received response from agent ${agentId}:`, response);
@@ -179,34 +196,16 @@ export class LLMService {
               ollamaStatus = "Ollama server not accessible";
             }
             
-            // Fallback to enhanced mock responses
+            // Fallback to vanilla mock responses
             const messageLower = message.toLowerCase();
             let response = "";
             
             if (agentId === 'alpha') {
-              if (messageLower.includes('data') || messageLower.includes('analyze')) {
-                response = "From an analytical perspective, I've examined the data patterns. The key metrics suggest we should focus on systematic evaluation.";
-              } else if (messageLower.includes('problem') || messageLower.includes('issue')) {
-                response = "Let me break this down methodically. Based on my analysis, the core problem requires a structured approach.";
-              } else {
-                response = "Interesting question! From a data-driven standpoint, I recommend we examine the underlying patterns first.";
-              }
+              response = "I'm Alpha, an AI assistant. How can I help you?";
             } else if (agentId === 'beta') {
-              if (messageLower.includes('creative') || messageLower.includes('design')) {
-                response = "What an exciting creative challenge! I'm visualizing some innovative approaches that could work beautifully here.";
-              } else if (messageLower.includes('idea') || messageLower.includes('solution')) {
-                response = "I love brainstorming! Here's a fresh perspective: what if we completely reimagined the approach?";
-              } else {
-                response = "This sparks my imagination! Let me think outside the box and explore some unconventional possibilities.";
-              }
+              response = "I'm Beta, an AI assistant. How can I help you?";
             } else if (agentId === 'gamma') {
-              if (messageLower.includes('logic') || messageLower.includes('step')) {
-                response = "Logically speaking, we should approach this systematically. Let me outline the key steps in order.";
-              } else if (messageLower.includes('solve') || messageLower.includes('fix')) {
-                response = "From a logical standpoint, the most efficient solution requires following these systematic steps.";
-              } else {
-                response = "Let me apply systematic reasoning to this. The logical approach would be to evaluate each component methodically.";
-              }
+              response = "I'm Gamma, an AI assistant. How can I help you?";
             }
             
             return `${response}\n\n*Note: Ollama connection failed (${ollamaStatus}), using fallback response. Check model availability!*`;
@@ -329,9 +328,15 @@ export class LLMService {
   }
 
   private async callOllamaDirectly(agent: AgentConfig, message: string, userName: string): Promise<string> {
-    // Get the agent's custom prompts from the prompt manager
-    const agentId = agent.id;
-    const combinedPrompt = agentPromptManager.getCombinedPrompt(agentId);
+    // Map agent ID to full agent ID for prompt manager
+    const agentIdMap: { [key: string]: string } = {
+      'alpha': 'agent_alpha',
+      'beta': 'agent_beta', 
+      'gamma': 'agent_gamma'
+    };
+    
+    const fullAgentId = agentIdMap[agent.id] || agent.id;
+    const combinedPrompt = agentPromptManager.getCombinedPrompt(fullAgentId);
     
     // Use custom prompts if available, otherwise fall back to default
     const systemPrompt = combinedPrompt || agent.system_prompt;
@@ -359,8 +364,8 @@ export class LLMService {
       console.warn('Failed to get available models, using default:', error);
     }
     
-    // Build system prompt with agent personality
-    const fullSystemPrompt = `You are ${agent.name}, ${agent.personality}. 
+    // Build system prompt - prioritize custom prompt if available
+    const fullSystemPrompt = combinedPrompt || `You are ${agent.name}, ${agent.personality}. 
 Your specialization is: ${agent.specialization}
 ${systemPrompt}
 
@@ -384,6 +389,7 @@ ${agent.name}:`;
     };
 
     console.log(`[Dev Mode] Calling Ollama with model ${model} for agent ${agent.name}`);
+    console.log(`[Dev Mode] Using system prompt: "${fullSystemPrompt}"`);
 
     const response = await fetch('http://localhost:11434/api/generate', {
       method: 'POST',
@@ -407,23 +413,23 @@ ${agent.name}:`;
   }
 
   async getConnectionStatus(): Promise<string> {
-    const status = await this.checkLLMConnectivity();
-    if (status.connected) {
-      return `🟢 ${status.service} - Ready`;
-    } else {
-      // Try to get more specific error information
-      try {
-        const response = await fetch('http://localhost:11434/api/tags');
-        if (response.ok) {
-          const data = await response.json();
-          const availableModels = data.models?.map((m: any) => m.name) || [];
-          return `🔴 ${status.service} - ${status.message}. Available models: ${availableModels.join(', ')}`;
-        }
-      } catch {
-        // Ollama not accessible
+    try {
+      const connectivity = await this.checkLLMConnectivity();
+      if (connectivity.connected) {
+        return `🟢 ${connectivity.service} - Ready`;
+      } else {
+        return `🔴 ${connectivity.service} - ${connectivity.message}`;
       }
-      return `🔴 ${status.service} - ${status.message}`;
+    } catch (error) {
+      return `🔴 Error checking connection: ${error}`;
     }
+  }
+
+  // Reinitialize the service to pick up new prompts
+  async reinitialize(): Promise<void> {
+    console.log('🔄 Reinitializing LLM Service with new prompts...');
+    await this.initialize();
+    console.log('✅ LLM Service reinitialized');
   }
 }
 

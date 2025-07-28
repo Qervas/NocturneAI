@@ -6,10 +6,10 @@
 /* CSS Variables for Design System */
 :root {
   /* Colors */
-  --primary-green: #00ff88;
-  --primary-cyan: #00ffff;
-  --accent-red: #ff6b6b;
-  --accent-orange: #ffaa00;
+  --primary-green: #059669;
+  --primary-cyan: #0891b2;
+  --accent-red: #dc2626;
+  --accent-orange: #ea580c;
   --bg-dark: #0a0a0a;
   --bg-secondary: #1a1a2e;
   --bg-tertiary: #16213e;
@@ -21,19 +21,19 @@
   
   /* Input Colors */
   --input-bg: rgba(0, 0, 0, 0.8);
-  --input-border: rgba(0, 255, 136, 0.3);
-  --input-focus: rgba(0, 255, 136, 0.2);
+  --input-border: rgba(5, 150, 105, 0.3);
+  --input-focus: rgba(5, 150, 105, 0.2);
   
   /* Panel Colors */
   --panel-bg: rgba(26, 26, 46, 0.9);
-  --border-color: rgba(0, 255, 136, 0.2);
-  --hover-bg: rgba(0, 255, 136, 0.1);
+  --border-color: rgba(5, 150, 105, 0.2);
+  --hover-bg: rgba(5, 150, 105, 0.1);
   
   /* Button Colors */
   --button-secondary-bg: rgba(255, 255, 255, 0.1);
   --button-secondary-hover: rgba(255, 255, 255, 0.2);
-  --accent-color: #00ff88;
-  --accent-hover: #00cc6a;
+  --accent-color: #059669;
+  --accent-hover: #047857;
   
   /* Typography */
   --font-mono: 'Courier New', monospace;
