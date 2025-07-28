@@ -2,9 +2,11 @@
 	import { onMount } from "svelte";
 	import { characterManager, characters, selectedAgent } from "../services/CharacterManager";
 	import type { Character, NPCAgent } from "../types/Character";
+	import PromptEditor from "./PromptEditor.svelte";
 
 	// Component state
 	let selectedAgentData: Character | null = null;
+	let showPromptEditor = false;
 
 	// Reactive calculations
 	$: selectedAgentData = $selectedAgent ? $characters.find(c => c.id === $selectedAgent) || null : null;
@@ -137,7 +139,7 @@
 					<button class="action-btn primary">
 						🔄 Restart Agent
 					</button>
-					<button class="action-btn secondary">
+					<button class="action-btn secondary" on:click={() => showPromptEditor = true}>
 						📝 Edit Settings
 					</button>
 					<button class="action-btn warning">
@@ -185,6 +187,12 @@
 		</div>
 	{/if}
 </div>
+
+<!-- Prompt Editor Modal -->
+<PromptEditor 
+	bind:isOpen={showPromptEditor}
+	onClose={() => showPromptEditor = false}
+/>
 
 <style lang="css">
 	.character-panel {

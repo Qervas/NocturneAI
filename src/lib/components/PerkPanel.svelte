@@ -3,6 +3,7 @@
     import { skillTreeManager } from "../services/PerkManager";
     import { characterManager, characters, selectedAgent } from "../services/CharacterManager";
     import { settingsManager, settings } from "../services/SettingsManager";
+    import SkillConfigModal from "./SkillConfigModal.svelte";
     import type {
         AgentSkillTree,
         SkillNode,
@@ -12,6 +13,9 @@
     let selectedCategory: SkillCategory = "system_access";
     let agentSkillTrees: Record<string, AgentSkillTree> = {};
     let applyToAllAgents = false; // Default: only current agent
+    let showSkillConfig = false;
+    let currentSkillId = '';
+    let currentSkillName = '';
 
     // Subscribe to skill trees
     skillTreeManager.agentSkills.subscribe((value) => {
@@ -266,6 +270,17 @@
 									>
 									<span class="toggle-slider"></span>
 								</label>
+								<button 
+									class="config-btn"
+									title="Configure skill"
+									on:click|stopPropagation={() => {
+										currentSkillId = skill.id;
+										currentSkillName = skill.name;
+										showSkillConfig = true;
+									}}
+								>
+									⚙️
+								</button>
 							{/if}
 						</div>
 					</div>
@@ -305,6 +320,14 @@
         </div>
     {/if}
 </div>
+
+<!-- Skill Configuration Modal -->
+<SkillConfigModal 
+	bind:isOpen={showSkillConfig}
+	onClose={() => showSkillConfig = false}
+	skillId={currentSkillId}
+	skillName={currentSkillName}
+/>
 
 <style lang="css">
     .skills-panel {
@@ -561,6 +584,23 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
+	}
+	
+	.config-btn {
+		background: transparent;
+		border: none;
+		color: rgba(255, 255, 255, 0.7);
+		cursor: pointer;
+		padding: 4px;
+		border-radius: 4px;
+		font-size: 0.9rem;
+		transition: all 0.2s ease;
+	}
+	
+	.config-btn:hover {
+		background: rgba(0, 255, 136, 0.2);
+		color: #00ff88;
+		transform: scale(1.1);
 	}
 
     .skill-icon {

@@ -7,9 +7,10 @@
 	import PerkPanel from "../lib/components/PerkPanel.svelte";
 	import WorldResources from "../lib/components/WorldResources.svelte";
 	import CharacterPanel from "../lib/components/CharacterPanel.svelte";
+
 	import { selectedAgent } from "../lib/services/CharacterManager";
 
-	let activeTab = "skills"; // "skills" | "character" | "resources"
+	let activeTab = "skills"; // "skills" | "character" | "resources" | "strategy"
 </script>
 
 <div class="game-layout">
@@ -87,6 +88,7 @@
 					>
 						🌎 Resources
 					</button>
+
 				</div>
 
 				<!-- Properties Content -->
@@ -195,6 +197,8 @@
 		border-right: 1px solid rgba(0, 255, 136, 0.2);
 		display: flex;
 		flex-direction: column;
+		height: 100%;
+		overflow: hidden;
 	}
 
 	.right-sidebar {

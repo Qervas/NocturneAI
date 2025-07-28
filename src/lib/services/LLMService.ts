@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { agentPromptManager } from "./AgentPromptManager";
 
 export interface ChatMessage {
   role: string;
@@ -98,6 +99,11 @@ export class LLMService {
     message: string, 
     userName: string = 'User'
   ): Promise<string> {
+    // Get the agent's custom prompts from the prompt manager
+    const combinedPrompt = agentPromptManager.getCombinedPrompt(agentId);
+    
+    // If no custom prompts are set, fall back to the default system prompt
+    const systemPrompt = combinedPrompt || this.getAgentConfig(agentId)?.system_prompt || 'You are a helpful AI assistant.';
     try {
       // Check if we're in a Tauri environment
       if (typeof window !== 'undefined' && (window as any).__TAURI__) {
@@ -323,6 +329,12 @@ export class LLMService {
   }
 
   private async callOllamaDirectly(agent: AgentConfig, message: string, userName: string): Promise<string> {
+    // Get the agent's custom prompts from the prompt manager
+    const agentId = agent.id;
+    const combinedPrompt = agentPromptManager.getCombinedPrompt(agentId);
+    
+    // Use custom prompts if available, otherwise fall back to default
+    const systemPrompt = combinedPrompt || agent.system_prompt;
     // Try to get available models and use the best one
     let model = 'gemma3:latest'; // Default model
     
@@ -348,14 +360,14 @@ export class LLMService {
     }
     
     // Build system prompt with agent personality
-    const systemPrompt = `You are ${agent.name}, ${agent.personality}. 
+    const fullSystemPrompt = `You are ${agent.name}, ${agent.personality}. 
 Your specialization is: ${agent.specialization}
-${agent.system_prompt}
+${systemPrompt}
 
 Please respond in character, keeping your responses helpful but personality-driven.`;
 
     // Create a complete prompt with system context and user message
-    const fullPrompt = `${systemPrompt}
+    const fullPrompt = `${fullSystemPrompt}
 
 ${userName}: ${message}
 

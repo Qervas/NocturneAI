@@ -5,6 +5,12 @@ export interface SettingsData {
 	enabledSkills: Record<string, string[]>; // agentId -> array of enabled skill IDs
 	ownedSkills: Record<string, string[]>; // agentId -> array of owned skill IDs
 	
+	// Agent prompts
+	agentPrompts?: Record<string, any>; // agentId -> prompt configuration
+	
+	// Skill configurations
+	skillConfigs?: Record<string, any>; // skillKey -> skill configuration
+	
 	// Future settings can be added here
 	uiPreferences?: {
 		theme?: 'dark' | 'light';
@@ -175,6 +181,38 @@ class SettingsManager {
 	getOwnedSkills(agentId: string): string[] {
 		const settings = this.getCurrentSettings();
 		return settings.ownedSkills[agentId] || [];
+	}
+	
+	// Agent prompt methods
+	saveAgentPrompts(agentId: string, prompts: any): void {
+		this.settings.update(settings => ({
+			...settings,
+			agentPrompts: {
+				...settings.agentPrompts,
+				[agentId]: prompts
+			}
+		}));
+	}
+	
+	getAgentPrompts(agentId: string): any {
+		const settings = this.getCurrentSettings();
+		return settings.agentPrompts?.[agentId] || null;
+	}
+	
+	// Skill configuration methods
+	saveSkillConfig(skillKey: string, config: any): void {
+		this.settings.update(settings => ({
+			...settings,
+			skillConfigs: {
+				...settings.skillConfigs,
+				[skillKey]: config
+			}
+		}));
+	}
+	
+	getSkillConfig(skillKey: string): any {
+		const settings = this.getCurrentSettings();
+		return settings.skillConfigs?.[skillKey] || null;
 	}
 	
 	// Clear all settings (reset to defaults)

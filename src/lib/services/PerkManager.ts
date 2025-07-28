@@ -1,5 +1,6 @@
 import { writable } from "svelte/store";
 import type { Character } from "../types/Character";
+import { abilityManager } from "./AbilityManager";
 
 // RPG-Style Skill Trees for AI Agents
 export interface SkillNode {
@@ -55,7 +56,7 @@ class SkillTreeManager {
     totalAbilitiesUnlocked: 0,
   });
 
-  private skillDefinitions: Record<SkillCategory, SkillTreeDefinition>;
+  private skillDefinitions!: Record<SkillCategory, SkillTreeDefinition>;
 
   constructor() {
     this.initializeSkillTrees();
@@ -714,13 +715,16 @@ class SkillTreeManager {
       // Developer mode: don't deduct points
       // agentTree.availablePoints -= skill.cost;
 
-      // Add abilities to unlocked list
+      // Add abilities to unlocked list and grant to AbilityManager
       skill.effects.forEach((effect) => {
         if (
           effect.type === "ability" &&
           !agentTree.unlockedAbilities.includes(effect.value as string)
         ) {
           agentTree.unlockedAbilities.push(effect.value as string);
+          
+          // Grant ability to the agent in AbilityManager
+          abilityManager.grantAbility(agentId, effect.value as string);
         }
       });
 

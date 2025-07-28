@@ -3,6 +3,8 @@
   import { characterManager, characters, npcs, users, activeCharacter } from "../services/CharacterManager";
   import { communicationManager } from "../services/CommunicationManager";
   import { llmService } from "../services/LLMService";
+  import FileUploader from "./FileUploader.svelte";
+  import { renderMarkdownSafe } from "../utils/markdownRenderer";
   import type { Character, NPCAgent, UserPlayer } from "../types/Character";
   import type { CommunicationIntent } from "../types/Communication";
 
@@ -32,6 +34,16 @@
   let fadeTimeout: number;
   let isTyping = false;
   let lastActivity = Date.now();
+  
+  // File upload state
+  let showFileUploader = false;
+  let uploadedFiles: Array<{
+    id: string;
+    name: string;
+    size: number;
+    type: string;
+    url?: string;
+  }> = [];
 
   // Load chat history from localStorage
   function loadChatHistory() {
@@ -289,9 +301,18 @@
       scrollToBottom();
       handleChatActivity(); // Reset fade on new message
 
+      // Build context with uploaded files
+      let contextMessage = originalMessage;
+      if (uploadedFiles.length > 0 && !isGlobalResponse) {
+        const fileList = uploadedFiles.map(file => 
+          `📎 ${file.name} (${formatFileSize(file.size)})`
+        ).join('\n');
+        contextMessage = `Message: ${originalMessage}\n\nAttached Files:\n${fileList}`;
+      }
+
       // Get response from LLM service
       const agentId = agentName.toLowerCase();
-      const llmResponse = await llmService.sendMessageToAgent(agentId, originalMessage, 'You');
+      const llmResponse = await llmService.sendMessageToAgent(agentId, contextMessage, 'You');
 
       // Remove typing indicator and add real response
       chatHistory = chatHistory.filter(msg => msg.id !== typingMessage.id);
@@ -352,10 +373,11 @@
 
   function scrollToBottom() {
     setTimeout(() => {
-      if (chatContainer) {
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+      const messagesContainer = chatContainer?.querySelector('.messages-container') as HTMLElement;
+      if (messagesContainer) {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
       }
-    }, 100);
+    }, 50); // Reduced timeout for faster response
   }
 
   function formatTime(date: Date): string {
@@ -385,11 +407,16 @@
     if (tab === 'direct' && !selectedAgent) {
       selectedAgent = availableAgents[0] || 'Alpha';
     }
+    // Clear uploaded files when switching tabs
+    if (tab !== activeTab) {
+      uploadedFiles = [];
+    }
     handleChatActivity(); // Reset fade on tab change
   }
 
   function clearChat() {
     chatHistory = [];
+    uploadedFiles = [];
     saveChatHistory();
     handleChatActivity(); // Reset fade on clear
   }
@@ -402,6 +429,66 @@
   function toggleConnectionHelp() {
     showConnectionHelp = !showConnectionHelp;
     handleChatActivity(); // Reset fade on help toggle
+  }
+  
+  // File upload handlers
+  function handleFileUploaded(event: CustomEvent) {
+    const { file, fileInfo } = event.detail;
+    uploadedFiles = [...uploadedFiles, {
+      id: fileInfo.id,
+      name: fileInfo.name,
+      size: fileInfo.size,
+      type: fileInfo.type
+    }];
+    
+    // Add file message to chat
+    const fileMessage = {
+      id: generateMessageId(),
+      type: 'direct' as const,
+      sender: 'You',
+      message: `📎 Uploaded: ${fileInfo.name} (${formatFileSize(fileInfo.size)})`,
+      timestamp: new Date(),
+      target: selectedAgent || undefined
+    };
+    chatHistory = [...chatHistory, fileMessage];
+    saveChatHistory();
+    scrollToBottom();
+    handleChatActivity();
+  }
+  
+  function handleFileError(event: CustomEvent) {
+    const { file, fileInfo, error } = event.detail;
+    const errorMessage = {
+      id: generateMessageId(),
+      type: 'direct' as const,
+      sender: 'System',
+      message: `❌ Upload failed: ${fileInfo.name} - ${error}`,
+      timestamp: new Date(),
+      target: selectedAgent || undefined
+    };
+    chatHistory = [...chatHistory, errorMessage];
+    saveChatHistory();
+    scrollToBottom();
+    handleChatActivity();
+  }
+  
+  function handleFileRemoved(event: CustomEvent) {
+    const { fileId } = event.detail;
+    uploadedFiles = uploadedFiles.filter(f => f.id !== fileId);
+    handleChatActivity();
+  }
+  
+  function toggleFileUploader() {
+    showFileUploader = !showFileUploader;
+    handleChatActivity();
+  }
+  
+  function formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   }
 
   // Filter messages based on active tab
@@ -422,6 +509,11 @@
     msg.type === 'direct' && (msg.target === 'You' || msg.sender === 'You')
   ).length;
   $: agentCount = chatHistory.filter(msg => msg.type === 'agent').length;
+  
+  // Auto-scroll when messages change
+  $: if (filteredMessages.length > 0) {
+    setTimeout(() => scrollToBottom(), 10);
+  }
 </script>
 
 <!-- Game Chat Widget -->
@@ -533,7 +625,7 @@
               <span class="time">{formatTime(message.timestamp)}</span>
             </div>
             <div class="message-content {message.message.includes('💭 Thinking...') ? 'thinking' : ''}">
-              {message.message}
+              {@html renderMarkdownSafe(message.message)}
             </div>
           </div>
         {/each}
@@ -543,20 +635,67 @@
     {#if activeTab !== 'agent'}
       <!-- Chat Input -->
       <div class="chat-input-container">
-        <input
-          bind:this={inputElement}
-          bind:value={chatInput}
-          on:keydown={handleKeydown}
-          on:input={handleChatActivity}
-          placeholder={activeTab === 'direct' ? `Message ${selectedAgent}...` : "Type your message..."}
-          class="chat-input"
-          maxlength="500"
-          disabled={!isInitialized}
-          autocomplete="off"
-        />
-        <button class="send-btn" on:click={sendMessage} disabled={!chatInput.trim() || !isInitialized}>
-          ➤
-        </button>
+        <!-- Uploaded Files Indicator -->
+        {#if uploadedFiles.length > 0}
+          <div class="uploaded-files-indicator">
+            <span class="files-label">📎 Attached Files ({uploadedFiles.length}):</span>
+            <div class="files-list">
+              {#each uploadedFiles as file}
+                <span class="file-tag">
+                  {file.name}
+                  <button class="remove-file-btn" on:click={() => {
+                    uploadedFiles = uploadedFiles.filter(f => f.id !== file.id);
+                  }}>×</button>
+                </span>
+              {/each}
+            </div>
+          </div>
+        {/if}
+        
+        <div class="input-row">
+          <input
+            bind:this={inputElement}
+            bind:value={chatInput}
+            on:keydown={handleKeydown}
+            on:input={handleChatActivity}
+            placeholder={activeTab === 'direct' ? `Message ${selectedAgent}...` : "Type your message..."}
+            class="chat-input"
+            maxlength="500"
+            disabled={!isInitialized}
+            autocomplete="off"
+          />
+          <div class="input-actions">
+            <button 
+              class="action-btn file-btn" 
+              on:click={toggleFileUploader}
+              title="Attach files"
+              disabled={!isInitialized}
+            >
+              📎
+            </button>
+            <button 
+              class="send-btn" 
+              on:click={sendMessage} 
+              disabled={!chatInput.trim() || !isInitialized}
+            >
+              ➤
+            </button>
+          </div>
+        </div>
+        
+        <!-- File Uploader -->
+        {#if showFileUploader}
+          <div class="file-uploader-container">
+            <FileUploader 
+              multiple={true}
+              accept="*"
+              maxSize={50 * 1024 * 1024}
+              on:fileUploaded={handleFileUploaded}
+              on:fileError={handleFileError}
+              on:fileRemoved={handleFileRemoved}
+            />
+          </div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -567,10 +706,14 @@
     height: 100%;
     display: flex;
     flex-direction: column;
+    margin: 0;
+    padding: 0;
+    min-height: 0; /* Allow flex child to shrink */
   }
 
   .chat-panel {
     height: 100%;
+    max-height: calc(100vh); /* Responsive to viewport height */
     background: rgba(10, 10, 10, 0.95);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(0, 255, 136, 0.3);
@@ -768,8 +911,10 @@
     overflow-y: auto;
     padding: 12px 16px;
     min-height: 200px;
+    max-height: calc(100vh - 250px); /* Account for header and other elements */
     scrollbar-width: thin;
     scrollbar-color: var(--primary-green) transparent;
+    margin: 0;
   }
 
   .messages-container::-webkit-scrollbar {
@@ -827,6 +972,111 @@
     color: rgba(255, 255, 255, 0.9);
     word-wrap: break-word;
   }
+  
+  /* Markdown Styles */
+  .message-content strong {
+    font-weight: 600;
+    color: var(--primary-green);
+  }
+  
+  .message-content em {
+    font-style: italic;
+    color: rgba(255, 255, 255, 0.8);
+  }
+  
+  .message-content code {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    color: #00ff88;
+  }
+  
+  .message-content .inline-code {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    color: #00ff88;
+  }
+  
+  .message-content .code-block {
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    border-radius: 6px;
+    padding: 12px;
+    margin: 8px 0;
+    overflow-x: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    line-height: 1.3;
+  }
+  
+  .message-content .code-block code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: #00ff88;
+    font-size: inherit;
+  }
+  
+  /* Syntax Highlighting */
+  .message-content .code-block .keyword {
+    color: #ff6b6b;
+    font-weight: bold;
+  }
+  
+  .message-content .code-block .string {
+    color: #51cf66;
+  }
+  
+  .message-content .code-block .number {
+    color: #ffd43b;
+  }
+  
+  .message-content .code-block .comment {
+    color: #868e96;
+    font-style: italic;
+  }
+  
+  .message-content .code-block .literal {
+    color: #ff922b;
+  }
+  
+  .message-content .code-block .tag {
+    color: #339af0;
+  }
+  
+  .message-content .code-block .attr {
+    color: #ffd43b;
+  }
+  
+  .message-content .code-block .property {
+    color: #51cf66;
+  }
+  
+  .message-content .code-block .punctuation {
+    color: #adb5bd;
+  }
+  
+  .message-content a {
+    color: var(--primary-green);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s;
+  }
+  
+  .message-content a:hover {
+    border-bottom-color: var(--primary-green);
+  }
+  
+  .message-content br {
+    margin-bottom: 4px;
+  }
 
   .thinking {
     font-style: italic;
@@ -839,20 +1089,123 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    height: 200px;
+    flex: 1;
     color: rgba(255, 255, 255, 0.5);
     text-align: center;
     font-style: italic;
     font-size: 0.9rem;
+    padding: 20px;
   }
 
   .chat-input-container {
     display: flex;
+    flex-direction: column;
     gap: 8px;
     padding: 12px 16px;
     background: rgba(26, 26, 46, 0.8);
     border-top: 1px solid rgba(0, 255, 136, 0.1);
     border-radius: 0 0 8px 8px;
+  }
+  
+  .input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  
+  .input-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+  
+  .action-btn {
+    background: transparent;
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    color: rgba(255, 255, 255, 0.8);
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+  }
+  
+  .action-btn:hover:not(:disabled) {
+    background: rgba(0, 255, 136, 0.1);
+    border-color: var(--primary-green);
+    color: var(--primary-green);
+  }
+  
+  .action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  .file-btn {
+    font-size: 16px;
+  }
+  
+  .file-uploader-container {
+    margin-top: 8px;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    border: 1px solid rgba(0, 255, 136, 0.2);
+  }
+  
+  .uploaded-files-indicator {
+    padding: 8px 12px;
+    background: rgba(0, 255, 136, 0.1);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+  
+  .files-label {
+    font-size: 12px;
+    color: var(--primary-green);
+    font-weight: 500;
+    margin-bottom: 6px;
+    display: block;
+  }
+  
+  .files-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .file-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.8);
+  }
+  
+  .remove-file-btn {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s;
+  }
+  
+  .remove-file-btn:hover {
+    background: rgba(255, 0, 0, 0.2);
+    color: #ff4444;
   }
 
   .chat-input {
