@@ -4,7 +4,10 @@
   import { characterManager, characters, npcs, users, activeCharacter, selectedAgent, getAgentDisplayName } from "../services/CharacterManager";
   import { communicationManager } from "../services/CommunicationManager";
   import { llmService } from "../services/LLMService";
+  import { abilityManager } from "../services/AbilityManager";
+  import { settingsManager } from "../services/SettingsManager";
   import FileUploader from "./FileUploader.svelte";
+  import { uploadedFiles, addFile, removeFile, updateFile } from "../services/FileStore";
   import { renderMarkdownSafe } from "../utils/markdownRenderer";
   import type { Character, NPCAgent, UserPlayer } from "../types/Character";
   import type { CommunicationIntent } from "../types/Communication";
@@ -18,9 +21,9 @@
     agents: string[]; // Array of agent IDs (short names like 'alpha', 'beta')
     messages: Array<{
       id: string;
-      sender: string;
-      message: string;
-      timestamp: Date;
+    sender: string;
+    message: string;
+    timestamp: Date;
       type: 'user' | 'agent' | 'system';
     }>;
     createdAt: Date;
@@ -49,17 +52,14 @@
   
   // File upload state
   let showFileUploader = false;
-  let uploadedFiles: Array<{
-    id: string;
-    name: string;
-    size: number;
-    type: string;
-    url?: string;
-  }> = [];
 
   // Get current session
   $: currentSession = sessions.find(s => s.id === currentSessionId) || null;
   $: currentMessages = currentSession?.messages || [];
+
+  // Check if current agent has file reading ability
+  $: currentAgentHasFileReading = $selectedAgent ? 
+    settingsManager.isSkillEnabled(`agent_${$selectedAgent}`, 'file_read') : false;
 
   // Load sessions from localStorage
   function loadSessions() {
@@ -72,8 +72,8 @@
           createdAt: new Date(session.createdAt),
           lastActive: new Date(session.lastActive),
           messages: session.messages.map((msg: any) => ({
-            ...msg,
-            timestamp: new Date(msg.timestamp)
+          ...msg,
+          timestamp: new Date(msg.timestamp)
           }))
         }));
       }
@@ -89,6 +89,51 @@
     } catch (error) {
       console.warn('Failed to save sessions:', error);
     }
+  }
+
+  // Read file content using agent's ability
+  async function readFileContent(file: File): Promise<string | null> {
+    if (!$selectedAgent || !currentAgentHasFileReading) {
+      console.log('❌ Agent does not have file reading ability');
+      return null;
+    }
+
+    try {
+      const agentId = `agent_${$selectedAgent}`;
+      console.log('📖 Reading file content for agent:', agentId);
+      
+      const result = await abilityManager.executeAbility(agentId, 'read_files', {
+        file: file
+      });
+      
+      if (result.success && result.content) {
+        console.log('✅ File content read successfully');
+        return result.content;
+      } else {
+        console.log('❌ Failed to read file content:', result.error);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Error reading file content:', error);
+      return null;
+    }
+  }
+
+  // Simple file reading function
+  async function readFileContentSimple(file: File): Promise<string | null> {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        console.log('📖 File content read directly:', content?.length || 0, 'characters');
+        resolve(content);
+      };
+      reader.onerror = () => {
+        console.log('❌ Error reading file directly');
+        resolve(null);
+      };
+      reader.readAsText(file);
+    });
   }
 
   // Create new session
@@ -220,15 +265,15 @@
     // Initialize async operations
     const initAsync = async () => {
       loadSessions();
-      
-      // Initialize character manager and LLM service
-      characterManager.initializeSampleData();
-      await llmService.initialize();
-      
-      // Check LLM connectivity status
-      llmStatus = await llmService.getConnectionStatus();
-      
-      isInitialized = true;
+    
+    // Initialize character manager and LLM service
+    characterManager.initializeSampleData();
+    await llmService.initialize();
+    
+    // Check LLM connectivity status
+    llmStatus = await llmService.getConnectionStatus();
+    
+    isInitialized = true;
       console.log('Chat initialized, isInitialized:', isInitialized);
       
       // Create default session if none exist
@@ -257,7 +302,7 @@
       clearInterval(opacityInterval);
       if (fadeTimeout) {
         clearTimeout(fadeTimeout);
-      }
+    }
     };
   });
 
@@ -291,7 +336,7 @@
     currentSession.agents.forEach(agentId => {
       const fullAgentId = `agent_${agentId}`;
       communicationManager.sendUserMessage('player_main', fullAgentId, currentMessage, 'question');
-    });
+      });
     
     chatInput = "";
     handleChatActivity(); // Reset fade on message send
@@ -304,7 +349,7 @@
     // Send to all agents in the session
     currentSession.agents.forEach((agentId, index) => {
       setTimeout(() => sendToAIAgent(agentId, currentMessage, index), 500 + (index * 800) + Math.random() * 1000);
-    });
+      });
   }
 
   async function sendToAIAgent(agentId: string, originalMessage: string, responseIndex: number = 0) {
@@ -326,15 +371,15 @@
 
       // Build context with uploaded files
       let contextMessage = originalMessage;
-      if (uploadedFiles.length > 0) {
-        const fileList = uploadedFiles.map(file => 
+      if ($uploadedFiles.length > 0) {
+        const fileList = $uploadedFiles.map(file => 
           `📎 ${file.name} (${formatFileSize(file.size)})`
         ).join('\n');
         contextMessage = `Message: ${originalMessage}\n\nAttached Files:\n${fileList}`;
       }
 
       console.log('📤 Sending to LLM service:', { agentId, contextMessage });
-      
+
       // Get response from LLM service
       const llmResponse = await llmService.sendMessageToAgent(agentId, contextMessage, 'You');
       
@@ -444,14 +489,16 @@
   }
   
   // File upload handlers
-  function handleFileUploaded(event: CustomEvent) {
+  async function handleFileUploaded(event: CustomEvent) {
     const { file, fileInfo } = event.detail;
-    uploadedFiles = [...uploadedFiles, {
+    
+    // Add file to uploaded files list
+    addFile({
       id: fileInfo.id,
       name: fileInfo.name,
       size: fileInfo.size,
       type: fileInfo.type
-    }];
+    });
     
     // Add file message to chat
     const fileMessage = {
@@ -462,6 +509,25 @@
       type: 'user' as const
     };
     addMessageToSession(fileMessage);
+    
+    // Try to read file content (always read, not just when agent has ability)
+    console.log('📖 Attempting to read file content:', fileInfo.name, 'Agent has file reading:', currentAgentHasFileReading);
+    
+    if (file) {
+      const content = await readFileContentSimple(file);
+      console.log('📖 File content result:', content ? 'Success' : 'Failed', 'Content length:', content?.length || 0);
+      
+      if (content) {
+        // Update the uploaded file with content
+        updateFile(fileInfo.id, { content });
+        console.log('📖 File content updated in store:', fileInfo.name);
+      } else {
+        console.log('❌ Failed to read file content:', fileInfo.name);
+      }
+    } else {
+      console.log('❌ No file object available for reading');
+    }
+    
     scrollToBottom();
     handleChatActivity();
   }
@@ -482,7 +548,7 @@
   
   function handleFileRemoved(event: CustomEvent) {
     const { fileId } = event.detail;
-    uploadedFiles = uploadedFiles.filter(f => f.id !== fileId);
+    removeFile(fileId);
     handleChatActivity();
   }
   
@@ -490,6 +556,13 @@
     showFileUploader = !showFileUploader;
     handleChatActivity();
   }
+
+  function showFileExplorer() {
+    // Dispatch event to show file explorer
+    window.dispatchEvent(new CustomEvent('showFileExplorer'));
+  }
+
+
 
   function getCharacterColor(sender: string): string {
     if (sender === 'System') return '#f59e0b';
@@ -522,20 +595,20 @@
         </div>
       {:else}
         <h3>No Session Selected</h3>
-      {/if}
-    </div>
-    
+    {/if}
+      </div>
+
     <div class="chat-controls">
       {#if currentSession}
         <button class="control-btn" on:click={() => isCreatingSession = true} title="Add agent">
           ➕
-        </button>
+            </button>
         <button class="control-btn" on:click={() => showConnectionHelp = !showConnectionHelp} title="Connection help">
-          ❓
-        </button>
+              ❓
+            </button>
       {/if}
-    </div>
-  </div>
+          </div>
+        </div>
 
   <!-- Connection Status -->
   <div class="connection-status">
@@ -544,24 +617,24 @@
   </div>
 
   <!-- Connection Help -->
-  {#if showConnectionHelp}
+        {#if showConnectionHelp}
     <div class="connection-help">
-      <h4>🤖 How to Connect AI Agents</h4>
-      <p><strong>Option 1: Ollama (Recommended)</strong></p>
-      <ol>
-        <li>Download Ollama from <code>ollama.ai</code></li>
-        <li>Install and run: <code>ollama run llama3.2</code></li>
-        <li>Agents will connect automatically!</li>
-      </ol>
-      <p><strong>Option 2: LM Studio</strong></p>
-      <ol>
-        <li>Download LM Studio from <code>lmstudio.ai</code></li>
-        <li>Load a model and start the local server</li>
-        <li>Use port 1234 (default)</li>
-      </ol>
+            <h4>🤖 How to Connect AI Agents</h4>
+            <p><strong>Option 1: Ollama (Recommended)</strong></p>
+            <ol>
+              <li>Download Ollama from <code>ollama.ai</code></li>
+              <li>Install and run: <code>ollama run llama3.2</code></li>
+              <li>Agents will connect automatically!</li>
+            </ol>
+            <p><strong>Option 2: LM Studio</strong></p>
+            <ol>
+              <li>Download LM Studio from <code>lmstudio.ai</code></li>
+              <li>Load a model and start the local server</li>
+              <li>Use port 1234 (default)</li>
+            </ol>
       <button class="help-close-btn" on:click={() => showConnectionHelp = false}>Close Help</button>
-    </div>
-  {/if}
+          </div>
+        {/if}
 
   <!-- Sessions List (Compact) -->
   <div class="sessions-list">
@@ -577,17 +650,17 @@
           🗑️
         </button>
       </div>
-    {/each}
+            {/each}
     <button class="new-session-btn" on:click={() => isCreatingSession = true}>
       + New Chat
     </button>
-  </div>
+        </div>
 
   <!-- Scrollable Messages Area -->
   <div class="messages-scroll-area">
     <div class="messages-container" bind:this={chatContainer}>
       {#if currentMessages.length === 0}
-        <div class="no-messages">
+          <div class="no-messages">
           <div class="welcome-message">
             <h2>🤖 Multi-Agent Chat</h2>
             <p>Start a conversation with your AI agents!</p>
@@ -596,39 +669,39 @@
               <p>Agents: {currentSession.agents.map(agentId => getAgentDisplayName(agentId)).join(', ')}</p>
             {/if}
           </div>
-        </div>
-      {:else}
+          </div>
+        {:else}
         {#each currentMessages as message (message.id)}
-          {@const isOwn = isOwnMessage(message.sender)}
-          {@const charColor = getCharacterColor(message.sender)}
+            {@const isOwn = isOwnMessage(message.sender)}
+            {@const charColor = getCharacterColor(message.sender)}
           <div class="chat-message {isOwn ? 'own-message' : 'other-message'}" style="--char-color: {charColor}">
             <div class="message-header">
               <span class="sender" style="color: {charColor}">
-                {message.sender}
-              </span>
+                    {message.sender}
+                </span>
               <span class="time">{formatTime(message.timestamp)}</span>
-            </div>
+              </div>
             <div class="message-content {message.message.includes('💭 Thinking...') ? 'thinking' : ''}">
               {@html renderMarkdownSafe(message.message)}
+              </div>
             </div>
-          </div>
-        {/each}
-      {/if}
+          {/each}
+        {/if}
     </div>
-  </div>
+      </div>
 
   <!-- Chat Input (Fixed at bottom) -->
   <div class="chat-input-container">
     <!-- Uploaded Files Indicator -->
-    {#if uploadedFiles.length > 0}
-      <div class="uploaded-files-indicator">
-        <span class="files-label">📎 Attached Files ({uploadedFiles.length}):</span>
+    {#if $uploadedFiles.length > 0}
+      <div class="uploaded-files-indicator" on:click={showFileExplorer}>
+        <span class="files-label">📎 Attached Files ({$uploadedFiles.length}):</span>
         <div class="files-list">
-          {#each uploadedFiles as file}
-            <span class="file-tag">
+          {#each $uploadedFiles as file}
+            <span class="file-tag" on:click|stopPropagation={showFileExplorer}>
               {file.name}
               <button class="remove-file-btn" on:click={() => {
-                uploadedFiles = uploadedFiles.filter(f => f.id !== file.id);
+                removeFile(file.id);
               }}>×</button>
             </span>
           {/each}
@@ -637,33 +710,34 @@
     {/if}
     
     <div class="input-row">
-      <input
-        bind:this={inputElement}
-        bind:value={chatInput}
-        on:keydown={handleKeydown}
+          <input
+            bind:this={inputElement}
+            bind:value={chatInput}
+            on:keydown={handleKeydown}
         on:input={handleChatActivity}
         placeholder={currentSession ? "Type your message..." : "Select a session to start chatting..."}
         class="chat-input"
-        maxlength="500"
+            maxlength="500"
         disabled={!isInitialized || !currentSession}
         autocomplete="off"
       />
       <div class="input-actions">
         <button 
-          class="action-btn file-btn" 
+          class="action-btn file-btn {currentAgentHasFileReading ? 'file-reading-enabled' : ''}" 
           on:click={toggleFileUploader}
-          title="Attach files"
+          title={currentAgentHasFileReading ? "Attach files (content reading enabled)" : "Attach files (content reading disabled)"}
           disabled={!isInitialized}
         >
-          📎
+          {currentAgentHasFileReading ? '📖' : '📎'}
         </button>
+
         <button 
           class="send-btn" 
           on:click={sendMessage} 
           disabled={!chatInput.trim() || !isInitialized || !currentSession}
         >
-          ➤
-        </button>
+            ➤
+          </button>
       </div>
     </div>
   </div>
@@ -710,8 +784,8 @@
         }}>Create Session</button>
       </div>
     </div>
-  </div>
-{/if}
+        </div>
+      {/if}
 
 <!-- File Uploader Modal -->
 {#if showFileUploader}
@@ -723,8 +797,10 @@
         on:fileRemoved={handleFileRemoved}
       />
     </div>
-  </div>
-{/if}
+    </div>
+  {/if}
+
+
 
 <style>
   .chat-interface {
@@ -924,9 +1000,9 @@
     .message-content {
       padding: 0.75rem;
       font-size: 0.9rem;
-    }
-    
-    .message-header {
+  }
+
+  .message-header {
       font-size: 0.8rem;
     }
   }
@@ -1007,10 +1083,18 @@
   }
 
   .uploaded-files-indicator {
-    margin-bottom: 1rem;
-    padding: 0.5rem;
-    background: var(--bg-darker);
-    border-radius: 0.25rem;
+    padding: 8px 12px;
+    background: rgba(0, 255, 136, 0.1);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .uploaded-files-indicator:hover {
+    background: rgba(0, 255, 136, 0.2);
+    border-color: rgba(0, 255, 136, 0.5);
   }
 
   .files-label {
@@ -1026,14 +1110,24 @@
   }
 
   .file-tag {
-    background: var(--accent-color);
-    color: white;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
-    font-size: 0.8rem;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 6px;
+    padding: 4px 8px;
+    background: rgba(0, 255, 136, 0.2);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    border-radius: 4px;
+    font-size: 12px;
+    color: #00ff88;
+    margin-right: 6px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .file-tag:hover {
+    background: rgba(0, 255, 136, 0.3);
+    border-color: rgba(0, 255, 136, 0.5);
   }
 
   .remove-file-btn {
@@ -1217,4 +1311,18 @@
      --border-color: #333333;
      --accent-color: #059669;
    }
+
+   .file-reading-enabled {
+     background: rgba(5, 150, 105, 0.2) !important;
+     border-color: #059669 !important;
+     color: #059669 !important;
+   }
+
+   .file-reading-enabled:hover {
+     background: rgba(5, 150, 105, 0.3) !important;
+   }
+
+
+
+   
 </style>

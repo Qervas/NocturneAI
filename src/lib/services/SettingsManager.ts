@@ -1,4 +1,5 @@
 import { writable, type Writable } from 'svelte/store';
+import { abilityManager } from './AbilityManager';
 
 export interface SettingsData {
 	// Skills settings
@@ -58,6 +59,11 @@ class SettingsManager {
 		this.settings.subscribe(settings => {
 			this.saveSettings(settings);
 		});
+		
+		// Sync enabled skills with abilities after initialization
+		setTimeout(() => {
+			this.syncEnabledSkillsWithAbilities();
+		}, 200);
 	}
 	
 	// Get the settings store
@@ -125,6 +131,9 @@ class SettingsManager {
 			}
 			return { ...settings, enabledSkills };
 		});
+		
+		// Grant corresponding ability to the agent
+		this.grantAbilityForSkill(agentId, skillId);
 	}
 	
 	disableSkill(agentId: string, skillId: string): void {
@@ -135,6 +144,9 @@ class SettingsManager {
 			}
 			return { ...settings, enabledSkills };
 		});
+		
+		// Revoke corresponding ability from the agent
+		this.revokeAbilityForSkill(agentId, skillId);
 	}
 	
 	toggleSkill(agentId: string, skillId: string): void {
@@ -184,6 +196,63 @@ class SettingsManager {
 	getOwnedSkills(agentId: string): string[] {
 		const settings = this.getCurrentSettings();
 		return settings.ownedSkills[agentId] || [];
+	}
+
+	// Grant ability based on skill ID
+	private grantAbilityForSkill(agentId: string, skillId: string): void {
+		// Map skill IDs to ability IDs
+		const skillToAbilityMap: Record<string, string> = {
+			'file_read': 'read_files',
+			'file_write': 'write_files',
+			// Add more mappings as needed
+		};
+
+		const abilityId = skillToAbilityMap[skillId];
+		if (abilityId) {
+			console.log(`🔧 Granting ability ${abilityId} to agent ${agentId} for skill ${skillId}`);
+			abilityManager.grantAbility(agentId, abilityId);
+			
+			// Verify the ability was granted
+			const hasAbility = abilityManager.hasAbility(agentId, abilityId);
+			console.log(`🔍 Ability ${abilityId} granted to ${agentId}: ${hasAbility}`);
+		} else {
+			console.log(`⚠️ No ability mapping found for skill ${skillId}`);
+		}
+	}
+
+	// Revoke ability based on skill ID
+	private revokeAbilityForSkill(agentId: string, skillId: string): void {
+		// Map skill IDs to ability IDs
+		const skillToAbilityMap: Record<string, string> = {
+			'file_read': 'read_files',
+			'file_write': 'write_files',
+			// Add more mappings as needed
+		};
+
+		const abilityId = skillToAbilityMap[skillId];
+		if (abilityId) {
+			console.log(`🔧 Revoking ability ${abilityId} from agent ${agentId} for skill ${skillId}`);
+			abilityManager.removeAbility(agentId, abilityId);
+			
+			// Verify the ability was revoked
+			const hasAbility = abilityManager.hasAbility(agentId, abilityId);
+			console.log(`🔍 Ability ${abilityId} revoked from ${agentId}: ${!hasAbility}`);
+		} else {
+			console.log(`⚠️ No ability mapping found for skill ${skillId}`);
+		}
+	}
+
+	// Sync all enabled skills with abilities
+	syncEnabledSkillsWithAbilities(): void {
+		const settings = this.getCurrentSettings();
+		
+		Object.entries(settings.enabledSkills).forEach(([agentId, enabledSkills]) => {
+			enabledSkills.forEach(skillId => {
+				this.grantAbilityForSkill(agentId, skillId);
+			});
+		});
+		
+		console.log('🔄 Synced all enabled skills with abilities');
 	}
 	
 	// Agent prompt methods

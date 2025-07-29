@@ -235,10 +235,16 @@ class AbilityManager {
 		}
 	}
 	
-	// Register default abilities (placeholder)
+	// Register default abilities
 	private registerDefaultAbilities(): void {
-		// This will be populated by individual ability files
-		console.log('AbilityManager initialized - ready to register abilities');
+		// Import and register file operation abilities
+		import('../abilities').then(({ simpleFileReaderAbility, simpleFileWriterAbility }) => {
+			this.registerAbility(simpleFileReaderAbility);
+			this.registerAbility(simpleFileWriterAbility);
+			console.log('✅ Registered file operation abilities');
+		}).catch(error => {
+			console.error('❌ Failed to register abilities:', error);
+		});
 	}
 }
 

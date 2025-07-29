@@ -139,6 +139,8 @@
 	function toggleSkill(skillId: string) {
 		if (!$selectedAgent) return;
 		
+		console.log(`🔄 Toggling skill ${skillId} for agent ${$selectedAgent}`);
+		
 		if (applyToAllAgents) {
 			// Apply to all agents
 			availableAgents.forEach(agent => {
@@ -149,6 +151,8 @@
 			const fullAgentId = getAgentFullId($selectedAgent);
 			settingsManager.toggleSkill(fullAgentId, skillId);
 		}
+		
+		console.log(`✅ Skill ${skillId} toggled for agent ${$selectedAgent}`);
     }
 
     function getSkillRank(skillId: string): number {

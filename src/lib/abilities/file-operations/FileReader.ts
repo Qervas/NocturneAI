@@ -134,9 +134,9 @@ export class FileReaderAbility {
 
   canExecute(params: any): boolean {
     if (!params.filePath && !params.file) {
-      return false;
-    }
-    
+			return false;
+		}
+		
     const file = params.file || { name: params.filePath };
     const fileType = this.getFileType(file.name);
     
@@ -145,7 +145,7 @@ export class FileReaderAbility {
   }
 
   async execute(params: any): Promise<FileReadResult> {
-    try {
+		try {
       const file = params.file || await this.loadFile(params.filePath);
       
       if (!file) {
@@ -153,8 +153,8 @@ export class FileReaderAbility {
           success: false,
           error: 'No file provided or file not found'
         };
-      }
-
+			}
+			
       // Validate file
       const validation = this.validateFile(file);
       if (!validation.valid) {
@@ -193,16 +193,16 @@ export class FileReaderAbility {
       }
 
       const metadata = this.config.includeMetadata ? this.extractMetadata(file) : undefined;
-
-      return {
-        success: true,
+			
+			return {
+				success: true,
         content,
         metadata
-      };
-
-    } catch (error) {
-      return {
-        success: false,
+			};
+			
+		} catch (error) {
+			return {
+				success: false,
         error: `File reading failed: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
@@ -214,8 +214,8 @@ export class FileReaderAbility {
     for (const [typeId, config] of Object.entries(FILE_TYPES)) {
       if (config.extensions.some(ext => ext.toLowerCase() === `.${extension}`)) {
         return typeId;
-      }
-    }
+		}
+	}
     
     return 'text'; // Default to text
   }
@@ -330,7 +330,7 @@ export class FileReaderAbility {
 
   setMaxFileSize(size: number): void {
     this.config.maxFileSize = size;
-  }
+	}
 }
 
 // Create and register the ability

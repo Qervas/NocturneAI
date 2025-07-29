@@ -417,7 +417,7 @@ ${agent.name}:`;
       const connectivity = await this.checkLLMConnectivity();
       if (connectivity.connected) {
         return `🟢 ${connectivity.service} - Ready`;
-      } else {
+    } else {
         return `🔴 ${connectivity.service} - ${connectivity.message}`;
       }
     } catch (error) {

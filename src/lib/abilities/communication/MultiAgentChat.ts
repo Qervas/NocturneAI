@@ -106,9 +106,9 @@ export class MultiAgentChatAbility {
 
   canExecute(params: any): boolean {
     if (!params.action) {
-      return false;
-    }
-    
+			return false;
+		}
+		
     const { action, sessionId, participants, message } = params;
     
     switch (action) {
@@ -158,22 +158,22 @@ export class MultiAgentChatAbility {
 
   private canCreateSession(participants: string[]): boolean {
     if (!participants || participants.length < 2) {
-      return false;
-    }
-    
+			return false;
+		}
+		
     return participants.length <= this.config.maxParticipants;
   }
 
   private canSendMessage(sessionId: string, message: any): boolean {
     if (!sessionId || !message) {
-      return false;
-    }
-    
+			return false;
+		}
+		
     const session = this.sessions.get(sessionId);
     if (!session || !session.isActive) {
-      return false;
-    }
-    
+			return false;
+		}
+		
     const content = typeof message === 'string' ? message : message.content;
     return content && content.length <= this.config.maxMessageLength;
   }
@@ -250,8 +250,8 @@ export class MultiAgentChatAbility {
     const content = typeof message === 'string' ? message : message.content;
     const messageType = message.type || 'text';
     const metadata = message.metadata;
-
-    // Validate message
+			
+			// Validate message
     if (!content || content.length > this.config.maxMessageLength) {
       return {
         success: false,
@@ -265,15 +265,15 @@ export class MultiAgentChatAbility {
         success: false,
         error: 'File sharing is not allowed'
       };
-    }
-
+			}
+			
     if (messageType === 'image' && !this.config.allowImageSharing) {
       return {
         success: false,
         error: 'Image sharing is not allowed'
       };
-    }
-
+			}
+			
     // Create message
     const chatMessage: ChatMessage = {
       id: this.generateMessageId(),
@@ -284,7 +284,7 @@ export class MultiAgentChatAbility {
       messageType: messageType as any,
       metadata
     };
-
+			
     // Add to session
     session.messages.push(chatMessage);
     session.lastActivity = new Date();
@@ -293,9 +293,9 @@ export class MultiAgentChatAbility {
     if (session.messages.length > this.config.messageHistoryLimit) {
       session.messages = session.messages.slice(-this.config.messageHistoryLimit);
     }
-
-    return {
-      success: true,
+			
+			return {
+				success: true,
       messageId: chatMessage.id,
       message: {
         id: chatMessage.id,
@@ -325,8 +325,8 @@ export class MultiAgentChatAbility {
     }
 
     if (session.participants.length >= (session.maxParticipants || this.config.maxParticipants)) {
-      return {
-        success: false,
+			return {
+				success: false,
         error: 'Session is full'
       };
     }
@@ -360,7 +360,7 @@ export class MultiAgentChatAbility {
 
     session.participants.splice(index, 1);
     session.lastActivity = new Date();
-
+	
     // Archive session if no participants left
     if (session.participants.length === 0) {
       session.isActive = false;
@@ -404,9 +404,9 @@ export class MultiAgentChatAbility {
         success: false,
         error: 'Session not found'
       };
-    }
-
-    return {
+	}
+	
+	return {
       success: true,
       messages: session.messages.map(msg => ({
         id: msg.id,
@@ -421,7 +421,7 @@ export class MultiAgentChatAbility {
 
   private generateSessionId(): string {
     return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
+}
 
   private generateMessageId(): string {
     return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

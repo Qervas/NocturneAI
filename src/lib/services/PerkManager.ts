@@ -61,6 +61,12 @@ class SkillTreeManager {
   constructor() {
     this.initializeSkillTrees();
     this.loadSavedData();
+    
+    // Sync existing abilities with the ability manager
+    setTimeout(() => {
+      this.syncAbilitiesWithManager();
+      console.log('🔄 Synced skill abilities with ability manager');
+    }, 100);
   }
 
   private initializeSkillTrees() {
@@ -829,6 +835,17 @@ class SkillTreeManager {
       }
       return skills;
     });
+  }
+
+  // Sync all unlocked abilities with the ability manager
+  public syncAbilitiesWithManager(): void {
+    this.agentSkills.subscribe((skills) => {
+      Object.entries(skills).forEach(([agentId, agentTree]) => {
+        agentTree.unlockedAbilities.forEach((abilityId) => {
+          abilityManager.grantAbility(agentId, abilityId);
+        });
+      });
+    })();
   }
 }
 

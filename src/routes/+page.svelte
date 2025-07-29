@@ -7,12 +7,15 @@
 	import PerkPanel from "../lib/components/PerkPanel.svelte";
 	import WorldResources from "../lib/components/WorldResources.svelte";
 	import CharacterPanel from "../lib/components/CharacterPanel.svelte";
+	import FileAbilityTester from "../lib/components/FileAbilityTester.svelte";
+	import FloatingFileExplorer from "../lib/components/FloatingFileExplorer.svelte";
 
 	import { selectedAgent } from "../lib/services/CharacterManager";
 	import { layout, layoutManager } from "../lib/services/LayoutManager";
 	import LayoutDebug from "../lib/components/LayoutDebug.svelte";
+	import { uploadedFiles } from "../lib/services/FileStore";
 
-	let activeTab = "skills"; // "skills" | "character" | "resources" | "strategy"
+	let activeTab = "skills"; // "skills" | "character" | "resources" | "files"
 	
 	// Layout management
 	let chatContainer: HTMLElement | undefined;
@@ -125,6 +128,13 @@
 						>
 							🌎 Resources
 						</button>
+						<button 
+							class="property-tab" 
+							class:active={activeTab === "files"}
+							on:click={() => activeTab = "files"}
+						>
+							📁 Files
+						</button>
 					</div>
 
 					<!-- Properties Content -->
@@ -135,6 +145,8 @@
 							<CharacterPanel />
 						{:else if activeTab === "resources"}
 							<WorldResources />
+						{:else if activeTab === "files"}
+							<FileAbilityTester />
 						{/if}
 					</div>
 				</div>
@@ -145,6 +157,9 @@
 
 <!-- Layout Debug Component -->
 <LayoutDebug />
+
+<!-- Floating File Explorer -->
+<FloatingFileExplorer files={$uploadedFiles} />
 
 <style lang="css">
 	.game-layout {
