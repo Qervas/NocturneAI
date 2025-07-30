@@ -2,6 +2,9 @@
   import { simulationController, type SimulationSpeed } from '../services/SimulationController';
   import { onMount, onDestroy } from 'svelte';
 
+  // Props
+  export let compact: boolean = false;
+
   // Reactive stores from simulation controller
   $: speed = simulationController.speed;
   $: state = simulationController.state;
@@ -95,38 +98,53 @@
   });
 </script>
 
-<div class="simulation-controls" class:glow={glowEffect}>
-  <!-- Main Control Panel -->
-  <div class="control-panel">
-    <div class="primary-controls">
+{#if compact}
+  <!-- Compact Header Mode -->
+  <div class="simulation-controls-compact" class:glow={glowEffect}>
+    <div class="compact-controls">
       <!-- Play/Pause Button -->
       <button
-        class="control-btn primary"
+        class="compact-btn primary"
         class:active={$state === 'running'}
         on:click={handleToggle}
         on:mouseenter={() => showTooltipFor('toggle')}
         on:mouseleave={hideTooltip}
-        style="color: {$state === 'running' ? speedConfig[$speed].color : '#888'}"
+        style="color: {$state === 'running' ? speedConfig[$speed].color : '#00ff88'}"
       >
         {$state === 'running' ? '⏸️' : '▶️'}
       </button>
 
       <!-- Speed Control -->
       <button
-        class="control-btn speed"
+        class="compact-btn speed"
         class:active={$state === 'running'}
         on:click={handleSpeedCycle}
         on:mouseenter={() => showTooltipFor('speed')}
         on:mouseleave={hideTooltip}
         style="color: {speedConfig[$speed].color}"
       >
-        <span class="speed-icon">{speedConfig[$speed].label}</span>
         <span class="speed-text">{speedConfig[$speed].multiplier}</span>
       </button>
 
+      <!-- Status Display -->
+      <div class="compact-status">
+        <div
+          class="status-dot"
+          class:running={$state === 'running'}
+          class:paused={$state === 'paused'}
+        ></div>
+        <span class="status-text">{$state === 'running' ? 'RUNNING' : 'PAUSED'}</span>
+      </div>
+
+      <!-- Quick Stats -->
+      <div class="compact-stats">
+        <span class="compact-stat">{formatNumber($statistics.tickCount)} ticks</span>
+        <span class="compact-stat">{formatTime($statistics.totalRunTime)}</span>
+      </div>
+
       <!-- Reset Button -->
       <button
-        class="control-btn secondary"
+        class="compact-btn secondary"
         on:click={handleReset}
         on:mouseenter={() => showTooltipFor('reset')}
         on:mouseleave={hideTooltip}
@@ -135,122 +153,304 @@
       </button>
     </div>
 
-    <!-- Status Indicator -->
-    <div class="status-indicator">
-      <div
-        class="status-dot"
-        class:running={$state === 'running'}
-        class:paused={$state === 'paused'}
-      ></div>
-      <span class="status-text">{$state.toUpperCase()}</span>
-    </div>
-  </div>
-
-  <!-- Stats Panel -->
-  <div class="stats-panel">
-    <div class="stats-row">
-      <div class="stat-item">
-        <span class="stat-value">{formatNumber($statistics.tickCount)}</span>
-        <span class="stat-label">Ticks</span>
-      </div>
-
-      <div class="stat-item">
-        <span class="stat-value">{formatTime($statistics.totalRunTime)}</span>
-        <span class="stat-label">Runtime</span>
-      </div>
-
-      <div class="stat-item">
-        <span class="stat-value">{formatNumber($statistics.agentActionCount)}</span>
-        <span class="stat-label">Actions</span>
-      </div>
-    </div>
-
-    <!-- Risk Indicators (only show during fast speeds) -->
-    {#if $speed === 'fast' || $speed === 'very_fast'}
-      <div class="risk-panel">
-        <div class="risk-item">
-          <span class="risk-label">Error Risk:</span>
-          <span
-            class="risk-value"
-            style="color: {getRiskColor($risks.errorProbability)}"
-          >
-            {Math.round($risks.errorProbability * 100)}%
-          </span>
-        </div>
-
-        <div class="risk-item">
-          <span class="risk-label">Fatigue Risk:</span>
-          <span
-            class="risk-value"
-            style="color: {getRiskColor($risks.agentFatigueProbability)}"
-          >
-            {Math.round($risks.agentFatigueProbability * 100)}%
-          </span>
-        </div>
+    <!-- Tooltips for compact mode -->
+    {#if showTooltip}
+      <div class="compact-tooltip">
+        {#if showTooltip === 'toggle'}
+          <div class="tooltip-content">
+            <strong>{$state === 'running' ? 'Pause' : 'Play'} Simulation</strong>
+            <p>{$state === 'running' ? 'Pause to inspect agents and plan strategy' : 'Start the simulation and watch your AI company work'}</p>
+          </div>
+        {:else if showTooltip === 'speed'}
+          <div class="tooltip-content">
+            <strong>Speed: {speedConfig[$speed].multiplier}</strong>
+            <p>{speedConfig[$speed].description}</p>
+            <small>Click to cycle through speeds</small>
+          </div>
+        {:else if showTooltip === 'reset'}
+          <div class="tooltip-content">
+            <strong>Reset Simulation</strong>
+            <p>Clear all statistics and start fresh</p>
+          </div>
+        {/if}
       </div>
     {/if}
   </div>
+{:else}
+  <!-- Full Control Panel Mode -->
+  <div class="simulation-controls" class:glow={glowEffect}>
+    <!-- Main Control Panel -->
+    <div class="control-panel">
+      <div class="primary-controls">
+        <!-- Play/Pause Button -->
+        <button
+          class="control-btn primary"
+          class:active={$state === 'running'}
+          on:click={handleToggle}
+          on:mouseenter={() => showTooltipFor('toggle')}
+          on:mouseleave={hideTooltip}
+          style="color: {$state === 'running' ? speedConfig[$speed].color : '#888'}"
+        >
+          {$state === 'running' ? '⏸️' : '▶️'}
+        </button>
 
-  <!-- Advanced Stats Toggle -->
-  <button
-    class="stats-toggle"
-    on:click={() => showAdvancedStats = !showAdvancedStats}
-  >
-    {showAdvancedStats ? '⬆️' : '⬇️'} Stats
-  </button>
+        <!-- Speed Control -->
+        <button
+          class="control-btn speed"
+          class:active={$state === 'running'}
+          on:click={handleSpeedCycle}
+          on:mouseenter={() => showTooltipFor('speed')}
+          on:mouseleave={hideTooltip}
+          style="color: {speedConfig[$speed].color}"
+        >
+          <span class="speed-icon">{speedConfig[$speed].label}</span>
+          <span class="speed-text">{speedConfig[$speed].multiplier}</span>
+        </button>
 
-  <!-- Advanced Stats Panel -->
-  {#if showAdvancedStats}
-    <div class="advanced-stats">
-      <div class="advanced-stats-grid">
-        <div class="advanced-stat">
-          <span class="advanced-label">Avg Tick Duration:</span>
-          <span class="advanced-value">{Math.round($statistics.avgTickDuration)}ms</span>
-        </div>
+        <!-- Reset Button -->
+        <button
+          class="control-btn secondary"
+          on:click={handleReset}
+          on:mouseenter={() => showTooltipFor('reset')}
+          on:mouseleave={hideTooltip}
+        >
+          🔄
+        </button>
+      </div>
 
-        <div class="advanced-stat">
-          <span class="advanced-label">Error Count:</span>
-          <span class="advanced-value" style="color: {$statistics.errorCount > 0 ? '#F44336' : '#4CAF50'}">
-            {$statistics.errorCount}
-          </span>
-        </div>
-
-        <div class="advanced-stat">
-          <span class="advanced-label">Success Rate:</span>
-          <span class="advanced-value">
-            {$statistics.agentActionCount > 0 ?
-              Math.round(((($statistics.agentActionCount - $statistics.errorCount) / $statistics.agentActionCount) * 100)) : 100}%
-          </span>
-        </div>
+      <!-- Status Indicator -->
+      <div class="status-indicator">
+        <div
+          class="status-dot"
+          class:running={$state === 'running'}
+          class:paused={$state === 'paused'}
+        ></div>
+        <span class="status-text">{$state.toUpperCase()}</span>
       </div>
     </div>
-  {/if}
 
-  <!-- Tooltips -->
-  {#if showTooltip}
-    <div class="tooltip">
-      {#if showTooltip === 'toggle'}
-        <div class="tooltip-content">
-          <strong>{$state === 'running' ? 'Pause' : 'Play'} Simulation</strong>
-          <p>{$state === 'running' ? 'Pause to inspect agents and plan strategy' : 'Start the simulation and watch your AI company work'}</p>
+    <!-- Stats Panel -->
+    <div class="stats-panel">
+      <div class="stats-row">
+        <div class="stat-item">
+          <span class="stat-value">{formatNumber($statistics.tickCount)}</span>
+          <span class="stat-label">Ticks</span>
         </div>
-      {:else if showTooltip === 'speed'}
-        <div class="tooltip-content">
-          <strong>Speed: {speedConfig[$speed].multiplier}</strong>
-          <p>{speedConfig[$speed].description}</p>
-          <small>Click to cycle through speeds</small>
+
+        <div class="stat-item">
+          <span class="stat-value">{formatTime($statistics.totalRunTime)}</span>
+          <span class="stat-label">Runtime</span>
         </div>
-      {:else if showTooltip === 'reset'}
-        <div class="tooltip-content">
-          <strong>Reset Simulation</strong>
-          <p>Clear all statistics and start fresh</p>
+
+        <div class="stat-item">
+          <span class="stat-value">{formatNumber($statistics.agentActionCount)}</span>
+          <span class="stat-label">Actions</span>
+        </div>
+      </div>
+
+      <!-- Risk Indicators (only show during fast speeds) -->
+      {#if $speed === 'fast' || $speed === 'very_fast'}
+        <div class="risk-panel">
+          <div class="risk-item">
+            <span class="risk-label">Error Risk:</span>
+            <span
+              class="risk-value"
+              style="color: {getRiskColor($risks.errorProbability)}"
+            >
+              {Math.round($risks.errorProbability * 100)}%
+            </span>
+          </div>
+
+          <div class="risk-item">
+            <span class="risk-label">Fatigue Risk:</span>
+            <span
+              class="risk-value"
+              style="color: {getRiskColor($risks.agentFatigueProbability)}"
+            >
+              {Math.round($risks.agentFatigueProbability * 100)}%
+            </span>
+          </div>
         </div>
       {/if}
     </div>
-  {/if}
-</div>
+
+    <!-- Advanced Stats Toggle -->
+    <button
+      class="stats-toggle"
+      on:click={() => showAdvancedStats = !showAdvancedStats}
+    >
+      {showAdvancedStats ? '⬆️' : '⬇️'} Stats
+    </button>
+
+    <!-- Advanced Stats Panel -->
+    {#if showAdvancedStats}
+      <div class="advanced-stats">
+        <div class="advanced-stats-grid">
+          <div class="advanced-stat">
+            <span class="advanced-label">Avg Tick Duration:</span>
+            <span class="advanced-value">{Math.round($statistics.avgTickDuration)}ms</span>
+          </div>
+
+          <div class="advanced-stat">
+            <span class="advanced-label">Error Count:</span>
+            <span class="advanced-value" style="color: {$statistics.errorCount > 0 ? '#F44336' : '#4CAF50'}">
+              {$statistics.errorCount}
+            </span>
+          </div>
+
+          <div class="advanced-stat">
+            <span class="advanced-label">Success Rate:</span>
+            <span class="advanced-value">
+              {$statistics.agentActionCount > 0 ?
+                Math.round(((($statistics.agentActionCount - $statistics.errorCount) / $statistics.agentActionCount) * 100)) : 100}%
+            </span>
+          </div>
+        </div>
+      </div>
+    {/if}
+
+    <!-- Tooltips -->
+    {#if showTooltip}
+      <div class="tooltip">
+        {#if showTooltip === 'toggle'}
+          <div class="tooltip-content">
+            <strong>{$state === 'running' ? 'Pause' : 'Play'} Simulation</strong>
+            <p>{$state === 'running' ? 'Pause to inspect agents and plan strategy' : 'Start the simulation and watch your AI company work'}</p>
+          </div>
+        {:else if showTooltip === 'speed'}
+          <div class="tooltip-content">
+            <strong>Speed: {speedConfig[$speed].multiplier}</strong>
+            <p>{speedConfig[$speed].description}</p>
+            <small>Click to cycle through speeds</small>
+          </div>
+        {:else if showTooltip === 'reset'}
+          <div class="tooltip-content">
+            <strong>Reset Simulation</strong>
+            <p>Clear all statistics and start fresh</p>
+          </div>
+        {/if}
+      </div>
+    {/if}
+  </div>
+{/if}
 
 <style>
+  /* Compact Header Mode Styles */
+  .simulation-controls-compact {
+    display: flex;
+    align-items: center;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    position: relative;
+  }
+
+  .simulation-controls-compact.glow {
+    filter: drop-shadow(0 0 8px rgba(0, 255, 136, 0.4));
+  }
+
+  .compact-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+  }
+
+  .compact-btn {
+    background: transparent;
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    color: #00ff88;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 32px;
+    justify-content: center;
+  }
+
+  .compact-btn:hover {
+    background: rgba(0, 255, 136, 0.1);
+    border-color: #00ff88;
+    transform: translateY(-1px);
+  }
+
+  .compact-btn.primary {
+    background: rgba(0, 255, 136, 0.1);
+    font-size: 16px;
+  }
+
+  .compact-btn.primary.active {
+    background: rgba(0, 255, 136, 0.2);
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+  }
+
+  .compact-btn.secondary {
+    color: rgba(255, 255, 255, 0.7);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+
+  .compact-btn.secondary:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .compact-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: rgba(0, 255, 136, 0.1);
+    border-radius: 6px;
+  }
+
+  .compact-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .compact-stat {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.8);
+    white-space: nowrap;
+  }
+
+  .speed-text {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .status-text {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .compact-tooltip {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 8px;
+    background: rgba(15, 15, 25, 0.95);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #ffffff;
+    font-size: 12px;
+    max-width: 200px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    z-index: 1001;
+    animation: tooltipFadeIn 0.2s ease;
+  }
+
+  /* Full Control Panel Mode Styles */
   .simulation-controls {
     position: fixed;
     bottom: 20px;

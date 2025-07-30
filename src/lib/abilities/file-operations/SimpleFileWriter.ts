@@ -1,11 +1,14 @@
 import { abilityManager } from '../../services/AbilityManager';
+import { writeFileContent, getFileById, addFile } from '../../services/FileStore';
 
 export interface SimpleFileWriteResult {
   success: boolean;
   fileName?: string;
   fileSize?: number;
   downloadUrl?: string;
+  fileId?: string;
   error?: string;
+  operation: 'create' | 'modify' | 'download';
 }
 
 export interface SimpleFileWriterConfig {
@@ -28,7 +31,7 @@ export const DEFAULT_SIMPLE_FILE_WRITER_CONFIG: SimpleFileWriterConfig = {
 export class SimpleFileWriterAbility {
   id = 'write_files';
   name = 'Simple File Writer';
-  description = 'Write content to text files with download capability';
+  description = 'Write content to text files with download capability and FileStore integration';
   category = 'file_operations';
   config: SimpleFileWriterConfig;
 
@@ -57,12 +60,13 @@ export class SimpleFileWriterAbility {
 
   async execute(agentId: string, params?: any): Promise<SimpleFileWriteResult> {
     try {
-      const { content, fileName, fileType } = params;
+      const { content, fileName, fileType, fileId, operation = 'create' } = params;
       
       if (!content) {
         return {
           success: false,
-          error: 'No content provided for writing'
+          error: 'No content provided for writing',
+          operation: 'create'
         };
       }
 
@@ -71,19 +75,8 @@ export class SimpleFileWriterAbility {
       if (contentSize > this.config.maxFileSize) {
         return {
           success: false,
-          error: `Content size (${contentSize} bytes) exceeds maximum allowed size (${this.config.maxFileSize} bytes)`
-        };
-      }
-
-      // Generate file name
-      const finalFileName = fileName || this.generateFileName(fileType);
-      
-      // Validate file extension
-      const extension = this.getFileExtension(finalFileName);
-      if (!this.config.allowedExtensions.includes(extension)) {
-        return {
-          success: false,
-          error: `File type '${extension}' is not supported. Allowed types: ${this.config.allowedExtensions.join(', ')}`
+          error: `Content size (${contentSize} bytes) exceeds maximum allowed size (${this.config.maxFileSize} bytes)`,
+          operation: 'create'
         };
       }
 
@@ -95,23 +88,74 @@ export class SimpleFileWriterAbility {
         processedContent = this.addTimestamp(processedContent);
       }
 
-      // Format content based on file type
-      processedContent = this.formatContent(processedContent, extension);
+      // Handle different operations
+      if (operation === 'modify' && fileId) {
+        // Modify existing file in FileStore
+        const success = writeFileContent(fileId, processedContent);
+        if (success) {
+          const file = getFileById(fileId);
+          return {
+            success: true,
+            fileName: file?.name || 'Unknown',
+            fileSize: new Blob([processedContent]).size,
+            fileId,
+            operation: 'modify'
+          };
+        } else {
+          return {
+            success: false,
+            error: `File with ID ${fileId} not found`,
+            operation: 'modify'
+          };
+        }
+      } else {
+        // Create new file
+        const finalFileName = fileName || this.generateFileName(fileType);
+        
+        // Validate file extension
+        const extension = this.getFileExtension(finalFileName);
+        if (!this.config.allowedExtensions.includes(extension)) {
+          return {
+            success: false,
+            error: `File type '${extension}' is not supported. Allowed types: ${this.config.allowedExtensions.join(', ')}`,
+            operation: 'create'
+          };
+        }
 
-      // Create download
-      const downloadUrl = this.createDownload(processedContent, finalFileName);
-      
-      return {
-        success: true,
-        fileName: finalFileName,
-        fileSize: new Blob([processedContent]).size,
-        downloadUrl
-      };
+        // Format content based on file type
+        processedContent = this.formatContent(processedContent, extension);
+
+        // Add to FileStore
+        const newFileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        addFile({
+          id: newFileId,
+          name: finalFileName,
+          size: new Blob([processedContent]).size,
+          type: 'text/plain',
+          content: processedContent
+        });
+
+        // Create download if requested
+        let downloadUrl: string | undefined;
+        if (params.createDownload !== false) {
+          downloadUrl = this.createDownload(processedContent, finalFileName);
+        }
+        
+        return {
+          success: true,
+          fileName: finalFileName,
+          fileSize: new Blob([processedContent]).size,
+          fileId: newFileId,
+          downloadUrl,
+          operation: 'create'
+        };
+      }
 
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred'
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        operation: 'create'
       };
     }
   }

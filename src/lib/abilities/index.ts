@@ -4,6 +4,10 @@ export { fileWriterAbility, FileWriterAbility, DEFAULT_FILE_WRITER_CONFIG } from
 export { simpleFileReaderAbility, SimpleFileReaderAbility, DEFAULT_SIMPLE_FILE_READER_CONFIG } from './file-operations/SimpleFileReader';
 export { simpleFileWriterAbility, SimpleFileWriterAbility, DEFAULT_SIMPLE_FILE_WRITER_CONFIG } from './file-operations/SimpleFileWriter';
 
+// Terminal and Workspace
+export { simpleTerminalAbility, SimpleTerminalAbility, DEFAULT_TERMINAL_CONFIG } from './terminal/SimpleTerminalAbility';
+export { workspaceDirectoryAbility, WorkspaceDirectoryAbility, DEFAULT_WORKSPACE_CONFIG } from './workspace/WorkspaceDirectoryAbility';
+
 // Communication
 export { multiAgentChatAbility, MultiAgentChatAbility, COMMUNICATION_MODES, DEFAULT_MULTI_AGENT_CHAT_CONFIG } from './communication/MultiAgentChat';
 
@@ -31,6 +35,17 @@ export type {
   SimpleFileWriteResult,
   SimpleFileWriterConfig
 } from './file-operations/SimpleFileWriter';
+
+export type {
+  TerminalCommandResult,
+  TerminalConfig
+} from './terminal/SimpleTerminalAbility';
+
+export type {
+  WorkspaceFileInfo,
+  WorkspaceOperationResult,
+  WorkspaceConfig
+} from './workspace/WorkspaceDirectoryAbility';
 
 export type {
   SearchResult,

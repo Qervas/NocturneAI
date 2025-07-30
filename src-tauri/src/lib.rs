@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::process::{Command, Stdio};
+use std::fs;
+use std::path::Path;
+use std::io::{self, Write};
 
 // LLM Request/Response structures
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,6 +35,37 @@ struct AgentConfig {
     personality: String,
     specialization: String,
     system_prompt: String,
+}
+
+// Terminal command result
+#[derive(Debug, Serialize, Deserialize)]
+struct TerminalResult {
+    success: bool,
+    output: Option<String>,
+    error: Option<String>,
+    exit_code: Option<i32>,
+}
+
+// Workspace file info
+#[derive(Debug, Serialize, Deserialize)]
+struct WorkspaceFileInfo {
+    path: String,
+    name: String,
+    size: u64,
+    file_type: String,
+    last_modified: String,
+    content: Option<String>,
+}
+
+// Workspace operation result
+#[derive(Debug, Serialize, Deserialize)]
+struct WorkspaceResult {
+    success: bool,
+    message: Option<String>,
+    error: Option<String>,
+    files: Option<Vec<WorkspaceFileInfo>>,
+    content: Option<String>,
+    path: Option<String>,
 }
 
 // Agent conversation history
@@ -220,6 +255,339 @@ fn get_agent_history(agent_id: String) -> Vec<ChatMessage> {
     history.get(&agent_id).map(|v| v.clone()).unwrap_or_default()
 }
 
+// Terminal commands
+#[tauri::command]
+async fn execute_command(command: String, working_dir: Option<String>, environment: Option<HashMap<String, String>>) -> TerminalResult {
+    let working_directory = working_dir.unwrap_or_else(|| "./workspace".to_string());
+    
+    // Security check: prevent dangerous commands
+    let dangerous_commands = ["sudo", "su", "rm -rf", "format", "fdisk", "dd", "mkfs", "shutdown", "reboot"];
+    for dangerous in &dangerous_commands {
+        if command.contains(dangerous) {
+            return TerminalResult {
+                success: false,
+                output: None,
+                error: Some(format!("Command '{}' is not allowed for security reasons", dangerous)),
+                exit_code: Some(-1),
+            };
+        }
+    }
+    
+    // Parse command and arguments
+    let parts: Vec<&str> = command.split_whitespace().collect();
+    if parts.is_empty() {
+        return TerminalResult {
+            success: false,
+            output: None,
+            error: Some("Empty command".to_string()),
+            exit_code: Some(-1),
+        };
+    }
+    
+    let cmd = parts[0];
+    let args = &parts[1..];
+    
+    // Create command
+    let mut command_builder = Command::new(cmd);
+    command_builder.args(args);
+    command_builder.current_dir(&working_directory);
+    
+    // Set environment variables if provided
+    if let Some(env) = environment {
+        for (key, value) in env {
+            command_builder.env(key, value);
+        }
+    }
+    
+    // Execute command
+    match command_builder.output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            
+            let success = output.status.success();
+            let exit_code = output.status.code();
+            
+            let error = if !stderr.is_empty() { Some(stderr.to_string()) } else { None };
+            let output_str = if !stdout.is_empty() { Some(stdout.to_string()) } else { None };
+            
+            TerminalResult {
+                success,
+                output: output_str,
+                error,
+                exit_code,
+            }
+        }
+        Err(e) => TerminalResult {
+            success: false,
+            output: None,
+            error: Some(format!("Failed to execute command: {}", e)),
+            exit_code: Some(-1),
+        },
+    }
+}
+
+// Workspace file operations
+#[tauri::command]
+async fn list_workspace_files(path: String) -> WorkspaceResult {
+    match fs::read_dir(&path) {
+        Ok(entries) => {
+            let mut files = Vec::new();
+            
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    let path_buf = entry.path();
+                    let metadata = match fs::metadata(&path_buf) {
+                        Ok(meta) => meta,
+                        Err(_) => continue,
+                    };
+                    
+                    let file_type = if metadata.is_dir() { "directory" } else { "file" };
+                    let name = path_buf.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+                    
+                    let last_modified = metadata.modified()
+                        .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs().to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    
+                    files.push(WorkspaceFileInfo {
+                        path: path_buf.to_string_lossy().to_string(),
+                        name,
+                        size: metadata.len(),
+                        file_type: file_type.to_string(),
+                        last_modified,
+                        content: None,
+                    });
+                }
+            }
+            
+            WorkspaceResult {
+                success: true,
+                message: Some(format!("Listed {} files", files.len())),
+                error: None,
+                files: Some(files),
+                content: None,
+                path: None,
+            }
+        }
+        Err(e) => WorkspaceResult {
+            success: false,
+            message: None,
+            error: Some(format!("Failed to list files: {}", e)),
+            files: None,
+            content: None,
+            path: None,
+        },
+    }
+}
+
+#[tauri::command]
+async fn read_workspace_file(path: String) -> WorkspaceResult {
+    match fs::read_to_string(&path) {
+        Ok(content) => WorkspaceResult {
+            success: true,
+            message: Some("File read successfully".to_string()),
+            error: None,
+            files: None,
+            content: Some(content),
+            path: Some(path),
+        },
+        Err(e) => WorkspaceResult {
+            success: false,
+            message: None,
+            error: Some(format!("Failed to read file: {}", e)),
+            files: None,
+            content: None,
+            path: None,
+        },
+    }
+}
+
+#[tauri::command]
+async fn write_workspace_file(path: String, content: String, create_backup: bool) -> WorkspaceResult {
+    // Create backup if requested
+    if create_backup {
+        if let Ok(_) = fs::metadata(&path) {
+            let backup_path = format!("{}.backup", path);
+            if let Err(e) = fs::copy(&path, &backup_path) {
+                return WorkspaceResult {
+                    success: false,
+                    message: None,
+                    error: Some(format!("Failed to create backup: {}", e)),
+                    files: None,
+                    content: None,
+                    path: None,
+                };
+            }
+        }
+    }
+    
+    // Ensure directory exists
+    if let Some(parent) = Path::new(&path).parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            return WorkspaceResult {
+                success: false,
+                message: None,
+                error: Some(format!("Failed to create directory: {}", e)),
+                files: None,
+                content: None,
+                path: None,
+            };
+        }
+    }
+    
+    match fs::write(&path, content) {
+        Ok(_) => WorkspaceResult {
+            success: true,
+            message: Some("File written successfully".to_string()),
+            error: None,
+            files: None,
+            content: None,
+            path: Some(path),
+        },
+        Err(e) => WorkspaceResult {
+            success: false,
+            message: None,
+            error: Some(format!("Failed to write file: {}", e)),
+            files: None,
+            content: None,
+            path: None,
+        },
+    }
+}
+
+#[tauri::command]
+async fn create_workspace_file(path: String, content: String) -> WorkspaceResult {
+    // Ensure directory exists
+    if let Some(parent) = Path::new(&path).parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            return WorkspaceResult {
+                success: false,
+                message: None,
+                error: Some(format!("Failed to create directory: {}", e)),
+                files: None,
+                content: None,
+                path: None,
+            };
+        }
+    }
+    
+    match fs::write(&path, content) {
+        Ok(_) => WorkspaceResult {
+            success: true,
+            message: Some("File created successfully".to_string()),
+            error: None,
+            files: None,
+            content: None,
+            path: Some(path),
+        },
+        Err(e) => WorkspaceResult {
+            success: false,
+            message: None,
+            error: Some(format!("Failed to create file: {}", e)),
+            files: None,
+            content: None,
+            path: None,
+        },
+    }
+}
+
+#[tauri::command]
+async fn delete_workspace_file(path: String) -> WorkspaceResult {
+    match fs::remove_file(&path) {
+        Ok(_) => WorkspaceResult {
+            success: true,
+            message: Some("File deleted successfully".to_string()),
+            error: None,
+            files: None,
+            content: None,
+            path: Some(path),
+        },
+        Err(e) => WorkspaceResult {
+            success: false,
+            message: None,
+            error: Some(format!("Failed to delete file: {}", e)),
+            files: None,
+            content: None,
+            path: None,
+        },
+    }
+}
+
+#[tauri::command]
+async fn move_workspace_file(source_path: String, target_path: String) -> WorkspaceResult {
+    // Ensure target directory exists
+    if let Some(parent) = Path::new(&target_path).parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            return WorkspaceResult {
+                success: false,
+                message: None,
+                error: Some(format!("Failed to create target directory: {}", e)),
+                files: None,
+                content: None,
+                path: None,
+            };
+        }
+    }
+    
+    match fs::rename(&source_path, &target_path) {
+        Ok(_) => WorkspaceResult {
+            success: true,
+            message: Some("File moved successfully".to_string()),
+            error: None,
+            files: None,
+            content: None,
+            path: Some(target_path),
+        },
+        Err(e) => WorkspaceResult {
+            success: false,
+            message: None,
+            error: Some(format!("Failed to move file: {}", e)),
+            files: None,
+            content: None,
+            path: None,
+        },
+    }
+}
+
+#[tauri::command]
+async fn copy_workspace_file(source_path: String, target_path: String) -> WorkspaceResult {
+    // Ensure target directory exists
+    if let Some(parent) = Path::new(&target_path).parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            return WorkspaceResult {
+                success: false,
+                message: None,
+                error: Some(format!("Failed to create target directory: {}", e)),
+                files: None,
+                content: None,
+                path: None,
+            };
+        }
+    }
+    
+    match fs::copy(&source_path, &target_path) {
+        Ok(_) => WorkspaceResult {
+            success: true,
+            message: Some("File copied successfully".to_string()),
+            error: None,
+            files: None,
+            content: None,
+            path: Some(target_path),
+        },
+        Err(e) => WorkspaceResult {
+            success: false,
+            message: None,
+            error: Some(format!("Failed to copy file: {}", e)),
+            files: None,
+            content: None,
+            path: None,
+        },
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -229,7 +597,15 @@ pub fn run() {
             send_message_to_agent,
             get_agent_configs,
             clear_agent_history,
-            get_agent_history
+            get_agent_history,
+            execute_command,
+            list_workspace_files,
+            read_workspace_file,
+            write_workspace_file,
+            create_workspace_file,
+            delete_workspace_file,
+            move_workspace_file,
+            copy_workspace_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
