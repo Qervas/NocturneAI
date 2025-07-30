@@ -37,7 +37,7 @@ const initialLayout: TilingLayoutState = {
         id: 'sidebar-left',
         type: 'panel',
         component: 'GameChat',
-        title: 'Chat',
+        title: 'Interaction',
         icon: '💬',
         size: 25,
         minSize: 200,

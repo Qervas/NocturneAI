@@ -7,6 +7,7 @@
         selectedAgent,
         getAgentShortName,
     } from "../services/CharacterManager";
+    import { selectedAgents, focusedAgent, agentSelectionManager } from "../services/AgentSelectionManager";
     import { communicationManager } from "../services/CommunicationManager";
     import {
         simulationController,
@@ -55,6 +56,10 @@
     // Subscribe to characters from the character manager
     $: agentCharacters = $characters.filter((c) => c.type === "npc");
     $: allCharacters = $characters; // All characters including user
+    
+    // Sync with InteractionPanel agent selection
+    $: currentSelectedAgents = $selectedAgents;
+    $: currentFocusedAgent = $focusedAgent;
 
     // Update animation speed based on simulation speed
     $: {
@@ -119,11 +124,26 @@
                 )
             ) {
                 console.log(`Clicked on ${character.name}!`);
-                // Set selected agent for UI - use short name for chat compatibility
+                
+                // Handle multi-selection with Ctrl/Cmd key
+                if (event.ctrlKey || event.metaKey) {
+                    // Toggle agent selection
+                    agentSelectionManager.toggleAgentSelection(character.id);
+                } else {
+                    // Single selection - clear others and select this one
+                    agentSelectionManager.selectAgent(character.id);
+                }
+                
+                // Update the old system for backward compatibility with terminal
                 const shortName = getAgentShortName(character.id);
                 selectedAgent.set(shortName);
                 characterManager.setActiveCharacter(character.id);
+                
+                // Make sure the new system stays in sync
+                agentSelectionManager.syncWithLegacySystem(character.id, shortName);
+                
                 console.log(`Selected agent: ${character.name} (${character.id} -> ${shortName})`);
+                console.log(`Current selection:`, currentSelectedAgents.map(a => a.name));
             }
         });
 
@@ -193,6 +213,10 @@
                     msg.toAgent === character.id,
             );
 
+            // Check if this character is selected in InteractionPanel
+            const isSelectedInInteraction = currentSelectedAgents.some(agent => agent.id === character.id);
+            const isFocusedInInteraction = currentFocusedAgent?.id === character.id;
+
             const size = Math.min(canvas.width, canvas.height) * 0.15; // Increased from 0.1 to make characters larger
             const cx = character.position.x;
             const cy = character.position.y;
@@ -210,13 +234,16 @@
             const breathScale = 1 + Math.sin(time * 0.02) * 0.1;
             const actualSize = Math.max(size * breathScale, 30); // Increased minimum size from 10 to 30
 
-            // Active character gets a bigger scale
-            const activeScale = isActive ? 1.3 : 1; // Increased from 1.2 to 1.3
-            const hoverScale = isHovering ? 1.15 : 1; // Increased from 1.1 to 1.15
+            // Scale factors for different states
+            const activeScale = isActive ? 1.3 : 1; // Active character
+            const selectedScale = isSelectedInInteraction ? 1.25 : 1; // Selected in InteractionPanel
+            const focusedScale = isFocusedInInteraction ? 1.4 : 1; // Focused in InteractionPanel
+            const hoverScale = isHovering ? 1.15 : 1; // Mouse hover
+            
             const finalSize = Math.max(
-                actualSize * activeScale * hoverScale,
+                actualSize * activeScale * selectedScale * focusedScale * hoverScale,
                 25,
-            ); // Increased minimum from 5 to 25
+            );
 
             // Body shape depends on character type
             if (character.type === "user") {
@@ -274,38 +301,54 @@
                 ctx.fill();
             }
 
-            // Glowing outline with hover, active, and transmission effects
-            const glowIntensity = isActive
-                ? 8
-                : isTransmitting
-                  ? 6
-                  : isHovering
-                    ? 4
-                    : 3;
-            ctx.strokeStyle = isActive
-                ? "#ffff00"
-                : isTransmitting
-                  ? "#00ffff"
-                  : "#ffffff";
+            // Glowing outline with multiple state effects
+            let glowIntensity = 3;
+            let glowColor = "#ffffff";
+            
+            if (isFocusedInInteraction) {
+                glowIntensity = 10;
+                glowColor = "#ff6b6b"; // Red for focused agent
+            } else if (isSelectedInInteraction) {
+                glowIntensity = 8;
+                glowColor = "#00ff88"; // Green for selected agents
+            } else if (isActive) {
+                glowIntensity = 8;
+                glowColor = "#ffff00"; // Yellow for active
+            } else if (isTransmitting) {
+                glowIntensity = 6;
+                glowColor = "#00ffff"; // Cyan for transmitting
+            } else if (isHovering) {
+                glowIntensity = 4;
+                glowColor = "#ffffff"; // White for hover
+            }
+            
+            ctx.strokeStyle = glowColor;
             ctx.lineWidth = glowIntensity;
             ctx.stroke();
 
+            // Additional special effect glows
+            if (isFocusedInInteraction) {
+                // Pulsing red glow for focused agent
+                const pulseIntensity = 0.8 + Math.sin(time * 0.1) * 0.2;
+                ctx.strokeStyle = `rgba(255, 107, 107, ${pulseIntensity})`;
+                ctx.lineWidth = 25;
+                ctx.stroke();
+            }
+            
+            if (isSelectedInInteraction && !isFocusedInInteraction) {
+                // Steady green glow for selected agents
+                ctx.strokeStyle = "rgba(0, 255, 136, 0.6)";
+                ctx.lineWidth = 18;
+                ctx.stroke();
+            }
+
             // Additional hover glow
             if (isHovering) {
-                ctx.strokeStyle = "rgba(0, 255, 255, 0.6)";
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
                 ctx.lineWidth = 15;
                 ctx.stroke();
             }
 
-            // Active character special effects
-            // Additional active glow
-            if (isActive) {
-                ctx.strokeStyle = "rgba(255, 255, 0, 0.8)";
-                ctx.lineWidth = 20;
-                ctx.stroke();
-            }
-
-            // Message sending pulse glow
             // Message transmission pulse glow
             if (isTransmitting) {
                 const pulseIntensity = 0.7 + Math.sin(time * 0.08) * 0.3;

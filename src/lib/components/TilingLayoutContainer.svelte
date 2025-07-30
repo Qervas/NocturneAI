@@ -3,10 +3,11 @@
   import TilingPanel from './TilingPanel.svelte';
   
   // Import components
-  import GameChat from './GameChat.svelte';
+  import InteractionPanel from './InteractionPanel.svelte';
   import GamingCanvas from './GamingCanvas.svelte';
   import ConversationConnections from './ConversationConnections.svelte';
   import PerkPanel from './PerkPanel.svelte';
+  import MultiAgentPropertiesPanel from './MultiAgentPropertiesPanel.svelte';
   import WorldResources from './WorldResources.svelte';
   import CharacterPanel from './CharacterPanel.svelte';
   import MultiTabTerminal from './MultiTabTerminal.svelte';
@@ -16,7 +17,7 @@
 
   // Component mapping
   const componentMap = {
-    'GameChat': GameChat,
+    'GameChat': InteractionPanel,
     'GamingCanvas': GamingCanvas,
     'ConversationConnections': ConversationConnections,
     'PropertiesPanel': PerkPanel,
@@ -51,42 +52,8 @@
       on:close={() => tilingLayoutManager.closePanel(panel.id)}
     >
       {#if panel.component === 'PropertiesPanel'}
-        <!-- Properties Panel with Tabs -->
-        <div class="properties-panel">
-          <div class="properties-tabs">
-            <button
-              class="property-tab"
-              class:active={activeTab === "skills"}
-              on:click={() => activeTab = "skills"}
-            >
-              ⚡ Skills
-            </button>
-            <button
-              class="property-tab"
-              class:active={activeTab === "character"}
-              on:click={() => activeTab = "character"}
-            >
-              👤 Character
-            </button>
-            <button
-              class="property-tab"
-              class:active={activeTab === "resources"}
-              on:click={() => activeTab = "resources"}
-            >
-              🌎 Resources
-            </button>
-          </div>
-
-          <div class="properties-content">
-            {#if activeTab === "skills"}
-              <PerkPanel />
-            {:else if activeTab === "character"}
-              <CharacterPanel />
-            {:else if activeTab === "resources"}
-              <WorldResources />
-            {/if}
-          </div>
-        </div>
+        <!-- Multi-Agent Properties Panel (Red Alert style) -->
+        <MultiAgentPropertiesPanel />
       {:else if panel.component === 'GamingCanvas'}
         <div class="canvas-container">
           <GamingCanvas />
