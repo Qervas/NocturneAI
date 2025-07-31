@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { skillTreeManager } from "../services/PerkManager";
-    import { characterManager, characters, selectedAgent, getAgentFullId } from "../services/CharacterManager";
+    import { agentSelectionStore, focusedAgent, type Agent } from "../services/AgentSelectionManager";
     import { communicationManager } from "../services/CommunicationManager";
     import type { AgentSkillTree } from "../services/PerkManager";
 
@@ -9,10 +9,12 @@
     let agentSkillTrees: Record<string, AgentSkillTree> = {};
     let selectedAgentData: AgentSkillTree | null = null;
 
-    // Reactive calculations
-    $: agentList = $characters.filter((c) => c.type === "npc");
-    $: selectedAgentData = $selectedAgent ? agentSkillTrees[getAgentFullId($selectedAgent)] : null;
-    $: selectedAgentCharacter = $selectedAgent ? agentList.find(c => c.id === getAgentFullId($selectedAgent)) : null;
+    // Reactive calculations - use the new AgentSelectionManager
+    $: {
+        const selectionState = $agentSelectionStore;
+        const focusedAgentId = selectionState.focusedAgent;
+        selectedAgentData = focusedAgentId ? agentSkillTrees[focusedAgentId] : null;
+    }
 
     // Subscribe to stores
     skillTreeManager.agentSkills.subscribe((value) => {
@@ -37,20 +39,6 @@
         return "#F44336";
     }
 
-    function getAgentIcon(agentId: string): string {
-        if (agentId.includes('alpha')) return "🧠";
-        if (agentId.includes('beta')) return "🎨";
-        if (agentId.includes('gamma')) return "⚙️";
-        return "🤖";
-    }
-
-    function getAgentName(agentId: string): string {
-        if (agentId.includes('alpha')) return "Alpha";
-        if (agentId.includes('beta')) return "Beta";
-        if (agentId.includes('gamma')) return "Gamma";
-        return "Agent";
-    }
-
     function getUnlockedSkillsCount(agentData: AgentSkillTree): number {
         return Object.values(agentData.skills).filter(skill => skill.currentRank > 0).length;
     }
@@ -60,27 +48,28 @@
     }
 
     onMount(() => {
-            // Initialize any new agents
-            agentList.forEach((agent) => {
-                if (!agentSkillTrees[agent.id]) {
-                    skillTreeManager.initializeAgent(agent.id);
-                }
-            });
+        // Initialize skill trees for available agents
+        const selectionState = $agentSelectionStore;
+        selectionState.availableAgents.forEach((agent) => {
+            if (!agentSkillTrees[agent.id]) {
+                skillTreeManager.initializeAgent(agent.id);
+            }
+        });
     });
 </script>
 
 <!-- Agent Resources Panel -->
 <div class="agent-resources-panel">
 
-    {#if selectedAgentData && selectedAgentCharacter}
+    {#if selectedAgentData}
         <!-- Selected Agent Info -->
         <div class="agent-info">
             <div class="agent-header">
-                <span class="agent-icon">{getAgentIcon($selectedAgent || '')}</span>
-                <span class="agent-name">{getAgentName($selectedAgent || '')}</span>
+                <span class="agent-icon">🤖</span>
+                <span class="agent-name">Agent Resources</span>
         </div>
             <div class="agent-status">
-                Status: <span class="status-{selectedAgentCharacter.status}">{selectedAgentCharacter.status}</span>
+                Status: <span class="status-online">Active</span>
                 </div>
             </div>
 

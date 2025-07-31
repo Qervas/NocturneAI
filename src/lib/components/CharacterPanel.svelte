@@ -1,86 +1,23 @@
 <script lang="ts">
   	import { onMount } from "svelte";
-	import { characterManager, characters, selectedAgent, getAgentFullId } from "../services/CharacterManager";
+	import { agentSelectionStore, focusedAgent, type Agent } from "../services/AgentSelectionManager";
 	import { settingsManager } from "../services/SettingsManager";
 	import type { Character, NPCAgent } from "../types/Character";
 	import AgentSettingsModal from "./AgentSettingsModal.svelte";
 
 	// Component state
-	let selectedAgentData: Character | null = null;
+	let selectedAgentData: Agent | null = null;
 	let showAgentSettings = false;
 
-	// Reactive calculations
-	$: selectedAgentData = $selectedAgent ? $characters.find(c => c.id === getAgentFullId($selectedAgent)) || null : null;
-
-  function getStatusColor(status: string): string {
-    switch (status) {
-      case 'online': return '#00ff88';
-      case 'offline': return '#666666';
-      case 'busy': return '#ff8800';
-      case 'idle': return '#ffff00';
-      default: return '#ffffff';
-    }
-  }
-
-  function getCharacterIcon(character: Character): string {
-    if (character.type === 'npc') {
-      const npc = character as NPCAgent;
-      return npc.name === 'Alpha' ? '🧠' : 
-             npc.name === 'Beta' ? '🎨' : 
-             npc.name === 'Gamma' ? '⚙️' : '🤖';
-    }
-    return '👤';
-  }
-
-	function getAgentColor(agentId: string): string {
-		if (agentId.includes('alpha')) return '#4CAF50';
-		if (agentId.includes('beta')) return '#FF9800';
-		if (agentId.includes('gamma')) return '#9C27B0';
-		return '#2196F3';
+	// Reactive calculations - use the new AgentSelectionManager
+	$: {
+		const selectionState = $agentSelectionStore;
+		selectedAgentData = selectionState.focusedAgent ? 
+			selectionState.availableAgents.find(a => a.id === selectionState.focusedAgent) || null : null;
 	}
-
-	function getAgentName(agentId: string): string {
-		const savedInfo = settingsManager.getAgentBasicInfo(agentId);
-		if (savedInfo?.name) return savedInfo.name;
-		
-		if (agentId.includes('alpha')) return 'Alpha';
-		if (agentId.includes('beta')) return 'Beta';
-		if (agentId.includes('gamma')) return 'Gamma';
-		return 'Agent';
-	}
-
-	function getSpecialization(agentId: string): string {
-		const savedInfo = settingsManager.getAgentBasicInfo(agentId);
-		if (savedInfo?.specialization) return savedInfo.specialization;
-    
-		if (agentId.includes('alpha')) return 'Data Analysis';
-		if (agentId.includes('beta')) return 'Content Generation';
-		if (agentId.includes('gamma')) return 'Problem Solving';
-		return 'General AI';
-	}
-
-	function getPersonality(agentId: string): string {
-		const savedInfo = settingsManager.getAgentBasicInfo(agentId);
-		if (savedInfo?.personality) return savedInfo.personality;
-		
-		if (agentId.includes('alpha')) return 'Analytical & Logical';
-		if (agentId.includes('beta')) return 'Creative & Expressive';
-		if (agentId.includes('gamma')) return 'Strategic & Adaptive';
-		return 'Balanced';
-	}
-
-	function getAIModel(agentId: string): string {
-		const savedInfo = settingsManager.getAgentBasicInfo(agentId);
-		if (savedInfo?.aiModel) return savedInfo.aiModel;
-		
-		if (agentId.includes('alpha')) return 'GPT-4 Turbo';
-		if (agentId.includes('beta')) return 'Claude-3 Sonnet';
-		if (agentId.includes('gamma')) return 'Gemini Pro';
-		return 'GPT-4';
-  }
 
   onMount(() => {
-    characterManager.initializeSampleData();
+    // No initialization needed for AgentSelectionManager
   });
 </script>
 
@@ -89,13 +26,13 @@
 	{#if selectedAgentData}
 		<!-- Selected Agent Header -->
 		<div class="agent-header">
-			<div class="agent-icon" style="color: {getAgentColor($selectedAgent || '')}">
-				{getCharacterIcon(selectedAgentData)}
+			<div class="agent-icon" style="color: {selectedAgentData.color}">
+				{selectedAgentData.avatar}
       </div>
 			<div class="agent-info">
-				<div class="agent-name">{getAgentName($selectedAgent || '')}</div>
+				<div class="agent-name">{selectedAgentData.name}</div>
 				<div class="agent-status">
-					Status: <span class="status-{selectedAgentData.status}">{selectedAgentData.status}</span>
+					Status: <span class="status-{selectedAgentData.isActive ? 'online' : 'offline'}">{selectedAgentData.isActive ? 'Active' : 'Inactive'}</span>
                 </div>
               </div>
       </div>
@@ -106,20 +43,20 @@
 				<h4>📋 Basic Info</h4>
           <div class="detail-grid">
             <div class="detail-item">
-              <label>Type:</label>
-						<span>NPC Agent</span>
+              <label>Name:</label>
+						<span>{selectedAgentData.name}</span>
             </div>
             <div class="detail-item">
-						<label>Specialization:</label>
-						<span>{getSpecialization($selectedAgent || '')}</span>
+						<label>Type:</label>
+						<span>{selectedAgentData.type}</span>
             </div>
               <div class="detail-item">
-                <label>AI Model:</label>
-						<span>{getAIModel($selectedAgent || '')}</span>
+                <label>Avatar:</label>
+						<span>{selectedAgentData.avatar}</span>
               </div>
               <div class="detail-item">
-                <label>Personality:</label>
-						<span>{getPersonality($selectedAgent || '')}</span>
+                <label>Color:</label>
+						<span style="color: {selectedAgentData.color}">{selectedAgentData.color}</span>
 					</div>
 				</div>
 			</div>
@@ -128,20 +65,20 @@
 				<h4>📊 Performance</h4>
 				<div class="detail-grid">
 					<div class="detail-item">
-						<label>Level:</label>
-						<span>Lv.{selectedAgentData.level}</span>
+						<label>Status:</label>
+						<span>{selectedAgentData.isActive ? 'Active' : 'Inactive'}</span>
               </div>
               <div class="detail-item">
-                <label>Tasks Completed:</label>
-						<span>{(selectedAgentData as NPCAgent)?.performance?.tasksCompleted || 0}</span>
+                <label>Capabilities:</label>
+						<span>{selectedAgentData.capabilities.length} skills</span>
               </div>
               <div class="detail-item">
-                <label>Success Rate:</label>
-						<span>{((selectedAgentData as NPCAgent)?.performance?.successRate || 0) * 100}%</span>
+                <label>Position:</label>
+						<span>X: {selectedAgentData.position?.x || 0}, Y: {selectedAgentData.position?.y || 0}</span>
 					</div>
 					<div class="detail-item">
-						<label>Experience:</label>
-						<span>{selectedAgentData.experience || 0} XP</span>
+						<label>Avatar:</label>
+						<span>{selectedAgentData.avatar}</span>
 					</div>
 				</div>
 			</div>

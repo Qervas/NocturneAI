@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tilingLayoutStore, tilingCalculations, tilingLayoutManager } from '../services/TilingLayoutManager';
+  import { characters } from '../services/CharacterManager';
   import TilingPanel from './TilingPanel.svelte';
   
   // Import components
@@ -72,8 +73,15 @@
     position: relative;
     width: 100%;
     height: 100%;
+    max-width: 100%;
+    max-height: 100%;
     overflow: hidden;
     background: rgba(0, 0, 0, 0.1);
+    margin: 0;
+    padding: 0;
+    top: 0;
+    left: 0;
+    box-sizing: border-box;
   }
 
 

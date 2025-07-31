@@ -25,7 +25,7 @@ const mockAgents: Agent[] = [
     type: 'General Assistant',
     avatar: '🤖',
     color: '#00ff88',
-    position: { x: 100, y: 150 },
+    position: { x: 250, y: 150 },
     isActive: true,
     capabilities: ['file-reader', 'file-writer', 'directory-master', 'system-commander']
   },
@@ -35,7 +35,7 @@ const mockAgents: Agent[] = [
     type: 'Code Specialist',
     avatar: '💻',
     color: '#00aaff',
-    position: { x: 300, y: 200 },
+    position: { x: 450, y: 200 },
     isActive: true,
     capabilities: ['file-reader', 'file-writer', 'system-commander']
   },
@@ -45,19 +45,9 @@ const mockAgents: Agent[] = [
     type: 'File Manager',
     avatar: '📁',
     color: '#ff8800',
-    position: { x: 200, y: 300 },
+    position: { x: 350, y: 350 },
     isActive: true,
     capabilities: ['file-reader', 'file-writer', 'directory-master']
-  },
-  {
-    id: 'agent-4',
-    name: 'Delta',
-    type: 'System Admin',
-    avatar: '⚡',
-    color: '#ff4444',
-    position: { x: 400, y: 250 },
-    isActive: false,
-    capabilities: ['system-commander', 'directory-master']
   }
 ];
 

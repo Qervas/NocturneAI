@@ -303,15 +303,14 @@ export const tilingCalculations = derived(
       return [];
     };
 
-    const headerHeight = 60;
     const viewportWidth = window.innerWidth || 1200;
-    const viewportHeight = (window.innerHeight || 800) - headerHeight;
+    const viewportHeight = window.innerHeight || 800;
     
     // Check if only one panel is visible across the entire layout
     const totalVisiblePanels = countVisiblePanels($layout.rootNode);
     
     if (totalVisiblePanels === 1) {
-      // If only one panel is visible, make it fill the entire screen
+      // If only one panel is visible, make it fill the entire container
       const singlePanel = findSingleVisiblePanel($layout.rootNode);
       if (singlePanel) {
         return [{
@@ -320,7 +319,7 @@ export const tilingCalculations = derived(
           title: singlePanel.title,
           icon: singlePanel.icon,
           x: 0,
-          y: headerHeight,
+          y: 0,
           width: viewportWidth,
           height: viewportHeight,
           isVisible: true,
@@ -330,6 +329,6 @@ export const tilingCalculations = derived(
       }
     }
     
-    return calculateLayout($layout.rootNode, 0, headerHeight, viewportWidth, viewportHeight);
+    return calculateLayout($layout.rootNode, 0, 0, viewportWidth, viewportHeight);
   }
 );

@@ -1,955 +1,509 @@
 <script lang="ts">
-    import { onMount, onDestroy } from "svelte";
-    import {
-        characterManager,
-        characters,
-        activeCharacter,
-        selectedAgent,
-        getAgentShortName,
-    } from "../services/CharacterManager";
-    import { selectedAgents, focusedAgent, agentSelectionManager } from "../services/AgentSelectionManager";
-    import { communicationManager } from "../services/CommunicationManager";
-    import {
-        simulationController,
-        type SimulationSpeed,
-    } from "../services/SimulationController";
-    import type { Character } from "../types/Character";
-    import type { AgentMessage } from "../types/Communication";
+    import { onMount, onDestroy } from 'svelte';
+    import { selectedAgents, focusedAgent, agentSelectionManager, agentSelectionStore, type Agent } from '../services/AgentSelectionManager';
+    import { get } from 'svelte/store';
+
+    export let agents: any[] = [];
+    
+    // Get agents from AgentSelectionManager instead of props
+    $: availableAgents = $agentSelectionStore.availableAgents;
 
     let canvas: HTMLCanvasElement;
     let ctx: CanvasRenderingContext2D | null = null;
-    let animationId: number = 0;
+    let animationId: number;
+    let isInitialized = false;
+
+    // Game world properties
+    let worldBounds = { width: 0, height: 0 };
+    let camera = { x: 0, y: 0, zoom: 1 };
     let time = 0;
-    let mouseX = 0;
-    let mouseY = 0;
-    let agentCharacters: Character[] = [];
-    let allCharacters: Character[] = [];
 
-    // Network visualization variables
-    let activeMessages: AnimatedMessage[] = [];
-    let messageHistory: AgentMessage[] = [];
-    let updateInterval: number;
-    let activeConnections: any[] = [];
-
-    // Simulation integration
-    let simulationSpeed: SimulationSpeed = "normal";
-    let simulationState = "paused";
-    let speedMultiplier = 1;
-    let unsubscribeSimulation: (() => void)[] = [];
-
-    interface AnimatedMessage {
+    // Character system with intelligent positioning
+    class GameCharacter {
         id: string;
-        fromAgent: string;
-        toAgent: string;
-        startTime: number;
-        duration: number;
-        progress: number;
-        content: string;
-        intent: string;
-        fromPos: { x: number; y: number };
-        toPos: { x: number; y: number };
-        currentPos: { x: number; y: number };
+        name: string;
+        type: 'user' | 'agent';
+        position: { x: number; y: number };
+        targetPosition: { x: number; y: number };
+        velocity: { x: number; y: number };
+        size: number;
+        baseSize: number;
         color: string;
-        alpha: number;
-    }
-
-    // Subscribe to characters from the character manager
-    $: agentCharacters = $characters.filter((c) => c.type === "npc");
-    $: allCharacters = $characters; // All characters including user
-    
-    // Sync with InteractionPanel agent selection
-    $: currentSelectedAgents = $selectedAgents;
-    $: currentFocusedAgent = $focusedAgent;
-
-    // Update animation speed based on simulation speed
-    $: {
-        switch (simulationSpeed) {
-            case "paused":
-                speedMultiplier = 0;
-                break;
-            case "normal":
-                speedMultiplier = 1;
-                break;
-            case "fast":
-                speedMultiplier = 2;
-                break;
-            case "very_fast":
-                speedMultiplier = 4;
-                break;
-        }
-    }
-
-    function handleMouseMove(event: MouseEvent) {
-        if (!canvas) return;
-
-        // Convert to canvas-relative coordinates
-        const rect = canvas.getBoundingClientRect();
-        mouseX = event.clientX - rect.left;
-        mouseY = event.clientY - rect.top;
-    }
-
-    function isMouseOverCharacter(
-        mouseX: number,
-        mouseY: number,
-        charX: number,
-        charY: number,
-        size: number,
-    ): boolean {
-        if (!canvas) return false;
-
-        const hoverRadius = size * 1.2;
-        const distance = Math.sqrt(
-            (mouseX - charX) ** 2 + (mouseY - charY) ** 2,
-        );
-        return distance <= hoverRadius;
-    }
-
-    function handleMouseClick(event: MouseEvent) {
-        if (!canvas) return;
-
-        const rect = canvas.getBoundingClientRect();
-        const clickX = event.clientX - rect.left;
-        const clickY = event.clientY - rect.top;
-
-        // Check if click is on any character
-        agentCharacters.forEach((character) => {
-            const size = Math.min(canvas.width, canvas.height) * 0.1;
-            if (
-                isMouseOverCharacter(
-                    clickX,
-                    clickY,
-                    character.position.x,
-                    character.position.y,
-                    size,
-                )
-            ) {
-                console.log(`Clicked on ${character.name}!`);
-                
-                // Handle multi-selection with Ctrl/Cmd key
-                if (event.ctrlKey || event.metaKey) {
-                    // Toggle agent selection
-                    agentSelectionManager.toggleAgentSelection(character.id);
-                } else {
-                    // Single selection - clear others and select this one
-                    agentSelectionManager.selectAgent(character.id);
-                }
-                
-                // Update the old system for backward compatibility with terminal
-                const shortName = getAgentShortName(character.id);
-                selectedAgent.set(shortName);
-                characterManager.setActiveCharacter(character.id);
-                
-                // Make sure the new system stays in sync
-                agentSelectionManager.syncWithLegacySystem(character.id, shortName);
-                
-                console.log(`Selected agent: ${character.name} (${character.id} -> ${shortName})`);
-                console.log(`Current selection:`, currentSelectedAgents.map(a => a.name));
-            }
-        });
-
-        // Test message bubble creation with right-click or ctrl+click
-        if (event.button === 2 || event.ctrlKey) {
-            createTestMessageBubble();
-            event.preventDefault();
-        }
-    }
-
-    // Test function to create a visible message bubble
-    function createTestMessageBubble() {
-        const agents = ["agent_alpha", "agent_beta", "agent_gamma"];
-        const fromAgent = agents[Math.floor(Math.random() * agents.length)];
-        const toAgent = agents.filter((a) => a !== fromAgent)[
-            Math.floor(Math.random() * 2)
-        ];
-
-        const fromChar = allCharacters.find((c) => c.id === fromAgent);
-        const toChar = allCharacters.find((c) => c.id === toAgent);
-
-        if (!fromChar || !toChar) return;
-
-        const testMessage: AnimatedMessage = {
-            id: "test_" + Date.now(),
-            fromAgent: fromAgent,
-            toAgent: toAgent,
-            startTime: time,
-            duration: 300,
-            progress: 0,
-            content: "Test message bubble",
-            intent: "social_chat",
-            fromPos: { x: fromChar.position.x, y: fromChar.position.y },
-            toPos: { x: toChar.position.x, y: toChar.position.y },
-            currentPos: { x: fromChar.position.x, y: fromChar.position.y },
-            color: "#00ffff",
-            alpha: 1,
+        status: string;
+        animation: {
+            phase: number;
+            speed: number;
+            amplitude: number;
+            bobOffset: number;
         };
-
-        activeMessages.push(testMessage);
-        console.log(
-            `🚀 Created test message: ${fromAgent} -> ${toAgent}, active messages:`,
-            activeMessages.length,
-        );
-    }
-
-    // Handle keyboard events for testing
-    function handleKeyPress(event: KeyboardEvent) {
-        if (event.key === "t" || event.key === "T") {
-            createTestMessageBubble();
+        
+        constructor(data: any) {
+            this.id = data.id;
+            this.name = data.name;
+            this.type = data.type || 'agent';
+            this.position = { x: 0, y: 0 };
+            this.targetPosition = { x: 0, y: 0 };
+            this.velocity = { x: 0, y: 0 };
+            this.baseSize = this.type === 'user' ? 35 : 30;
+            this.size = this.baseSize;
+            this.color = data.color || (this.type === 'user' ? '#00bfff' : '#00ff88');
+            this.status = data.status || 'active';
+            this.animation = {
+                phase: Math.random() * Math.PI * 2,
+                speed: 0.02 + Math.random() * 0.01,
+                amplitude: 3 + Math.random() * 2,
+                bobOffset: Math.random() * Math.PI * 2
+            };
         }
-    }
 
-    // Simple function to trigger message for testing
-    function triggerTestMessage() {
-        createTestMessageBubble();
-    }
-
-    function drawCharacter(character: Character, isActive: boolean = false) {
-        if (!ctx || !canvas || !character) return;
-
-        try {
-            // Check if this character is sending or receiving a message
-            const isTransmitting = activeMessages.some(
-                (msg) =>
-                    msg.fromAgent === character.id ||
-                    msg.toAgent === character.id,
-            );
-
-            // Check if this character is selected in InteractionPanel
-            const isSelectedInInteraction = currentSelectedAgents.some(agent => agent.id === character.id);
-            const isFocusedInInteraction = currentFocusedAgent?.id === character.id;
-
-            const size = Math.min(canvas.width, canvas.height) * 0.15; // Increased from 0.1 to make characters larger
-            const cx = character.position.x;
-            const cy = character.position.y;
-
-            // Check if mouse is hovering over this character
-            const isHovering = isMouseOverCharacter(
-                mouseX,
-                mouseY,
-                cx,
-                cy,
-                size,
-            );
-
-            // Breathing animation
-            const breathScale = 1 + Math.sin(time * 0.02) * 0.1;
-            const actualSize = Math.max(size * breathScale, 30); // Increased minimum size from 10 to 30
-
-            // Scale factors for different states
-            const activeScale = isActive ? 1.3 : 1; // Active character
-            const selectedScale = isSelectedInInteraction ? 1.25 : 1; // Selected in InteractionPanel
-            const focusedScale = isFocusedInInteraction ? 1.4 : 1; // Focused in InteractionPanel
-            const hoverScale = isHovering ? 1.15 : 1; // Mouse hover
+        update(deltaTime: number) {
+            // Smooth movement towards target
+            const dx = this.targetPosition.x - this.position.x;
+            const dy = this.targetPosition.y - this.position.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
             
-            const finalSize = Math.max(
-                actualSize * activeScale * selectedScale * focusedScale * hoverScale,
-                25,
-            );
+            if (distance > 1) {
+                const moveSpeed = 0.08;
+                this.velocity.x = dx * moveSpeed;
+                this.velocity.y = dy * moveSpeed;
+                this.position.x += this.velocity.x;
+                this.position.y += this.velocity.y;
+            }
 
-            // Body shape depends on character type
-            if (character.type === "user") {
-                // Human user: Draw as a circle (more human-like)
-                ctx.beginPath();
-                ctx.arc(cx, cy, finalSize / 2, 0, 2 * Math.PI);
+            // Update animation
+            this.animation.phase += this.animation.speed;
+            
+            // Breathing/pulsing effect
+            const pulse = Math.sin(this.animation.phase) * 0.1 + 1;
+            this.size = this.baseSize * pulse;
 
-                // Special gradient for human user
-                const gradient = ctx.createRadialGradient(
-                    cx,
-                    cy,
-                    0,
-                    cx,
-                    cy,
-                    finalSize / 2,
-                );
-                gradient.addColorStop(0, "#ffffff");
-                gradient.addColorStop(0.3, character.color);
-                gradient.addColorStop(1, character.color + "88");
+            // Selection effect
+            const selectionState = get(agentSelectionStore);
+            const isSelected = selectionState.selectedAgents[this.id] || false;
+            const isFocused = selectionState.focusedAgent === this.id;
+            if (isSelected || isFocused) {
+                this.size *= 1.1;
+            }
+        }
+
+        draw(ctx: CanvasRenderingContext2D, time: number) {
+            const { x, y } = this.position;
+            const selectionState = get(agentSelectionStore);
+            const isSelected = selectionState.selectedAgents[this.id] || false;
+            const isFocused = selectionState.focusedAgent === this.id;
+            
+            // Floating animation
+            const bobOffset = Math.sin(time * this.animation.speed + this.animation.bobOffset) * this.animation.amplitude;
+            const drawY = y + bobOffset;
+
+            // Draw selection aura
+            if (isSelected || isFocused) {
+                const auraSize = this.size + 15 + Math.sin(time * 0.05) * 5;
+                const gradient = ctx.createRadialGradient(x, drawY, this.size, x, drawY, auraSize);
+                gradient.addColorStop(0, 'rgba(0, 255, 136, 0)');
+                gradient.addColorStop(0.7, isFocused ? 'rgba(0, 255, 136, 0.3)' : 'rgba(0, 191, 255, 0.2)');
+                gradient.addColorStop(1, 'rgba(0, 255, 136, 0)');
+                
                 ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(x, drawY, auraSize, 0, Math.PI * 2);
                 ctx.fill();
+            }
 
-                // Human user gets special border
-                ctx.strokeStyle = "#ffffff";
-                ctx.lineWidth = 4;
-                ctx.stroke();
-                ctx.strokeStyle = character.color;
-                ctx.lineWidth = 2;
-                ctx.stroke();
+            // Draw character shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.beginPath();
+            ctx.ellipse(x, y + this.size + 5, this.size * 0.8, this.size * 0.3, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw character body with gradient
+            const agent = availableAgents.find(a => a.id === this.id);
+            const isActive = agent ? agent.isActive : true;
+            const baseColor = isActive ? this.color : this.darkenColor(this.color, 0.6);
+            
+            const gradient = ctx.createRadialGradient(x - this.size * 0.3, drawY - this.size * 0.3, 0, x, drawY, this.size);
+            gradient.addColorStop(0, baseColor);
+            gradient.addColorStop(1, this.darkenColor(baseColor, 0.3));
+            
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            
+            if (this.type === "user") {
+                // User as glowing orb
+                ctx.arc(x, drawY, this.size, 0, Math.PI * 2);
             } else {
-                // AI Agents: Triangle shape
-                ctx.beginPath();
-                ctx.moveTo(cx, cy - finalSize / Math.sqrt(3)); // Top vertex
-                ctx.lineTo(
-                    cx - finalSize / 2,
-                    cy + finalSize / (2 * Math.sqrt(3)),
-                ); // Bottom left
-                ctx.lineTo(
-                    cx + finalSize / 2,
-                    cy + finalSize / (2 * Math.sqrt(3)),
-                ); // Bottom right
-                ctx.closePath();
-
-                // Use character's color for gradient
-                const gradient = ctx.createLinearGradient(
-                    cx,
-                    cy - finalSize,
-                    cx,
-                    cy + finalSize,
-                );
-                gradient.addColorStop(0, character.color);
-                gradient.addColorStop(0.5, character.color + "CC");
-                gradient.addColorStop(1, character.color + "88");
-                ctx.fillStyle = gradient;
-                ctx.fill();
-            }
-
-            // Glowing outline with multiple state effects
-            let glowIntensity = 3;
-            let glowColor = "#ffffff";
-            
-            if (isFocusedInInteraction) {
-                glowIntensity = 10;
-                glowColor = "#ff6b6b"; // Red for focused agent
-            } else if (isSelectedInInteraction) {
-                glowIntensity = 8;
-                glowColor = "#00ff88"; // Green for selected agents
-            } else if (isActive) {
-                glowIntensity = 8;
-                glowColor = "#ffff00"; // Yellow for active
-            } else if (isTransmitting) {
-                glowIntensity = 6;
-                glowColor = "#00ffff"; // Cyan for transmitting
-            } else if (isHovering) {
-                glowIntensity = 4;
-                glowColor = "#ffffff"; // White for hover
-            }
-            
-            ctx.strokeStyle = glowColor;
-            ctx.lineWidth = glowIntensity;
-            ctx.stroke();
-
-            // Additional special effect glows
-            if (isFocusedInInteraction) {
-                // Pulsing red glow for focused agent
-                const pulseIntensity = 0.8 + Math.sin(time * 0.1) * 0.2;
-                ctx.strokeStyle = `rgba(255, 107, 107, ${pulseIntensity})`;
-                ctx.lineWidth = 25;
-                ctx.stroke();
-            }
-            
-            if (isSelectedInInteraction && !isFocusedInInteraction) {
-                // Steady green glow for selected agents
-                ctx.strokeStyle = "rgba(0, 255, 136, 0.6)";
-                ctx.lineWidth = 18;
-                ctx.stroke();
-            }
-
-            // Additional hover glow
-            if (isHovering) {
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
-                ctx.lineWidth = 15;
-                ctx.stroke();
-            }
-
-            // Message transmission pulse glow
-            if (isTransmitting) {
-                const pulseIntensity = 0.7 + Math.sin(time * 0.08) * 0.3;
-                ctx.strokeStyle = `rgba(0, 255, 255, ${pulseIntensity})`;
-                ctx.lineWidth = 12;
-                ctx.stroke();
-            }
-
-            // Eyes
-            const eyeSize = Math.max(finalSize * 0.15, 1);
-            const eyeY = cy - finalSize * 0.1;
-            const eyeSpacing = Math.max(finalSize * 0.3, 5);
-
-            // Eye movement based on mouse position
-            const eyeOffsetX = isHovering ? (mouseX - cx) * 0.01 : 0;
-            const eyeOffsetY = isHovering ? (mouseY - cy) * 0.01 : 0;
-
-            // Left eye
-            ctx.beginPath();
-            ctx.arc(
-                cx - eyeSpacing + eyeOffsetX,
-                eyeY + eyeOffsetY,
-                eyeSize,
-                0,
-                2 * Math.PI,
-            );
-            ctx.fillStyle = "#ffffff";
-            ctx.fill();
-            ctx.strokeStyle = character.color;
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
-            // Right eye
-            ctx.beginPath();
-            ctx.arc(
-                cx + eyeSpacing + eyeOffsetX,
-                eyeY + eyeOffsetY,
-                eyeSize,
-                0,
-                2 * Math.PI,
-            );
-            ctx.fill();
-            ctx.stroke();
-
-            // Pupils with blinking animation
-            const blink = Math.sin(time * 0.1) > 0.8 ? 0 : 1;
-            const pupilSize = Math.max(eyeSize * 0.6 * blink, 0.5);
-
-            ctx.fillStyle = "#000000";
-            ctx.beginPath();
-            ctx.arc(
-                cx - eyeSpacing + eyeOffsetX,
-                eyeY + eyeOffsetY,
-                pupilSize,
-                0,
-                2 * Math.PI,
-            );
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(
-                cx + eyeSpacing + eyeOffsetX,
-                eyeY + eyeOffsetY,
-                pupilSize,
-                0,
-                2 * Math.PI,
-            );
-            ctx.fill();
-
-            // Mouth
-            const mouthY = cy + finalSize * 0.2;
-            const mouthWidth = Math.max(finalSize * 0.3, 10);
-            const mouthCurve =
-                Math.sin(time * 0.05) * 5 + (isHovering ? 10 : 0);
-
-            ctx.beginPath();
-            ctx.moveTo(cx - mouthWidth, mouthY + mouthCurve);
-            ctx.quadraticCurveTo(
-                cx,
-                mouthY + mouthCurve + 10,
-                cx + mouthWidth,
-                mouthY + mouthCurve,
-            );
-            ctx.strokeStyle = character.color;
-            ctx.lineWidth = 3;
-            ctx.stroke();
-
-            // Energy particles
-            for (let i = 0; i < 6; i++) {
-                const angle = time * 0.01 + (i * Math.PI) / 3;
-                const radius = Math.max(finalSize * 0.9, 20);
-                const x = cx + Math.cos(angle) * radius;
-                const y = cy + Math.sin(angle) * radius;
-                const particleSize = Math.max(
-                    Math.sin(time * 0.02 + i) * 2 + 1,
-                    1,
-                );
-
-                ctx.beginPath();
-                ctx.arc(x, y, particleSize, 0, 2 * Math.PI);
-                ctx.fillStyle = character.color + "80";
-                ctx.fill();
-            }
-
-            // Character name label
-            ctx.fillStyle = character.color;
-            ctx.font = `${Math.max(12, finalSize * 0.15)}px 'Courier New', monospace`;
-            ctx.textAlign = "center";
-            ctx.fillText(character.name, cx, cy + finalSize + 20);
-
-            // Status indicator
-            const statusColor =
-                character.status === "online" ? "#00ff00" : "#888888";
-            ctx.beginPath();
-            ctx.arc(
-                cx + finalSize * 0.4,
-                cy - finalSize * 0.4,
-                4,
-                0,
-                2 * Math.PI,
-            );
-            ctx.fillStyle = statusColor;
-            ctx.fill();
-        } catch (error) {
-            console.warn(`🎮 Failed to draw character ${character.id}:`, error);
-        }
-    }
-
-    // Draw message transmission lines when agents are sending messages
-    function drawMessageTransmissionLines() {
-        if (!ctx || !canvas || activeMessages.length === 0) return;
-
-
-
-        // Draw temporary message lines (simple one-reply conversations)
-        // Group messages by sender-receiver pairs to avoid duplicate lines
-        const messagePairs = new Map();
-
-        activeMessages.forEach((msg) => {
-            const key = `${msg.fromAgent}-${msg.toAgent}`;
-            if (!messagePairs.has(key)) {
-                messagePairs.set(key, msg);
-            }
-        });
-
-        messagePairs.forEach((msg) => {
-            const fromChar = allCharacters.find((c) => c.id === msg.fromAgent);
-            const toChar = allCharacters.find((c) => c.id === msg.toAgent);
-
-            if (!fromChar || !toChar) return;
-
-            const x1 = fromChar.position.x;
-            const y1 = fromChar.position.y;
-            const x2 = toChar.position.x;
-            const y2 = toChar.position.y;
-
-            // Create animated transmission line for temporary messages
-            const pulseIntensity = 0.7 + Math.sin(time * 0.1) * 0.3;
-            const lineWidth = 3;
-
-            // Main transmission line (straight line, not arc)
-            ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-            ctx.strokeStyle = `rgba(255, 165, 0, ${pulseIntensity})`; // Orange for temp messages
-            ctx.lineWidth = lineWidth;
-            ctx.stroke();
-
-            // Add glow effect
-            ctx.strokeStyle = `rgba(255, 255, 255, ${pulseIntensity * 0.5})`;
-            ctx.lineWidth = lineWidth + 2;
-            ctx.stroke();
-
-            // Draw animated particles along the line
-            const particleCount = 3;
-            for (let i = 0; i < particleCount; i++) {
-                const progress = (time * 0.03 + i * 0.33) % 1;
-                const x = x1 + (x2 - x1) * progress;
-                const y = y1 + (y2 - y1) * progress;
-
-                ctx.beginPath();
-                ctx.arc(x, y, 3, 0, 2 * Math.PI);
-                ctx.fillStyle = `rgba(255, 255, 255, ${pulseIntensity})`;
-                ctx.fill();
-            }
-
-            // Draw message intent label in the middle
-            const midX = (x1 + x2) / 2;
-            const midY = (y1 + y2) / 2 - 15;
-
-            ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-            ctx.fillRect(midX - 20, midY - 8, 40, 16);
-
-            ctx.fillStyle = "#ffa500";
-            ctx.font = "10px 'Courier New', monospace";
-            ctx.textAlign = "center";
-            ctx.fillText(getIntentIcon(msg.intent), midX, midY + 3);
-        });
-    }
-
-    // Network Visualization Functions
-    function updateCommunications() {
-        try {
-            // Update active connections based on message activity
-            activeConnections =
-                communicationManager.getActiveConnections() || [];
-
-            const recentMessages = communicationManager
-                .getPendingMessages("all")
-                .slice(-5);
-
-            recentMessages.forEach((msg) => {
-                if (!messageHistory.find((m) => m.id === msg.id)) {
-                    messageHistory.push(msg);
-
-                    if (msg.fromAgent !== msg.toAgent && msg.toAgent) {
-                        createMessageAnimation(msg);
-                    }
+                // Agents as dynamic triangular forms
+                const points = 3;
+                const angleOffset = time * 0.01;
+                for (let i = 0; i < points; i++) {
+                    const angle = (i / points) * Math.PI * 2 + angleOffset;
+                    const px = x + Math.cos(angle) * this.size;
+                    const py = drawY + Math.sin(angle) * this.size * 0.8;
+                    if (i === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
                 }
-            });
-        } catch (error) {
-            console.warn("🎮 Failed to update communications:", error);
-        }
-    }
-
-    function createMessageAnimation(message: AgentMessage) {
-        const fromChar = allCharacters.find((c) => c.id === message.fromAgent);
-        const toChar = allCharacters.find((c) => c.id === message.toAgent);
-
-        if (!fromChar || !toChar) {
-            console.log(
-                "Could not find characters for message:",
-                message.fromAgent,
-                "->",
-                message.toAgent,
-            );
-            return;
-        }
-
-        // Different colors for different message types
-        let messageColor = "#00ffff"; // Default cyan
-        if (message.messageType === "user_message") {
-            messageColor = "#ffff00"; // Yellow for user messages
-        } else if (message.toAgent === "player_main") {
-            messageColor = "#ff44ff"; // Pink/magenta for agent responses to user
-        } else if (message.intent === "question") {
-            messageColor = "#ff8800"; // Orange for questions
-        } else if (message.intent === "social_chat") {
-            messageColor = "#88ff88"; // Green for social chat
-        }
-
-        const animatedMessage: AnimatedMessage = {
-            id: message.id,
-            fromAgent: message.fromAgent,
-            toAgent: message.toAgent || "all",
-            startTime: time,
-            duration: 300, // Increased from 180 to 300 for longer visibility
-            progress: 0,
-            content: message.content,
-            intent: message.intent,
-            fromPos: { x: fromChar.position.x, y: fromChar.position.y },
-            toPos: { x: toChar.position.x, y: toChar.position.y },
-            currentPos: { x: fromChar.position.x, y: fromChar.position.y },
-            color: messageColor,
-            alpha: 1,
-        };
-
-        activeMessages.push(animatedMessage);
-        console.log(
-            "Created message animation:",
-            animatedMessage.fromAgent,
-            "->",
-            animatedMessage.toAgent,
-            "Active messages:",
-            activeMessages.length,
-        );
-
-        if (activeMessages.length > 8) {
-            activeMessages = activeMessages.slice(-8);
-        }
-    }
-
-    function getIntentColor(intent: string): string {
-        const colors: Record<string, string> = {
-            question: "#FFD700",
-            request_help: "#FF6B6B",
-            share_info: "#4ECDC4",
-            collaborate: "#45B7D1",
-            social_chat: "#96CEB4",
-            challenge: "#FFEAA7",
-            acknowledge: "#74B9FF",
-            suggest: "#FD79A8",
-            compliment: "#FDCB6E",
-            critique: "#E17055",
-        };
-        return colors[intent] || "#FFFFFF";
-    }
-
-    function getIntentIcon(intent: string): string {
-        const icons: Record<string, string> = {
-            question: "❓",
-            request_help: "🤝",
-            share_info: "💡",
-            collaborate: "🤜",
-            social_chat: "💬",
-            challenge: "⚔️",
-            acknowledge: "✅",
-            suggest: "💭",
-            compliment: "👍",
-            critique: "📝",
-        };
-        return icons[intent] || "💬";
-    }
-
-    function drawAnimatedMessages() {
-        if (!ctx) return;
-
-        activeMessages.forEach((msg, index) => {
-            msg.progress = Math.min(1, (time - msg.startTime) / msg.duration);
-            const easeProgress = 1 - Math.pow(1 - msg.progress, 2);
-
-            // Higher arc for more visible path
-            const arcHeight = 60 * Math.sin(msg.progress * Math.PI);
-            msg.currentPos.x =
-                msg.fromPos.x + (msg.toPos.x - msg.fromPos.x) * easeProgress;
-            msg.currentPos.y =
-                msg.fromPos.y +
-                (msg.toPos.y - msg.fromPos.y) * easeProgress -
-                arcHeight;
-
-            msg.alpha = msg.progress < 0.8 ? 1 : 1 - (msg.progress - 0.8) / 0.2;
-
-            // Larger and more visible message bubble
-            const pulse = 1 + Math.sin(time * 0.2 + index) * 0.4;
-            const bubbleSize = 16 * pulse; // Increased from 8 to 16
-
-            if (ctx) {
-                // Draw outer glow effect
-                ctx.beginPath();
-                ctx.arc(
-                    msg.currentPos.x,
-                    msg.currentPos.y,
-                    bubbleSize + 8,
-                    0,
-                    2 * Math.PI,
-                );
-                ctx.fillStyle =
-                    msg.color +
-                    Math.round(msg.alpha * 60)
-                        .toString(16)
-                        .padStart(2, "0");
-                ctx.fill();
-
-                // Draw main bubble
-                ctx.beginPath();
-                ctx.arc(
-                    msg.currentPos.x,
-                    msg.currentPos.y,
-                    bubbleSize,
-                    0,
-                    2 * Math.PI,
-                );
-                ctx.fillStyle =
-                    msg.color +
-                    Math.round(msg.alpha * 255)
-                        .toString(16)
-                        .padStart(2, "0");
-                ctx.fill();
-
-                // White border for visibility
-                ctx.strokeStyle =
-                    "#FFFFFF" +
-                    Math.round(msg.alpha * 255)
-                        .toString(16)
-                        .padStart(2, "0");
-                ctx.lineWidth = 3;
-                ctx.stroke();
-
-                // Intent icon - larger and more visible
-                const icon = getIntentIcon(msg.intent);
-                ctx.fillStyle =
-                    "#000000" +
-                    Math.round(msg.alpha * 255)
-                        .toString(16)
-                        .padStart(2, "0");
-                ctx.font = "bold 16px Arial"; // Increased from 12px to 16px
-                ctx.textAlign = "center";
-                ctx.fillText(icon, msg.currentPos.x, msg.currentPos.y + 6);
+                ctx.closePath();
             }
+            ctx.fill();
+
+            // Draw character outline with glow
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.shadowColor = this.color;
+            ctx.shadowBlur = 10;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Draw status indicator
+            if (this.status === 'active') {
+                const statusSize = 6;
+                const statusX = x + this.size * 0.7;
+                const statusY = drawY - this.size * 0.7;
+                
+                ctx.fillStyle = '#00ff88';
+                ctx.beginPath();
+                ctx.arc(statusX, statusY, statusSize, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Pulsing effect
+                const pulseSize = statusSize + Math.sin(time * 0.1) * 2;
+                ctx.strokeStyle = 'rgba(0, 255, 136, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(statusX, statusY, pulseSize, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Draw character name with better typography
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            
+            // Text shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.fillText(this.name, x + 1, drawY + this.size + 15 + 1);
+            
+            // Main text
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(this.name, x, drawY + this.size + 15);
+        }
+
+        darkenColor(color: string, factor: number): string {
+            // Simple color darkening with proper syntax
+            const hex = color.replace('#', '');
+            const r = Math.max(0, Math.floor(parseInt(hex.substr(0, 2), 16) * (1 - factor)));
+            const g = Math.max(0, Math.floor(parseInt(hex.substr(2, 2), 16) * (1 - factor)));
+            const b = Math.max(0, Math.floor(parseInt(hex.substr(4, 2), 16) * (1 - factor)));
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+    }
+
+    // Game characters
+    let gameCharacters: GameCharacter[] = [];
+    let userCharacter: GameCharacter;
+
+    // Initialize characters
+    function initializeCharacters() {
+        gameCharacters = [];
+        
+        // Create user character
+        userCharacter = new GameCharacter({
+            id: 'user',
+            name: 'User',
+            type: 'user',
+            color: '#00bfff',
+            status: 'active'
+        });
+        gameCharacters.push(userCharacter);
+
+        // Create agent characters from AgentSelectionManager
+        availableAgents.forEach(agent => {
+            const gameChar = new GameCharacter({
+                id: agent.id,
+                name: agent.name,
+                type: 'agent',
+                color: agent.color || '#00ff88',
+                status: agent.isActive ? 'active' : 'inactive'
+            });
+            gameCharacters.push(gameChar);
         });
 
-        activeMessages = activeMessages.filter((msg) => msg.progress < 1);
+        // Position characters intelligently
+        positionCharacters();
     }
 
-    function animate() {
-        // Apply simulation speed to animation
-        if (simulationState === "running") {
-            time += speedMultiplier;
-        } else if (simulationState === "paused") {
-            // Still animate but don't advance time-based animations
-            time += 0.1; // Very slow animation to show pause state
-        }
+    // Intelligent character positioning system
+    function positionCharacters() {
+        if (!canvas || gameCharacters.length === 0) return;
 
-        if (ctx && canvas) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const agentCharacters = gameCharacters.filter(c => c.type === 'agent');
+        
+        // Position user at bottom center
+        userCharacter.targetPosition = {
+            x: centerX,
+            y: centerY + Math.min(canvas.width, canvas.height) * 0.25
+        };
 
-            // Add visual effects based on simulation state
-            if (simulationState === "paused") {
-                // Dim background for pause state
-                ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            } else if (speedMultiplier > 1) {
-                // Add speed blur effect for fast forward
-                ctx.globalAlpha = 0.9;
-            }
-
-            // Draw all characters (agents + user)
-            allCharacters.forEach((character) => {
-                const isActive =
-                    $activeCharacter && $activeCharacter.id === character.id;
-                drawCharacter(character, isActive);
+        // Position agents in an intelligent formation
+        if (agentCharacters.length === 1) {
+            // Single agent: opposite to user
+            agentCharacters[0].targetPosition = {
+                x: centerX,
+                y: centerY - Math.min(canvas.width, canvas.height) * 0.25
+            };
+        } else if (agentCharacters.length === 2) {
+            // Two agents: flanking formation
+            const spacing = Math.min(canvas.width, canvas.height) * 0.3;
+            agentCharacters[0].targetPosition = {
+                x: centerX - spacing,
+                y: centerY - spacing * 0.5
+            };
+            agentCharacters[1].targetPosition = {
+                x: centerX + spacing,
+                y: centerY - spacing * 0.5
+            };
+        } else {
+            // Multiple agents: dynamic circle formation
+            const radius = Math.min(canvas.width, canvas.height) * 0.25;
+            const angleStep = (Math.PI * 2) / agentCharacters.length;
+            
+            agentCharacters.forEach((character, index) => {
+                const angle = index * angleStep - Math.PI / 2; // Start from top
+                character.targetPosition = {
+                    x: centerX + Math.cos(angle) * radius,
+                    y: centerY + Math.sin(angle) * radius * 0.7 // Flatten the circle
+                };
             });
-
-            // Draw message transmission lines between agents
-            drawMessageTransmissionLines();
-
-            // Draw animated messages on top
-            drawAnimatedMessages();
-
-            // Reset alpha
-            ctx.globalAlpha = 1.0;
-
-            // Add simulation speed indicator
-            drawSpeedIndicator();
         }
-        animationId = requestAnimationFrame(animate);
     }
 
+    // Intelligent canvas resizing
     function resizeCanvas() {
         if (!canvas) return;
-        // Make canvas more square and less wide
-        const maxWidth = Math.min(window.innerWidth * 0.8, 1000); // Limit max width
-        const aspectRatio = 4 / 3; // More square aspect ratio
-        canvas.width = maxWidth;
-        canvas.height = maxWidth / aspectRatio;
-        ctx = canvas.getContext("2d");
-    }
-
-    function drawSpeedIndicator() {
-        if (!ctx || simulationState === "paused") return;
-
-        const speedText = `${speedMultiplier}x`;
-        const fontSize = 16;
-        ctx.font = `${fontSize}px Inter, sans-serif`;
-        ctx.fillStyle = speedMultiplier > 1 ? "#FF9800" : "#4CAF50";
-        ctx.globalAlpha = 0.7;
-
-        // Position in top-right corner
-        const textWidth = ctx.measureText(speedText).width;
-        ctx.fillText(speedText, canvas.width - textWidth - 20, 30);
-
-        ctx.globalAlpha = 1.0;
-    }
-
-    function setupSimulationIntegration() {
-        // Subscribe to simulation controller stores
-        const speedUnsub = simulationController.speed.subscribe((speed) => {
-            simulationSpeed = speed;
-        });
-
-        const stateUnsub = simulationController.state.subscribe((state) => {
-            simulationState = state;
-        });
-
-        // Subscribe to simulation ticks for agent events
-        const tickUnsub = simulationController.onTick((tick) => {
-            // Create message animations for tick events
-            tick.eventsTriggered.forEach((event) => {
-                if (event === "agent_interaction") {
-                    createTestMessageBubble(); // Trigger visual feedback
-                }
-            });
-        });
-
-        unsubscribeSimulation.push(speedUnsub, stateUnsub, tickUnsub);
-    }
-
-    onMount(() => {
-        try {
-            // Initialize character manager with sample data
-            characterManager.initializeSampleData();
-            console.log("🎮 Canvas: Characters initialized");
-
-            // Setup simulation integration
-            setupSimulationIntegration();
-
-            // Initialize canvas
-            if (canvas) {
-                resizeCanvas();
-                animate();
-                updateCommunications();
-
-                // Update communications every 2 seconds (still needed for fetching messages)
-                updateInterval = setInterval(updateCommunications, 2000);
-
-                // Add event listeners with error handling
-                try {
-                    window.addEventListener("resize", resizeCanvas);
-                    window.addEventListener("keydown", handleKeyPress);
-                    canvas.addEventListener("mousemove", handleMouseMove);
-                    canvas.addEventListener("click", handleMouseClick);
-                    console.log("🎮 Canvas: Event listeners added");
-                } catch (error) {
-                    console.warn(
-                        "🎮 Canvas: Failed to add some event listeners:",
-                        error,
-                    );
-                }
-
-                console.log("🎮 Canvas: Initialization complete");
-            } else {
-                console.error("🎮 Canvas: Canvas element not found");
-            }
-        } catch (error) {
-            console.error("🎮 Canvas: Critical initialization error:", error);
+        
+        const container = canvas.parentElement;
+        if (!container) return;
+        
+        const rect = container.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        
+        // Set display size
+        canvas.style.width = `${rect.width}px`;
+        canvas.style.height = `${rect.height}px`;
+        
+        // Set actual canvas size for crisp rendering
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        
+        // Scale context for high DPI
+        ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.scale(dpr, dpr);
         }
+        
+        worldBounds = { width: rect.width, height: rect.height };
+        positionCharacters();
+    }
+
+    // Enhanced background rendering
+    function drawBackground(ctx: CanvasRenderingContext2D) {
+        const { width, height } = worldBounds;
+        
+        // Animated gradient background
+        const gradient = ctx.createRadialGradient(
+            width / 2, height / 2, 0,
+            width / 2, height / 2, Math.max(width, height) / 2
+        );
+        gradient.addColorStop(0, 'rgba(0, 20, 40, 0.8)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0.9)');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+
+        // Animated grid
+        ctx.strokeStyle = 'rgba(0, 255, 136, 0.1)';
+        ctx.lineWidth = 1;
+        
+        const gridSize = 50;
+        const offsetX = (time * 0.5) % gridSize;
+        const offsetY = (time * 0.3) % gridSize;
+        
+        for (let x = -offsetX; x < width + gridSize; x += gridSize) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+            ctx.stroke();
+        }
+        
+        for (let y = -offsetY; y < height + gridSize; y += gridSize) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(width, y);
+            ctx.stroke();
+        }
+    }
+
+    // Draw connections between characters
+    function drawConnections(ctx: CanvasRenderingContext2D) {
+        const selectionState = get(agentSelectionStore);
+        const selectedIds = Object.keys(selectionState.selectedAgents).filter(id => selectionState.selectedAgents[id]);
+        
+        if (selectedIds.length < 2) return;
+        
+        ctx.strokeStyle = 'rgba(0, 255, 136, 0.3)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        
+        for (let i = 0; i < selectedIds.length; i++) {
+            for (let j = i + 1; j < selectedIds.length; j++) {
+                const char1 = gameCharacters.find(c => c.id === selectedIds[i]);
+                const char2 = gameCharacters.find(c => c.id === selectedIds[j]);
+                
+                if (char1 && char2) {
+                    ctx.beginPath();
+                    ctx.moveTo(char1.position.x, char1.position.y);
+                    ctx.lineTo(char2.position.x, char2.position.y);
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        ctx.setLineDash([]);
+    }
+
+    // Main game loop
+    function gameLoop(currentTime: number) {
+        if (!ctx || !canvas) return;
+        
+        time = currentTime * 0.001; // Convert to seconds
+        const deltaTime = 16; // Assume 60fps
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, worldBounds.width, worldBounds.height);
+        
+        // Draw background
+        drawBackground(ctx);
+        
+        // Update characters
+        gameCharacters.forEach(character => {
+            character.update(deltaTime);
+        });
+        
+        // Draw connections
+        drawConnections(ctx);
+        
+        // Draw characters (sorted by y-position for proper layering)
+        const sortedCharacters = [...gameCharacters].sort((a, b) => a.position.y - b.position.y);
+        sortedCharacters.forEach(character => {
+            if (ctx) {
+                character.draw(ctx, time);
+            }
+        });
+        
+        // Continue the loop
+        animationId = requestAnimationFrame(gameLoop);
+    }
+
+    // Handle canvas clicks for character selection
+    function handleCanvasClick(event: MouseEvent) {
+        if (!canvas) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        
+        // Find clicked character
+        for (const character of gameCharacters) {
+            const dx = x - character.position.x;
+            const dy = y - character.position.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance <= character.size && character.type === 'agent') {
+                // Check if agent is active before allowing selection
+                const agent = availableAgents.find(a => a.id === character.id);
+                if (agent && agent.isActive) {
+                    // Toggle selection using the manager
+                    agentSelectionManager.toggleAgentSelection(character.id);
+                }
+                break;
+            }
+        }
+    }
+
+    // Lifecycle
+    onMount(() => {
+        if (canvas) {
+            resizeCanvas();
+            initializeCharacters();
+            animationId = requestAnimationFrame(gameLoop);
+            isInitialized = true;
+        }
+        
+        // Handle window resize
+        const handleResize = () => {
+            if (isInitialized) {
+                resizeCanvas();
+            }
+        };
+        
+        window.addEventListener('resize', handleResize);
+        
+        return () => {
+            window.removeEventListener('resize', handleResize);
+        };
     });
 
     onDestroy(() => {
         if (animationId) {
             cancelAnimationFrame(animationId);
         }
-        if (updateInterval) {
-            clearInterval(updateInterval);
-        }
-
-        // Cleanup simulation subscriptions
-        unsubscribeSimulation.forEach((unsub) => unsub());
-
-        window.removeEventListener("resize", resizeCanvas);
-        window.removeEventListener("keydown", handleKeyPress);
-        if (canvas) {
-            canvas.removeEventListener("mousemove", handleMouseMove);
-            canvas.removeEventListener("click", handleMouseClick);
-        }
     });
+
+    // Reactive updates
+    $: if (isInitialized && availableAgents) {
+        initializeCharacters();
+    }
 </script>
 
-<div class="canvas-container">
-    <canvas bind:this={canvas} class="gaming-canvas"></canvas>
-
-    <!-- Test button for message transmission -->
-    <button
-        class="test-message-btn"
-        on:click={triggerTestMessage}
-        title="Send test message (or press T)"
-    >
-        📨 Test Message
-    </button>
+<div class="gaming-canvas-container">
+    <canvas
+        bind:this={canvas}
+        class="gaming-canvas"
+        on:click={handleCanvasClick}
+    ></canvas>
 </div>
 
 <style>
-    .canvas-container {
-        position: relative;
+    .gaming-canvas-container {
+        width: 100%;
+        height: 100%;
         display: flex;
-        justify-content: center;
         align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle at center, rgba(0, 20, 40, 0.8), rgba(0, 0, 0, 0.9));
+        overflow: hidden;
+        position: relative;
     }
 
     .gaming-canvas {
         display: block;
-        margin: 2rem auto 1rem auto;
-        background: rgba(0, 0, 0, 0.3);
-        border: 2px solid #00ff88;
-        border-radius: 12px;
-        box-shadow:
-            0 0 20px rgba(0, 255, 136, 0.3),
-            inset 0 0 20px rgba(0, 255, 136, 0.1);
-        max-width: 85vw;
-        max-height: 70vh;
         cursor: pointer;
+        border-radius: 8px;
+        box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
+        transition: box-shadow 0.3s ease;
     }
 
-    .test-message-btn {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        background: rgba(0, 255, 136, 0.2);
-        border: 1px solid #00ff88;
-        border-radius: 6px;
-        color: #00ff88;
-        padding: 8px 12px;
-        font-size: 12px;
-        font-family: "Courier New", monospace;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        backdrop-filter: blur(5px);
+    .gaming-canvas:hover {
+        box-shadow: 0 0 30px rgba(0, 255, 136, 0.4);
     }
 
-    .test-message-btn:hover {
-        background: rgba(0, 255, 136, 0.4);
-        box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
-        transform: translateY(-1px);
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .gaming-canvas {
+            border-radius: 4px;
+        }
     }
 </style>

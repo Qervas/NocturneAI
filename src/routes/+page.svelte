@@ -3,11 +3,17 @@
 	import SimulationControls from "../lib/components/SimulationControls.svelte";
 	import FloatingFileExplorer from "../lib/components/FloatingFileExplorer.svelte";
 	import TilingLayoutContainer from "../lib/components/TilingLayoutContainer.svelte";
-	import LayoutDebug from "../lib/components/LayoutDebug.svelte";
 
-	import { selectedAgent } from "../lib/services/CharacterManager";
+
+	import { selectedAgent, characterManager, characters } from "../lib/services/CharacterManager";
 	import { tilingLayoutManager, tilingLayoutStore } from "../lib/services/TilingLayoutManager";
 	import { uploadedFiles } from "../lib/services/FileStore";
+	import { onMount } from "svelte";
+
+	// Initialize character data on mount
+	onMount(() => {
+		characterManager.initializeSampleData();
+	});
 
 	$: layout = $tilingLayoutStore;
 
@@ -96,9 +102,6 @@
 	</main>
 </div>
 
-<!-- Layout Debug Component -->
-<LayoutDebug />
-
 <!-- Floating File Explorer -->
 <FloatingFileExplorer files={$uploadedFiles} />
 
@@ -107,8 +110,12 @@
 		display: grid;
 		grid-template-rows: 60px 1fr;
 		height: 100vh;
+		width: 100vw;
+		max-width: 100vw;
 		background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
 		color: #ffffff;
+		overflow: hidden;
+		box-sizing: border-box;
 	}
 
 	.game-header {
@@ -172,5 +179,8 @@
 	.game-main {
 		position: relative;
 		overflow: hidden;
+		height: calc(100vh - 60px);
+		margin: 0;
+		padding: 0;
 	}
 </style>

@@ -334,7 +334,7 @@
   </div>
 {/if}
 
-<style>
+  <style>
   /* Compact Header Mode Styles */
   .simulation-controls-compact {
     display: flex;

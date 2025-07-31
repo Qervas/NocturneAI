@@ -106,6 +106,9 @@
     overflow: hidden;
     transition: all 0.2s ease;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    box-sizing: border-box;
+    max-width: 100%;
+    max-height: 100%;
   }
 
   .tiling-panel.focused {
