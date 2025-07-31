@@ -39,6 +39,70 @@
       color: '#ff4444', 
       tabColor: '#f4cccc',
       description: 'Test system command execution'
+    },
+    {
+      id: 'message-handler',
+      name: 'Message Handler',
+      icon: '📨',
+      color: '#9b59b6',
+      tabColor: '#f3e5f5',
+      description: 'Test message processing capabilities'
+    },
+    {
+      id: 'collaboration',
+      name: 'Team Collaboration',
+      icon: '🤝',
+      color: '#3498db',
+      tabColor: '#e3f2fd',
+      description: 'Test team collaboration features'
+    },
+    {
+      id: 'data-analyzer',
+      name: 'Data Analyzer',
+      icon: '📊',
+      color: '#e74c3c',
+      tabColor: '#ffebee',
+      description: 'Test data analysis capabilities'
+    },
+    {
+      id: 'pattern-recognition',
+      name: 'Pattern Recognition',
+      icon: '🧩',
+      color: '#f39c12',
+      tabColor: '#fff3e0',
+      description: 'Test pattern recognition skills'
+    },
+    {
+      id: 'access-control',
+      name: 'Access Control',
+      icon: '🔐',
+      color: '#2c3e50',
+      tabColor: '#eceff1',
+      description: 'Test access control mechanisms'
+    },
+    {
+      id: 'threat-detection',
+      name: 'Threat Detection',
+      icon: '🚨',
+      color: '#e67e22',
+      tabColor: '#fff8e1',
+      description: 'Test security threat detection'
+    },
+    {
+      id: 'encryption',
+      name: 'Encryption',
+      icon: '🔒',
+      color: '#8e44ad',
+      tabColor: '#f8f4ff',
+      description: 'Test encryption and decryption'
+    },
+    {
+      id: 'predictive-modeling',
+      name: 'Predictive Modeling',
+      icon: '🔮',
+      color: '#1abc9c',
+      tabColor: '#e0f2f1',
+      description: 'Test predictive modeling capabilities'
     }
   ];
   
@@ -154,32 +218,267 @@
                    </div>
                    <button class="run-test-btn">Run Test</button>
                  </div>
-               {:else if currentSkill === 'system-commander'}
-                 <h2>System Commander Test</h2>
-                 <p>The System Commander skill allows agents to execute system commands and scripts. This provides direct access to system operations.</p>
-                 
-                 <h3>Test Configuration</h3>
-                 <p>To test the System Commander skill, specify the following parameters:</p>
-                 
-                 <ul>
-                   <li><strong>Command:</strong> The system command to execute</li>
-                   <li><strong>Arguments:</strong> Command line arguments</li>
-                   <li><strong>Working Directory:</strong> Execution context</li>
-                   <li><strong>Timeout:</strong> Maximum execution time</li>
-                 </ul>
-                 
-                 <div class="test-form">
-                   <div class="form-group">
-                     <label>Command:</label>
-                     <input type="text" placeholder="ls -la" />
-                   </div>
-                   <div class="form-group">
-                     <label>Working Directory:</label>
-                     <input type="text" placeholder="/current/directory" />
-                   </div>
-                   <button class="run-test-btn">Run Test</button>
-                 </div>
-               {/if}
+                               {:else if currentSkill === 'system-commander'}
+                  <h2>System Commander Test</h2>
+                  <p>The System Commander skill allows agents to execute system commands and scripts. This provides direct access to system operations.</p>
+                  
+                  <h3>Test Configuration</h3>
+                  <p>To test the System Commander skill, specify the following parameters:</p>
+                  
+                  <ul>
+                    <li><strong>Command:</strong> The system command to execute</li>
+                    <li><strong>Arguments:</strong> Command line arguments</li>
+                    <li><strong>Working Directory:</strong> Execution context</li>
+                    <li><strong>Timeout:</strong> Maximum execution time</li>
+                  </ul>
+                  
+                  <div class="test-form">
+                    <div class="form-group">
+                      <label>Command:</label>
+                      <input type="text" placeholder="ls -la" />
+                    </div>
+                    <div class="form-group">
+                      <label>Working Directory:</label>
+                      <input type="text" placeholder="/current/directory" />
+                    </div>
+                    <button class="run-test-btn">Run Test</button>
+                  </div>
+                {:else if currentSkill === 'message-handler'}
+                  <h2>Message Handler Test</h2>
+                  <p>The Message Handler skill enables agents to process and respond to messages efficiently. This capability is essential for communication tasks.</p>
+                  
+                  <h3>Test Configuration</h3>
+                  <p>To test the Message Handler skill, specify the following parameters:</p>
+                  
+                  <ul>
+                    <li><strong>Message Type:</strong> Type of message to process</li>
+                    <li><strong>Priority:</strong> Message priority level</li>
+                    <li><strong>Response Format:</strong> Expected response format</li>
+                    <li><strong>Processing Time:</strong> Maximum processing time</li>
+                  </ul>
+                  
+                  <div class="test-form">
+                    <div class="form-group">
+                      <label>Message Content:</label>
+                      <textarea placeholder="Enter message to process..."></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label>Priority:</label>
+                      <select>
+                        <option>Low</option>
+                        <option>Medium</option>
+                        <option>High</option>
+                        <option>Critical</option>
+                      </select>
+                    </div>
+                    <button class="run-test-btn">Run Test</button>
+                  </div>
+                {:else if currentSkill === 'collaboration'}
+                  <h2>Team Collaboration Test</h2>
+                  <p>The Team Collaboration skill allows agents to work effectively with other agents. This includes coordination and shared task management.</p>
+                  
+                  <h3>Test Configuration</h3>
+                  <p>To test the Team Collaboration skill, specify the following parameters:</p>
+                  
+                  <ul>
+                    <li><strong>Team Size:</strong> Number of agents in collaboration</li>
+                    <li><strong>Task Type:</strong> Type of collaborative task</li>
+                    <li><strong>Communication Protocol:</strong> Inter-agent communication method</li>
+                    <li><strong>Coordination Level:</strong> Level of coordination required</li>
+                  </ul>
+                  
+                  <div class="test-form">
+                    <div class="form-group">
+                      <label>Team Members:</label>
+                      <input type="text" placeholder="agent-1, agent-2, agent-3" />
+                    </div>
+                    <div class="form-group">
+                      <label>Task Description:</label>
+                      <textarea placeholder="Describe the collaborative task..."></textarea>
+                    </div>
+                    <button class="run-test-btn">Run Test</button>
+                  </div>
+                {:else if currentSkill === 'data-analyzer'}
+                  <h2>Data Analyzer Test</h2>
+                  <p>The Data Analyzer skill enables agents to analyze and interpret complex data sets. This includes statistical analysis and data visualization.</p>
+                  
+                  <h3>Test Configuration</h3>
+                  <p>To test the Data Analyzer skill, specify the following parameters:</p>
+                  
+                  <ul>
+                    <li><strong>Data Source:</strong> Source of data to analyze</li>
+                    <li><strong>Analysis Type:</strong> Type of analysis to perform</li>
+                    <li><strong>Output Format:</strong> Desired output format</li>
+                    <li><strong>Accuracy Threshold:</strong> Minimum accuracy requirement</li>
+                  </ul>
+                  
+                  <div class="test-form">
+                    <div class="form-group">
+                      <label>Data File:</label>
+                      <input type="text" placeholder="/path/to/data.csv" />
+                    </div>
+                    <div class="form-group">
+                      <label>Analysis Type:</label>
+                      <select>
+                        <option>Statistical Analysis</option>
+                        <option>Trend Analysis</option>
+                        <option>Correlation Analysis</option>
+                        <option>Predictive Analysis</option>
+                      </select>
+                    </div>
+                    <button class="run-test-btn">Run Test</button>
+                  </div>
+                {:else if currentSkill === 'pattern-recognition'}
+                  <h2>Pattern Recognition Test</h2>
+                  <p>The Pattern Recognition skill allows agents to identify patterns and trends in information. This includes machine learning and AI capabilities.</p>
+                  
+                  <h3>Test Configuration</h3>
+                  <p>To test the Pattern Recognition skill, specify the following parameters:</p>
+                  
+                  <ul>
+                    <li><strong>Pattern Type:</strong> Type of pattern to recognize</li>
+                    <li><strong>Data Set:</strong> Training and test data</li>
+                    <li><strong>Algorithm:</strong> Recognition algorithm to use</li>
+                    <li><strong>Confidence Level:</strong> Minimum confidence threshold</li>
+                  </ul>
+                  
+                  <div class="test-form">
+                    <div class="form-group">
+                      <label>Pattern Type:</label>
+                      <select>
+                        <option>Text Patterns</option>
+                        <option>Image Patterns</option>
+                        <option>Behavioral Patterns</option>
+                        <option>Temporal Patterns</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Training Data:</label>
+                      <input type="text" placeholder="/path/to/training_data" />
+                    </div>
+                    <button class="run-test-btn">Run Test</button>
+                  </div>
+                {:else if currentSkill === 'access-control'}
+                  <h2>Access Control Test</h2>
+                  <p>The Access Control skill manages permissions and access rights for various resources. This includes authentication and authorization.</p>
+                  
+                  <h3>Test Configuration</h3>
+                  <p>To test the Access Control skill, specify the following parameters:</p>
+                  
+                  <ul>
+                    <li><strong>Resource Type:</strong> Type of resource to protect</li>
+                    <li><strong>Permission Level:</strong> Access permission level</li>
+                    <li><strong>Authentication Method:</strong> Method of authentication</li>
+                    <li><strong>Session Duration:</strong> Length of access session</li>
+                  </ul>
+                  
+                  <div class="test-form">
+                    <div class="form-group">
+                      <label>Resource Path:</label>
+                      <input type="text" placeholder="/protected/resource" />
+                    </div>
+                    <div class="form-group">
+                      <label>Permission Level:</label>
+                      <select>
+                        <option>Read Only</option>
+                        <option>Read/Write</option>
+                        <option>Admin</option>
+                        <option>Owner</option>
+                      </select>
+                    </div>
+                    <button class="run-test-btn">Run Test</button>
+                  </div>
+                {:else if currentSkill === 'threat-detection'}
+                  <h2>Threat Detection Test</h2>
+                  <p>The Threat Detection skill identifies and responds to security threats. This includes monitoring and alert systems.</p>
+                  
+                  <h3>Test Configuration</h3>
+                  <p>To test the Threat Detection skill, specify the following parameters:</p>
+                  
+                  <ul>
+                    <li><strong>Threat Type:</strong> Type of threat to detect</li>
+                    <li><strong>Monitoring Scope:</strong> Scope of monitoring</li>
+                    <li><strong>Alert Threshold:</strong> Threshold for alerts</li>
+                    <li><strong>Response Action:</strong> Action to take on detection</li>
+                  </ul>
+                  
+                  <div class="test-form">
+                    <div class="form-group">
+                      <label>Monitoring Target:</label>
+                      <input type="text" placeholder="system, network, files" />
+                    </div>
+                    <div class="form-group">
+                      <label>Threat Type:</label>
+                      <select>
+                        <option>Malware Detection</option>
+                        <option>Intrusion Detection</option>
+                        <option>Anomaly Detection</option>
+                        <option>Vulnerability Scan</option>
+                      </select>
+                    </div>
+                    <button class="run-test-btn">Run Test</button>
+                  </div>
+                {:else if currentSkill === 'encryption'}
+                  <h2>Encryption Test</h2>
+                  <p>The Encryption skill handles encrypting and decrypting sensitive information. This includes various encryption algorithms and key management.</p>
+                  
+                  <h3>Test Configuration</h3>
+                  <p>To test the Encryption skill, specify the following parameters:</p>
+                  
+                  <ul>
+                    <li><strong>Algorithm:</strong> Encryption algorithm to use</li>
+                    <li><strong>Key Size:</strong> Size of encryption key</li>
+                    <li><strong>Data Type:</strong> Type of data to encrypt</li>
+                    <li><strong>Key Management:</strong> Key management method</li>
+                  </ul>
+                  
+                  <div class="test-form">
+                    <div class="form-group">
+                      <label>Data to Encrypt:</label>
+                      <textarea placeholder="Enter sensitive data to encrypt..."></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label>Algorithm:</label>
+                      <select>
+                        <option>AES-256</option>
+                        <option>RSA-2048</option>
+                        <option>ChaCha20</option>
+                        <option>Twofish</option>
+                      </select>
+                    </div>
+                    <button class="run-test-btn">Run Test</button>
+                  </div>
+                {:else if currentSkill === 'predictive-modeling'}
+                  <h2>Predictive Modeling Test</h2>
+                  <p>The Predictive Modeling skill creates models to predict future outcomes. This includes machine learning and statistical modeling.</p>
+                  
+                  <h3>Test Configuration</h3>
+                  <p>To test the Predictive Modeling skill, specify the following parameters:</p>
+                  
+                  <ul>
+                    <li><strong>Model Type:</strong> Type of predictive model</li>
+                    <li><strong>Training Data:</strong> Data for model training</li>
+                    <li><strong>Prediction Target:</strong> What to predict</li>
+                    <li><strong>Accuracy Metric:</strong> Accuracy measurement method</li>
+                  </ul>
+                  
+                  <div class="test-form">
+                    <div class="form-group">
+                      <label>Model Type:</label>
+                      <select>
+                        <option>Linear Regression</option>
+                        <option>Neural Network</option>
+                        <option>Decision Tree</option>
+                        <option>Random Forest</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>Training Dataset:</label>
+                      <input type="text" placeholder="/path/to/training_dataset.csv" />
+                    </div>
+                    <button class="run-test-btn">Run Test</button>
+                  </div>
+                {/if}
              </div>
            </div>
          </div>
@@ -222,9 +521,9 @@
          </div>
        </div>
       
-      <!-- Sticky Tabs (Book Marks) -->
-      <div class="book-tabs">
-                 {#each availableSkills as skill}
+             <!-- Left Sticky Tabs -->
+       <div class="book-tabs left-tabs">
+         {#each availableSkills.slice(0, Math.ceil(availableSkills.length / 2)) as skill}
            <button 
              class="book-tab"
              class:active={currentSkill === skill.id}
@@ -235,7 +534,22 @@
              <span class="tab-name">{skill.name}</span>
            </button>
          {/each}
-      </div>
+       </div>
+       
+       <!-- Right Sticky Tabs -->
+       <div class="book-tabs right-tabs">
+         {#each availableSkills.slice(Math.ceil(availableSkills.length / 2)) as skill}
+           <button 
+             class="book-tab"
+             class:active={currentSkill === skill.id}
+             style="--tab-color: {skill.tabColor}"
+             on:click={() => switchSkill(skill.id)}
+           >
+             <span class="tab-icon">{skill.icon}</span>
+             <span class="tab-name">{skill.name}</span>
+           </button>
+         {/each}
+       </div>
       
       <!-- Close Button -->
       <button class="close-btn" on:click={closeTester}>✕</button>
@@ -259,7 +573,7 @@
   
   .skill-tester-book {
     position: relative;
-    width: 800px;
+    width: 900px;
     height: 600px;
     background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
     border-radius: 20px;
@@ -269,7 +583,7 @@
       inset 0 1px 0 rgba(255, 255, 255, 0.1);
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: visible;
   }
   
   .book-cover {
@@ -533,20 +847,27 @@
   
   .book-tabs {
     position: absolute;
-    right: -60px;
     top: 50%;
     transform: translateY(-50%);
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 8px;
+    z-index: 10;
+  }
+  
+  .left-tabs {
+    left: -50px;
+  }
+  
+  .right-tabs {
+    right: -50px;
   }
   
   .book-tab {
-    width: 45px;
-    height: 55px;
+    width: 50px;
+    height: 60px;
     background: var(--tab-color);
     border: none;
-    border-radius: 6px 0 0 6px;
     color: #333;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -554,9 +875,19 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
-    box-shadow: -2px 0 8px rgba(0, 0, 0, 0.2);
+    font-size: 12px;
     position: relative;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+  }
+  
+  .left-tabs .book-tab {
+    border-radius: 0 8px 8px 0;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.3);
+  }
+  
+  .right-tabs .book-tab {
+    border-radius: 8px 0 0 8px;
+    box-shadow: -3px 0 10px rgba(0, 0, 0, 0.3);
   }
   
   .book-tab::before {
@@ -570,12 +901,22 @@
     border-radius: 6px 0 0 6px;
   }
   
-  .book-tab:hover {
+  .left-tabs .book-tab:hover {
+    transform: translateX(5px);
+    box-shadow: 5px 0 10px rgba(0, 0, 0, 0.4);
+  }
+  
+  .left-tabs .book-tab.active {
+    transform: translateX(10px);
+    box-shadow: 8px 0 15px rgba(0, 0, 0, 0.5);
+  }
+  
+  .right-tabs .book-tab:hover {
     transform: translateX(-5px);
     box-shadow: -5px 0 10px rgba(0, 0, 0, 0.4);
   }
   
-  .book-tab.active {
+  .right-tabs .book-tab.active {
     transform: translateX(-10px);
     box-shadow: -8px 0 15px rgba(0, 0, 0, 0.5);
   }
@@ -586,9 +927,10 @@
   }
   
   .tab-name {
-    font-size: 8px;
+    font-size: 9px;
     text-align: center;
-    line-height: 1;
+    line-height: 1.1;
+    font-weight: 600;
   }
   
   .close-btn {
