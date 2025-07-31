@@ -1,6 +1,7 @@
 <script lang="ts">
   import { selectedAgents, focusedAgent } from '../services/AgentSelectionManager';
   import { perkContextManager } from '../services/PerkContextManager';
+  import SkillTester from './SkillTester.svelte';
 
   export let agent: any; // Agent passed from parent component
 
@@ -9,8 +10,12 @@
   
   // Active skill category tab
   let activeSkillCategory = 'core';
+  
+  // Skill tester state
+  let showSkillTester = false;
+  let currentTestSkill = 'file-reader';
 
-  // Skill categories with their perks
+  // Skill categories with their perks (no levels)
   const skillCategories = {
     core: {
       name: 'Core Skills',
@@ -24,9 +29,7 @@
           description: 'Ability to read files from the system',
           requires: ['filesystem_access', 'read_permissions'],
           isEnabled: true,
-          isOwned: true,
-          level: 3,
-          maxLevel: 5
+          isOwned: true
         },
         {
           id: 'file-writer', 
@@ -35,9 +38,7 @@
           description: 'Ability to create and modify files',
           requires: ['filesystem_access', 'write_permissions'],
           isEnabled: true,
-          isOwned: true,
-          level: 3,
-          maxLevel: 5
+          isOwned: true
         },
         {
           id: 'directory-master',
@@ -46,9 +47,7 @@
           description: 'Advanced directory and folder operations',
           requires: ['filesystem_access', 'directory_permissions'],
           isEnabled: true,
-          isOwned: true,
-          level: 2,
-          maxLevel: 5
+          isOwned: true
         },
         {
           id: 'system-commander',
@@ -57,9 +56,7 @@
           description: 'Execute system commands and scripts',
           requires: ['system_access', 'command_permissions'],
           isEnabled: true,
-          isOwned: true,
-          level: 4,
-          maxLevel: 5
+          isOwned: true
         }
       ]
     },
@@ -306,16 +303,17 @@
                     <span class="status-text">{status.text}</span>
                   </div>
                 </div>
-                <div class="skill-level">
-                  <div class="level-display">
-                    <span class="level-text">Lv.{skill.level}</span>
-                    <div class="level-bar">
-                      <div 
-                        class="level-progress" 
-                        style="width: {(skill.level / skill.maxLevel) * 100}%; background-color: {getSkillLevelColor(skill.level, skill.maxLevel)}"
-                      ></div>
-                    </div>
-                  </div>
+                <div class="skill-tester">
+                  <button 
+                    class="tester-btn"
+                    title="Test {skill.name}"
+                    on:click={() => {
+                      currentTestSkill = skill.id;
+                      showSkillTester = true;
+                    }}
+                  >
+                    🧪
+                  </button>
                 </div>
               </div>
 
@@ -347,11 +345,6 @@
                   >
                     {skill.isEnabled ? 'Disable' : 'Enable'}
                   </button>
-                  {#if skill.level < skill.maxLevel}
-                    <button class="upgrade-btn" disabled>
-                      ⬆️ Upgrade
-                    </button>
-                  {/if}
                 {:else}
                   <button class="unlock-btn" disabled>
                     🔓 Unlock
@@ -369,6 +362,13 @@
       <div class="message-text">No agent data available</div>
     </div>
   {/if}
+  
+  <!-- Skill Tester -->
+  <SkillTester 
+    isOpen={showSkillTester}
+    currentSkill={currentTestSkill}
+    on:close={() => showSkillTester = false}
+  />
 </div>
 
 <style>
@@ -728,6 +728,34 @@
     border-color: rgba(255, 255, 255, 0.3);
     color: rgba(255, 255, 255, 0.5);
     cursor: not-allowed;
+  }
+
+  /* Skill Tester */
+  .skill-tester {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .tester-btn {
+    width: 32px;
+    height: 32px;
+    background: rgba(0, 255, 136, 0.2);
+    border: 1px solid rgba(0, 255, 136, 0.4);
+    border-radius: 6px;
+    color: #00ff88;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .tester-btn:hover {
+    background: rgba(0, 255, 136, 0.3);
+    border-color: rgba(0, 255, 136, 0.6);
+    transform: scale(1.1);
   }
 
   /* No Agent Message */

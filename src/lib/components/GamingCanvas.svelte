@@ -462,8 +462,8 @@
         }
     });
 
-    // Reactive updates
-    $: if (isInitialized && availableAgents) {
+    // Reactive updates - only initialize once when agents are first loaded
+    $: if (isInitialized && availableAgents && availableAgents.length > 0 && gameCharacters.length === 0) {
         initializeCharacters();
     }
 </script>
