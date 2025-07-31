@@ -7,7 +7,6 @@
   import InteractionPanel from './InteractionPanel.svelte';
   import GamingCanvas from './GamingCanvas.svelte';
   import ConversationConnections from './ConversationConnections.svelte';
-  import PerkPanel from './PerkPanel.svelte';
   import MultiAgentPropertiesPanel from './MultiAgentPropertiesPanel.svelte';
   import WorldResources from './WorldResources.svelte';
   import CharacterPanel from './CharacterPanel.svelte';
@@ -21,7 +20,6 @@
     'GameChat': InteractionPanel,
     'GamingCanvas': GamingCanvas,
     'ConversationConnections': ConversationConnections,
-    'PropertiesPanel': PerkPanel,
     'MultiTabTerminal': MultiTabTerminal
   };
 

@@ -13,9 +13,21 @@
     let animationId: number;
     let isInitialized = false;
 
-    // Game world properties
+    // Game world properties with enhanced camera system
     let worldBounds = { width: 0, height: 0 };
-    let camera = { x: 0, y: 0, zoom: 1 };
+    let camera = { 
+        x: 0, 
+        y: 0, 
+        zoom: 1,
+        targetZoom: 1,
+        minZoom: 0.3,
+        maxZoom: 3.0,
+        zoomSpeed: 0.1
+    };
+    
+    // Pan controls
+    let isPanning = false;
+    let lastMousePos = { x: 0, y: 0 };
     let time = 0;
 
     // Character system with intelligent positioning
@@ -87,33 +99,37 @@
         }
 
         draw(ctx: CanvasRenderingContext2D, time: number) {
-            const { x, y } = this.position;
+            // Apply camera transform
+            const screenX = (this.position.x - camera.x) * camera.zoom + worldBounds.width / 2;
+            const screenY = (this.position.y - camera.y) * camera.zoom + worldBounds.height / 2;
+            const screenSize = this.size * camera.zoom;
+            
             const selectionState = get(agentSelectionStore);
             const isSelected = selectionState.selectedAgents[this.id] || false;
             const isFocused = selectionState.focusedAgent === this.id;
             
             // Floating animation
-            const bobOffset = Math.sin(time * this.animation.speed + this.animation.bobOffset) * this.animation.amplitude;
-            const drawY = y + bobOffset;
+            const bobOffset = Math.sin(time * this.animation.speed + this.animation.bobOffset) * this.animation.amplitude * camera.zoom;
+            const drawY = screenY + bobOffset;
 
             // Draw selection aura
             if (isSelected || isFocused) {
-                const auraSize = this.size + 15 + Math.sin(time * 0.05) * 5;
-                const gradient = ctx.createRadialGradient(x, drawY, this.size, x, drawY, auraSize);
+                const auraSize = screenSize + 15 * camera.zoom + Math.sin(time * 0.05) * 5 * camera.zoom;
+                const gradient = ctx.createRadialGradient(screenX, drawY, screenSize, screenX, drawY, auraSize);
                 gradient.addColorStop(0, 'rgba(0, 255, 136, 0)');
                 gradient.addColorStop(0.7, isFocused ? 'rgba(0, 255, 136, 0.3)' : 'rgba(0, 191, 255, 0.2)');
                 gradient.addColorStop(1, 'rgba(0, 255, 136, 0)');
                 
                 ctx.fillStyle = gradient;
                 ctx.beginPath();
-                ctx.arc(x, drawY, auraSize, 0, Math.PI * 2);
+                ctx.arc(screenX, drawY, auraSize, 0, Math.PI * 2);
                 ctx.fill();
             }
 
             // Draw character shadow
             ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
             ctx.beginPath();
-            ctx.ellipse(x, y + this.size + 5, this.size * 0.8, this.size * 0.3, 0, 0, Math.PI * 2);
+            ctx.ellipse(screenX, screenY + screenSize + 5 * camera.zoom, screenSize * 0.8, screenSize * 0.3, 0, 0, Math.PI * 2);
             ctx.fill();
 
             // Draw character body with gradient
@@ -121,7 +137,7 @@
             const isActive = agent ? agent.isActive : true;
             const baseColor = isActive ? this.color : this.darkenColor(this.color, 0.6);
             
-            const gradient = ctx.createRadialGradient(x - this.size * 0.3, drawY - this.size * 0.3, 0, x, drawY, this.size);
+            const gradient = ctx.createRadialGradient(screenX - screenSize * 0.3, drawY - screenSize * 0.3, 0, screenX, drawY, screenSize);
             gradient.addColorStop(0, baseColor);
             gradient.addColorStop(1, this.darkenColor(baseColor, 0.3));
             
@@ -130,15 +146,15 @@
             
             if (this.type === "user") {
                 // User as glowing orb
-                ctx.arc(x, drawY, this.size, 0, Math.PI * 2);
+                ctx.arc(screenX, drawY, screenSize, 0, Math.PI * 2);
             } else {
                 // Agents as dynamic triangular forms
                 const points = 3;
                 const angleOffset = time * 0.01;
                 for (let i = 0; i < points; i++) {
                     const angle = (i / points) * Math.PI * 2 + angleOffset;
-                    const px = x + Math.cos(angle) * this.size;
-                    const py = drawY + Math.sin(angle) * this.size * 0.8;
+                    const px = screenX + Math.cos(angle) * screenSize;
+                    const py = drawY + Math.sin(angle) * screenSize * 0.8;
                     if (i === 0) ctx.moveTo(px, py);
                     else ctx.lineTo(px, py);
                 }
@@ -148,17 +164,17 @@
 
             // Draw character outline with glow
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 2 * camera.zoom;
             ctx.shadowColor = this.color;
-            ctx.shadowBlur = 10;
+            ctx.shadowBlur = 10 * camera.zoom;
             ctx.stroke();
             ctx.shadowBlur = 0;
 
             // Draw status indicator
             if (this.status === 'active') {
-                const statusSize = 6;
-                const statusX = x + this.size * 0.7;
-                const statusY = drawY - this.size * 0.7;
+                const statusSize = 6 * camera.zoom;
+                const statusX = screenX + screenSize * 0.7;
+                const statusY = drawY - screenSize * 0.7;
                 
                 ctx.fillStyle = '#00ff88';
                 ctx.beginPath();
@@ -166,9 +182,9 @@
                 ctx.fill();
                 
                 // Pulsing effect
-                const pulseSize = statusSize + Math.sin(time * 0.1) * 2;
+                const pulseSize = statusSize + Math.sin(time * 0.1) * 2 * camera.zoom;
                 ctx.strokeStyle = 'rgba(0, 255, 136, 0.5)';
-                ctx.lineWidth = 1;
+                ctx.lineWidth = 1 * camera.zoom;
                 ctx.beginPath();
                 ctx.arc(statusX, statusY, pulseSize, 0, Math.PI * 2);
                 ctx.stroke();
@@ -176,17 +192,17 @@
 
             // Draw character name with better typography
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 12px Inter, sans-serif';
+            ctx.font = `bold ${12 * camera.zoom}px Inter, sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
             
             // Text shadow
             ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-            ctx.fillText(this.name, x + 1, drawY + this.size + 15 + 1);
+            ctx.fillText(this.name, screenX + 1 * camera.zoom, drawY + screenSize + 15 * camera.zoom + 1 * camera.zoom);
             
             // Main text
             ctx.fillStyle = '#ffffff';
-            ctx.fillText(this.name, x, drawY + this.size + 15);
+            ctx.fillText(this.name, screenX, drawY + screenSize + 15 * camera.zoom);
         }
 
         darkenColor(color: string, factor: number): string {
@@ -203,7 +219,7 @@
     let gameCharacters: GameCharacter[] = [];
     let userCharacter: GameCharacter;
 
-    // Initialize characters
+    // Initialize characters with viewport constraints
     function initializeCharacters() {
         gameCharacters = [];
         
@@ -229,22 +245,28 @@
             gameCharacters.push(gameChar);
         });
 
-        // Position characters intelligently
+        // Position characters intelligently within viewport bounds
         positionCharacters();
+        
+        // Center camera on all characters
+        centerCameraOnCharacters();
     }
 
-    // Intelligent character positioning system
+    // Intelligent character positioning system with viewport constraints
     function positionCharacters() {
         if (!canvas || gameCharacters.length === 0) return;
 
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
+        const centerX = 0; // World coordinates (camera will handle screen positioning)
+        const centerY = 0;
         const agentCharacters = gameCharacters.filter(c => c.type === 'agent');
+        
+        // Calculate safe positioning area (within viewport bounds)
+        const safeRadius = Math.min(worldBounds.width, worldBounds.height) * 0.15 / camera.zoom;
         
         // Position user at bottom center
         userCharacter.targetPosition = {
             x: centerX,
-            y: centerY + Math.min(canvas.width, canvas.height) * 0.25
+            y: centerY + safeRadius * 0.8
         };
 
         // Position agents in an intelligent formation
@@ -252,11 +274,11 @@
             // Single agent: opposite to user
             agentCharacters[0].targetPosition = {
                 x: centerX,
-                y: centerY - Math.min(canvas.width, canvas.height) * 0.25
+                y: centerY - safeRadius * 0.8
             };
         } else if (agentCharacters.length === 2) {
             // Two agents: flanking formation
-            const spacing = Math.min(canvas.width, canvas.height) * 0.3;
+            const spacing = safeRadius * 0.6;
             agentCharacters[0].targetPosition = {
                 x: centerX - spacing,
                 y: centerY - spacing * 0.5
@@ -267,7 +289,7 @@
             };
         } else {
             // Multiple agents: dynamic circle formation
-            const radius = Math.min(canvas.width, canvas.height) * 0.25;
+            const radius = safeRadius * 0.7;
             const angleStep = (Math.PI * 2) / agentCharacters.length;
             
             agentCharacters.forEach((character, index) => {
@@ -278,6 +300,76 @@
                 };
             });
         }
+    }
+
+    // Center camera on all characters
+    function centerCameraOnCharacters() {
+        if (gameCharacters.length === 0) return;
+        
+        // Calculate bounds of all characters
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        
+        gameCharacters.forEach(char => {
+            minX = Math.min(minX, char.position.x);
+            maxX = Math.max(maxX, char.position.x);
+            minY = Math.min(minY, char.position.y);
+            maxY = Math.max(maxY, char.position.y);
+        });
+        
+        // Add padding
+        const padding = 100;
+        minX -= padding;
+        maxX += padding;
+        minY -= padding;
+        maxY += padding;
+        
+        // Center camera
+        camera.x = (minX + maxX) / 2;
+        camera.y = (minY + maxY) / 2;
+        
+        // Adjust zoom to fit all characters
+        const charWidth = maxX - minX;
+        const charHeight = maxY - minY;
+        const scaleX = worldBounds.width / charWidth;
+        const scaleY = worldBounds.height / charHeight;
+        const targetZoom = Math.min(scaleX, scaleY, camera.maxZoom) * 0.8; // 80% of fit
+        
+        camera.targetZoom = Math.max(targetZoom, camera.minZoom);
+    }
+
+    // Camera controls
+    function handleWheel(event: WheelEvent) {
+        event.preventDefault();
+        
+        const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
+        const newZoom = camera.targetZoom * zoomFactor;
+        camera.targetZoom = Math.max(camera.minZoom, Math.min(camera.maxZoom, newZoom));
+    }
+
+    function handleMouseDown(event: MouseEvent) {
+        if (event.button === 0) { // Left click
+            isPanning = true;
+            lastMousePos = { x: event.clientX, y: event.clientY };
+            canvas.style.cursor = 'grabbing';
+        }
+    }
+
+    function handleMouseMove(event: MouseEvent) {
+        if (isPanning) {
+            const deltaX = event.clientX - lastMousePos.x;
+            const deltaY = event.clientY - lastMousePos.y;
+            
+            camera.x -= deltaX / camera.zoom;
+            camera.y -= deltaY / camera.zoom;
+            
+            lastMousePos = { x: event.clientX, y: event.clientY };
+        }
+    }
+
+    function handleMouseUp() {
+        isPanning = false;
+        canvas.style.cursor = 'pointer';
     }
 
     // Intelligent canvas resizing
@@ -308,7 +400,7 @@
         positionCharacters();
     }
 
-    // Enhanced background rendering
+    // Enhanced background rendering with camera
     function drawBackground(ctx: CanvasRenderingContext2D) {
         const { width, height } = worldBounds;
         
@@ -323,30 +415,43 @@
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, width, height);
 
-        // Animated grid
+        // Animated grid with camera transform
+        ctx.save();
+        ctx.translate(width / 2, height / 2);
+        ctx.scale(camera.zoom, camera.zoom);
+        ctx.translate(-camera.x, -camera.y);
+        
         ctx.strokeStyle = 'rgba(0, 255, 136, 0.1)';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 1 / camera.zoom;
         
         const gridSize = 50;
         const offsetX = (time * 0.5) % gridSize;
         const offsetY = (time * 0.3) % gridSize;
         
-        for (let x = -offsetX; x < width + gridSize; x += gridSize) {
+        // Calculate grid bounds based on camera
+        const left = camera.x - width / (2 * camera.zoom);
+        const right = camera.x + width / (2 * camera.zoom);
+        const top = camera.y - height / (2 * camera.zoom);
+        const bottom = camera.y + height / (2 * camera.zoom);
+        
+        for (let x = Math.floor(left / gridSize) * gridSize - offsetX; x < right; x += gridSize) {
             ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, height);
+            ctx.moveTo(x, top);
+            ctx.lineTo(x, bottom);
             ctx.stroke();
         }
         
-        for (let y = -offsetY; y < height + gridSize; y += gridSize) {
+        for (let y = Math.floor(top / gridSize) * gridSize - offsetY; y < bottom; y += gridSize) {
             ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(width, y);
+            ctx.moveTo(left, y);
+            ctx.lineTo(right, y);
             ctx.stroke();
         }
+        
+        ctx.restore();
     }
 
-    // Draw connections between characters
+    // Draw connections between characters with camera transform
     function drawConnections(ctx: CanvasRenderingContext2D) {
         const selectionState = get(agentSelectionStore);
         const selectedIds = Object.keys(selectionState.selectedAgents).filter(id => selectionState.selectedAgents[id]);
@@ -354,8 +459,8 @@
         if (selectedIds.length < 2) return;
         
         ctx.strokeStyle = 'rgba(0, 255, 136, 0.3)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
+        ctx.lineWidth = 2 * camera.zoom;
+        ctx.setLineDash([5 * camera.zoom, 5 * camera.zoom]);
         
         for (let i = 0; i < selectedIds.length; i++) {
             for (let j = i + 1; j < selectedIds.length; j++) {
@@ -363,9 +468,14 @@
                 const char2 = gameCharacters.find(c => c.id === selectedIds[j]);
                 
                 if (char1 && char2) {
+                    const screenX1 = (char1.position.x - camera.x) * camera.zoom + worldBounds.width / 2;
+                    const screenY1 = (char1.position.y - camera.y) * camera.zoom + worldBounds.height / 2;
+                    const screenX2 = (char2.position.x - camera.x) * camera.zoom + worldBounds.width / 2;
+                    const screenY2 = (char2.position.y - camera.y) * camera.zoom + worldBounds.height / 2;
+                    
                     ctx.beginPath();
-                    ctx.moveTo(char1.position.x, char1.position.y);
-                    ctx.lineTo(char2.position.x, char2.position.y);
+                    ctx.moveTo(screenX1, screenY1);
+                    ctx.lineTo(screenX2, screenY2);
                     ctx.stroke();
                 }
             }
@@ -374,12 +484,15 @@
         ctx.setLineDash([]);
     }
 
-    // Main game loop
+    // Main game loop with camera updates
     function gameLoop(currentTime: number) {
         if (!ctx || !canvas) return;
         
         time = currentTime * 0.001; // Convert to seconds
         const deltaTime = 16; // Assume 60fps
+        
+        // Smooth camera zoom
+        camera.zoom += (camera.targetZoom - camera.zoom) * camera.zoomSpeed;
         
         // Clear canvas
         ctx.clearRect(0, 0, worldBounds.width, worldBounds.height);
@@ -407,18 +520,22 @@
         animationId = requestAnimationFrame(gameLoop);
     }
 
-    // Handle canvas clicks for character selection
+    // Handle canvas clicks for character selection with camera transform
     function handleCanvasClick(event: MouseEvent) {
-        if (!canvas) return;
+        if (!canvas || isPanning) return;
         
         const rect = canvas.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
+        const screenX = event.clientX - rect.left;
+        const screenY = event.clientY - rect.top;
+        
+        // Convert screen coordinates to world coordinates
+        const worldX = (screenX - worldBounds.width / 2) / camera.zoom + camera.x;
+        const worldY = (screenY - worldBounds.height / 2) / camera.zoom + camera.y;
         
         // Find clicked character
         for (const character of gameCharacters) {
-            const dx = x - character.position.x;
-            const dy = y - character.position.y;
+            const dx = worldX - character.position.x;
+            const dy = worldY - character.position.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
             
             if (distance <= character.size && character.type === 'agent') {
@@ -473,6 +590,11 @@
         bind:this={canvas}
         class="gaming-canvas"
         on:click={handleCanvasClick}
+        on:wheel={handleWheel}
+        on:mousedown={handleMouseDown}
+        on:mousemove={handleMouseMove}
+        on:mouseup={handleMouseUp}
+        on:mouseleave={handleMouseUp}
     ></canvas>
 </div>
 
@@ -494,6 +616,10 @@
         border-radius: 8px;
         box-shadow: 0 0 20px rgba(0, 255, 136, 0.2);
         transition: box-shadow 0.3s ease;
+        user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
     }
 
     .gaming-canvas:hover {

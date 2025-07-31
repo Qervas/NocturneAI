@@ -5,26 +5,10 @@ use std::fs;
 use std::path::Path;
 use std::io::{self, Write};
 
-// LLM Request/Response structures
-#[derive(Debug, Serialize, Deserialize)]
-struct LLMRequest {
-    model: String,
-    messages: Vec<ChatMessage>,
-    stream: bool,
-    temperature: f32,
-    max_tokens: Option<u32>,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct ChatMessage {
     role: String,
     content: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct LLMResponse {
-    message: ChatMessage,
-    done: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -77,11 +61,7 @@ fn get_conversation_history() -> &'static mut HashMap<String, Vec<ChatMessage>> 
     }
 }
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+
 
 #[tauri::command]
 async fn send_message_to_agent(
@@ -350,7 +330,7 @@ async fn list_workspace_files(path: String) -> WorkspaceResult {
                     
                     let last_modified = metadata.modified()
                         .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap().as_secs().to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
+                        .unwrap_or_else(|_| "unknown".to_string());
                     
                     files.push(WorkspaceFileInfo {
                         path: path_buf.to_string_lossy().to_string(),
@@ -593,7 +573,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            greet,
             send_message_to_agent,
             get_agent_configs,
             clear_agent_history,
