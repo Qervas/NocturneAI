@@ -244,10 +244,11 @@ class AbilityManager {
 	// Register default abilities
 	private registerDefaultAbilities(): void {
 		// Import and register abilities
-		import('../../abilities').then(({ 
+		import('./abilities').then(({ 
 			simpleFileReaderAbility, 
 			simpleFileWriterAbility,
 			simpleTerminalAbility,
+			terminalSkill,
 			workspaceDirectoryAbility,
 			webSearchAbility,
 			multiAgentChatAbility
@@ -255,10 +256,11 @@ class AbilityManager {
 			this.registerAbility(simpleFileReaderAbility);
 			this.registerAbility(simpleFileWriterAbility);
 			this.registerAbility(simpleTerminalAbility);
+			this.registerAbility(terminalSkill);
 			this.registerAbility(workspaceDirectoryAbility);
 			this.registerAbility(webSearchAbility);
 			this.registerAbility(multiAgentChatAbility);
-			console.log('✅ Registered all abilities: file operations, terminal, workspace, web search, communication');
+			console.log('✅ Registered all abilities: file operations, terminal skills, workspace, web search, communication');
 		}).catch(error => {
 			console.error('❌ Failed to register abilities:', error);
 		});

@@ -1,4 +1,4 @@
-import { abilityManager } from '../../services/core/AbilityManager';
+import { abilityManager } from '../../AbilityManager';
 
 // File type definitions
 export interface FileTypeConfig {

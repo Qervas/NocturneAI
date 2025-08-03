@@ -551,8 +551,8 @@
                         agentSelectionManager.toggleAgentSelection(character.id);
                     }
                 } else if (character.type === 'user') {
-                    // User gets special privileges - select directly
-                    agentSelectionManager.selectAgent('user');
+                    // User gets special privileges - toggle selection
+                    agentSelectionManager.toggleAgentSelection('user');
                 }
                 break;
             }

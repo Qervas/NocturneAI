@@ -1,4 +1,4 @@
-import { abilityManager } from '../../services/core/AbilityManager';
+import { abilityManager } from '../../AbilityManager';
 
 // Chat message interface
 export interface ChatMessage {

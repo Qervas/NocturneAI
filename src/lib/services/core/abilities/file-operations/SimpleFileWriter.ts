@@ -1,6 +1,6 @@
-import { abilityManager } from '../../services/core/AbilityManager';
-import { writeFileContent, getFileById, addFile } from '../../services/data/FileStore';
-import { fileOperationsService } from '../../services/data/FileOperationsService';
+import { abilityManager } from '../../AbilityManager';
+import { writeFileContent, getFileById, addFile } from '../../../data/FileStore';
+import { fileOperationsService } from '../../../data/FileOperationsService';
 
 export interface SimpleFileWriteResult {
   success: boolean;

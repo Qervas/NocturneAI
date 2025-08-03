@@ -1,4 +1,4 @@
-import { abilityManager } from "../../services/core/AbilityManager";
+import { abilityManager } from "../../AbilityManager";
 
 export interface WorkspaceFileInfo {
   path: string;

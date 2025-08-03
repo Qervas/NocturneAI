@@ -1,5 +1,5 @@
-import { abilityManager } from '../../services/core/AbilityManager';
-import { fileOperationsService } from '../../services/data/FileOperationsService';
+import { abilityManager } from '../../AbilityManager';
+import { fileOperationsService } from '../../../data/FileOperationsService';
 
 // File writing result interface
 export interface FileWriteResult {

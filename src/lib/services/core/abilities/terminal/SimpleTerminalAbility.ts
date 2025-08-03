@@ -1,4 +1,4 @@
-import { abilityManager } from "../../services/core/AbilityManager";
+import { abilityManager } from "../../AbilityManager";
 
 export interface TerminalCommandResult {
   success: boolean;
@@ -165,93 +165,25 @@ export class SimpleTerminalAbility {
     exitCode?: number;
   }> {
     try {
-      console.log("🔍 Terminal: Starting command execution...");
-      console.log("🔍 Terminal: Command:", command);
+      console.log("🔍 Terminal Skill: Executing command:", command);
       
       // Check if we're in a Tauri environment
-      console.log("🔍 Terminal: Checking Tauri environment...");
-      console.log("🔍 Terminal: window.__TAURI__:", (window as any).__TAURI__);
-      console.log("🔍 Terminal: navigator.userAgent:", navigator.userAgent);
-      console.log("🔍 Terminal: window.location:", window.location.href);
-      
-      // Try to detect Tauri more robustly
-      let isTauriApp = false;
-      try {
-        // Check if we can access Tauri APIs
-        if (typeof window !== "undefined") {
-          // Check for Tauri global object
-          if ((window as any).__TAURI__) {
-            isTauriApp = true;
-          }
-          // Check for Tauri in user agent
-          if (navigator.userAgent.includes('Tauri')) {
-            isTauriApp = true;
-          }
-          // Check if we're not in a browser (no http/https protocol)
-          if (!window.location.href.startsWith('http')) {
-            isTauriApp = true;
-          }
-          // Check if we're in a Tauri window (should not have localhost in URL)
-          if (window.location.href.includes('localhost')) {
-            // This is likely the web version, but let's try to detect Tauri anyway
-            console.log("🔍 Terminal: Detected localhost URL, but checking for Tauri...");
-          }
-        }
-      } catch (error) {
-        console.log("🔍 Terminal: Error checking Tauri environment:", error);
-      }
-      
-      // Try to detect Tauri by attempting to access Tauri APIs
-      try {
-        // This will only work in a real Tauri environment
-        if (typeof window !== "undefined" && (window as any).__TAURI__) {
-          console.log("🔍 Terminal: Found Tauri global object!");
-          isTauriApp = true;
-        }
-      } catch (error) {
-        console.log("🔍 Terminal: No Tauri global object found");
-      }
-      
-      console.log("🔍 Terminal: Is Tauri app:", isTauriApp);
+      const isTauriApp = typeof window !== "undefined" && (window as any).__TAURI__;
       
       if (isTauriApp) {
-        console.log("🔍 Terminal: Tauri environment detected");
+        console.log("🔍 Terminal Skill: Tauri environment detected");
         try {
-          // Use string-based dynamic import that Vite can't analyze
-          console.log("🔍 Terminal: Importing Tauri module...");
-          const tauriModule = await import(
-            /* @vite-ignore */ "@tauri-apps/api/core"
-          );
-          const { invoke } = tauriModule;
-          console.log("🔍 Terminal: Tauri invoke function obtained");
-
-          console.log("🖥️ Executing PowerShell command:", command);
+          const { invoke } = await import("@tauri-apps/api/core");
           
-          // Use current project directory as default
           const workingDirectory = workingDir || ".";
-          console.log("🔍 Terminal: Working directory:", workingDirectory);
+          console.log("🔍 Terminal Skill: Working directory:", workingDirectory);
           
-          // For PowerShell commands, we need to execute them through PowerShell
-          let actualCommand = command;
-          if (!command.startsWith('powershell') && !command.startsWith('Get-') && !command.startsWith('Set-') && !command.startsWith('New-') && !command.startsWith('Remove-')) {
-            // If it's not a PowerShell cmdlet, execute it directly
-            actualCommand = command;
-          }
-          
-          const invokeParams = {
-            command: actualCommand,
+          const result = await invoke("execute_command", {
+            command: command,
             working_dir: workingDirectory,
-            environment: {
-              ...this.config.environment,
-              // Add PowerShell-specific environment variables
-              "POWERSHELL_TELEMETRY_OPTOUT": "1",
-              "TERM": "xterm-256color"
-            },
-          };
-          console.log("🔍 Terminal: Invoke params:", invokeParams);
+          }) as any;
           
-          const result = (await invoke("execute_command", invokeParams)) as TerminalCommandResult;
-          console.log("🔍 Terminal: Tauri result:", result);
+          console.log("🔍 Terminal Skill: Result:", result);
 
           return {
             success: result.success,
@@ -260,7 +192,7 @@ export class SimpleTerminalAbility {
             exitCode: result.exitCode,
           };
         } catch (tauriError) {
-          console.error("❌ Tauri command execution failed:", tauriError);
+          console.error("❌ Terminal Skill: Tauri execution failed:", tauriError);
           return {
             success: false,
             error: `Tauri execution failed: ${tauriError}`,
@@ -269,15 +201,11 @@ export class SimpleTerminalAbility {
         }
       }
 
-      // Fallback for web environment - show error
-      console.error("❌ Not in Tauri environment - real terminal not available");
-      console.error("🔍 Terminal: This appears to be running in a web browser, not the Tauri desktop app");
-      
-      // Fallback: Simulate terminal commands for web environment
-      console.log("🖥️ Using simulated terminal for web environment");
+      // Fallback for web environment
+      console.log("🔍 Terminal Skill: Using simulated terminal for web environment");
       return await this.simulateTerminalCommand(command, workingDir);
     } catch (error) {
-      console.error("❌ Error executing terminal command:", error);
+      console.error("❌ Terminal Skill: Error executing command:", error);
       return {
         success: false,
         error:

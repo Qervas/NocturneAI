@@ -6,6 +6,7 @@ export { simpleFileWriterAbility, SimpleFileWriterAbility, DEFAULT_SIMPLE_FILE_W
 
 // Terminal and Workspace
 export { simpleTerminalAbility, SimpleTerminalAbility, DEFAULT_TERMINAL_CONFIG } from './terminal/SimpleTerminalAbility';
+export { terminalSkill, TerminalSkill, DEFAULT_TERMINAL_SKILL_CONFIG } from './terminal/TerminalSkill';
 export { workspaceDirectoryAbility, WorkspaceDirectoryAbility, DEFAULT_WORKSPACE_CONFIG } from './workspace/WorkspaceDirectoryAbility';
 
 // Communication
@@ -40,6 +41,11 @@ export type {
   TerminalCommandResult,
   TerminalConfig
 } from './terminal/SimpleTerminalAbility';
+
+export type {
+  TerminalSkillResult,
+  TerminalSkillConfig
+} from './terminal/TerminalSkill';
 
 export type {
   WorkspaceFileInfo,
