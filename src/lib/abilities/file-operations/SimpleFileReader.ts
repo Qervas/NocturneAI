@@ -1,4 +1,4 @@
-import { abilityManager } from '../../services/AbilityManager';
+import { abilityManager } from '../../services/core/AbilityManager';
 
 export interface SimpleFileReadResult {
   success: boolean;
@@ -165,8 +165,7 @@ export class SimpleFileReaderAbility {
   }
 }
 
-// Create and register the ability
+// Create the ability instance
 const fileReaderAbility = new SimpleFileReaderAbility();
-abilityManager.registerAbility(fileReaderAbility);
 
 export { fileReaderAbility as simpleFileReaderAbility }; 

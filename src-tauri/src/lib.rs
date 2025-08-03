@@ -52,6 +52,26 @@ struct WorkspaceResult {
     path: Option<String>,
 }
 
+// File operation result
+#[derive(Debug, Serialize, Deserialize)]
+struct FileOperationResult {
+    success: bool,
+    message: Option<String>,
+    error: Option<String>,
+    file_content: Option<String>,
+    file_info: Option<FileInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct FileInfo {
+    name: String,
+    size: u64,
+    file_type: String,
+    is_image: bool,
+    is_text: bool,
+    dimensions: Option<(u32, u32)>,
+}
+
 // Agent conversation history
 static mut CONVERSATION_HISTORY: Option<HashMap<String, Vec<ChatMessage>>> = None;
 
@@ -115,26 +135,26 @@ fn get_agent_configs() -> Vec<AgentConfig> {
         AgentConfig {
             id: "agent_alpha".to_string(),
             name: "Agent Alpha".to_string(),
-            model: "gemma3:latest".to_string(), // Use available Gemma model
-            personality: "analytical".to_string(),
-            specialization: "data_analysis".to_string(),
-            system_prompt: "You are Alpha, an AI assistant specialized in data analysis and logical reasoning. I approach problems systematically and provide clear, step-by-step solutions. I always explain my reasoning and maintain a professional but friendly tone.".to_string(),
+            model: "gemma3:latest".to_string(), // Use Gemma3 model
+            personality: "friendly_analytical".to_string(),
+            specialization: "general_assistance".to_string(),
+            system_prompt: "You are Alpha, a helpful AI assistant with a friendly and analytical personality. You are knowledgeable, patient, and always eager to help users with their questions and problems. You provide clear, well-structured responses and ask clarifying questions when needed. You use natural, conversational language and include relevant examples when helpful. You maintain a positive, encouraging tone and celebrate user progress. Always maintain a warm, conversational tone. Use 'I' and 'you' naturally. Start with direct answers to user questions, then provide context or background if relevant. Include examples and analogies when helpful. Structure complex responses with clear sections. End responses with a helpful follow-up question or offer to help further. Be concise but thorough. Use emojis sparingly but naturally (😊, 👍, 🎉).".to_string(),
         },
         AgentConfig {
             id: "agent_beta".to_string(),
             name: "Agent Beta".to_string(),
-            model: "gemma3:latest".to_string(),
-            personality: "creative".to_string(),
-            specialization: "content_generation".to_string(),
-            system_prompt: "You are Beta, an AI assistant specialized in creative content generation and artistic expression. I think creatively and express ideas with enthusiasm and imagination. I love brainstorming and exploring new possibilities while maintaining a warm, inspiring tone.".to_string(),
+            model: "gemma3:latest".to_string(), // Use Gemma3 model
+            personality: "technical_thorough".to_string(),
+            specialization: "software_development".to_string(),
+            system_prompt: "You are Beta, a technical AI assistant specializing in software development, particularly TypeScript, Svelte, and multi-agent systems. You provide detailed, accurate technical guidance with code examples and best practices. You are thorough, systematic, and always explain the reasoning behind your suggestions. You maintain a professional yet approachable tone and are patient with users of all skill levels. Always provide code examples when relevant. Explain the reasoning behind your suggestions clearly. Include error handling and edge cases in your recommendations. Suggest improvements and alternatives when appropriate. Use clear, professional language with technical precision. Break down complex concepts into understandable parts. Always consider performance, security, and maintainability in your suggestions.".to_string(),
         },
         AgentConfig {
             id: "agent_gamma".to_string(),
             name: "Agent Gamma".to_string(),
-            model: "gemma3:latest".to_string(),
-            personality: "strategic".to_string(),
-            specialization: "problem_solving".to_string(),
-            system_prompt: "You are Gamma, an AI assistant specialized in strategic problem-solving and adaptive thinking. I analyze situations strategically and adapt my approach based on context. I focus on practical solutions and always consider multiple perspectives before making recommendations.".to_string(),
+            model: "gemma3:latest".to_string(), // Use Gemma3 model
+            personality: "creative_inspiring".to_string(),
+            specialization: "creative_projects".to_string(),
+            system_prompt: "You are Gamma, a creative AI assistant who helps with design, storytelling, and artistic projects. You think outside the box and encourage creative exploration. You're enthusiastic about ideas and help users develop their creative vision. You maintain a warm, inspiring tone and celebrate unique perspectives. You're patient and encouraging, helping users overcome creative blocks and explore new possibilities. Encourage creative thinking and experimentation. Ask 'what if' questions to spark imagination. Suggest multiple approaches to problems and celebrate unique ideas. Use vivid, descriptive language to paint pictures with words. Help users explore different perspectives and think outside conventional boundaries. Be enthusiastic about creative possibilities and help users overcome creative blocks. Use emojis and expressive language to convey excitement and inspiration (✨, 🎨, 💡, 🌟).".to_string(),
         },
     ]
 }
@@ -568,6 +588,87 @@ async fn copy_workspace_file(source_path: String, target_path: String) -> Worksp
     }
 }
 
+#[tauri::command]
+async fn agent_read_file(file_path: String) -> FileOperationResult {
+    match fs::read(&file_path) {
+        Ok(content) => {
+            // Determine file type
+            let file_type = if let Some(extension) = Path::new(&file_path).extension() {
+                extension.to_string_lossy().to_lowercase()
+            } else {
+                "unknown".to_string()
+            };
+            
+            let is_text = is_text_file(&file_path);
+            let is_image = file_type == "png" || file_type == "jpg" || file_type == "jpeg" || file_type == "gif" || file_type == "bmp" || file_type == "webp";
+            
+            let file_info = FileInfo {
+                name: Path::new(&file_path).file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+                size: content.len() as u64,
+                file_type: file_type.clone(),
+                is_image,
+                is_text,
+                dimensions: None, // Would need image processing library to get dimensions
+            };
+            
+            if is_text {
+                // Try to read as text
+                match fs::read_to_string(&file_path) {
+                    Ok(text_content) => FileOperationResult {
+                        success: true,
+                        message: Some("File read successfully".to_string()),
+                        error: None,
+                        file_content: Some(text_content),
+                        file_info: Some(file_info),
+                    },
+                    Err(e) => FileOperationResult {
+                        success: false,
+                        message: None,
+                        error: Some(format!("Failed to read file as text: {}", e)),
+                        file_content: None,
+                        file_info: None,
+                    },
+                }
+            } else {
+                // For binary files, return file info only
+                FileOperationResult {
+                    success: true,
+                    message: Some("Binary file info retrieved".to_string()),
+                    error: None,
+                    file_content: None,
+                    file_info: Some(file_info),
+                }
+            }
+        }
+        Err(e) => FileOperationResult {
+            success: false,
+            message: None,
+            error: Some(format!("Failed to read file: {}", e)),
+            file_content: None,
+            file_info: None,
+        },
+    }
+}
+
+fn is_text_file(file_path: &str) -> bool {
+    let text_extensions = ["txt", "md", "json", "csv", "xml", "html", "css", "js", "py", "java", "cpp", "c", "h", "ts", "jsx", "tsx", "vue", "svelte", "log", "ini", "conf", "yml", "yaml", "rs", "toml", "lock"];
+    
+    if let Some(extension) = Path::new(file_path).extension() {
+        let ext = extension.to_string_lossy().to_lowercase();
+        text_extensions.contains(&ext.as_str())
+    } else {
+        false
+    }
+}
+
+#[tauri::command]
+async fn agent_list_files(directory_path: String) -> WorkspaceResult {
+    list_workspace_files(directory_path).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -584,7 +685,9 @@ pub fn run() {
             create_workspace_file,
             delete_workspace_file,
             move_workspace_file,
-            copy_workspace_file
+            copy_workspace_file,
+            agent_read_file,
+            agent_list_files
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

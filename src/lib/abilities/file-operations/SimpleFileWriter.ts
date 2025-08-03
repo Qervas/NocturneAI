@@ -1,5 +1,6 @@
-import { abilityManager } from '../../services/AbilityManager';
-import { writeFileContent, getFileById, addFile } from '../../services/FileStore';
+import { abilityManager } from '../../services/core/AbilityManager';
+import { writeFileContent, getFileById, addFile } from '../../services/data/FileStore';
+import { fileOperationsService } from '../../services/data/FileOperationsService';
 
 export interface SimpleFileWriteResult {
   success: boolean;
@@ -90,13 +91,33 @@ export class SimpleFileWriterAbility {
 
       // Handle different operations
       if (operation === 'modify' && fileId) {
-        // Modify existing file in FileStore
+        // Get the file from FileStore
+        const file = getFileById(fileId);
+        if (!file) {
+          return {
+            success: false,
+            error: `File with ID ${fileId} not found`,
+            operation: 'modify'
+          };
+        }
+
+        // Write to actual file system using FileOperationsService
+        const fileResult = await fileOperationsService.writeFile(file.name, processedContent, true);
+        
+        if (!fileResult.success) {
+          return {
+            success: false,
+            error: fileResult.error || 'Failed to write file to file system',
+            operation: 'modify'
+          };
+        }
+
+        // Update FileStore
         const success = writeFileContent(fileId, processedContent);
         if (success) {
-          const file = getFileById(fileId);
           return {
             success: true,
-            fileName: file?.name || 'Unknown',
+            fileName: file.name,
             fileSize: new Blob([processedContent]).size,
             fileId,
             operation: 'modify'
@@ -104,7 +125,7 @@ export class SimpleFileWriterAbility {
         } else {
           return {
             success: false,
-            error: `File with ID ${fileId} not found`,
+            error: `Failed to update FileStore`,
             operation: 'modify'
           };
         }
@@ -125,7 +146,18 @@ export class SimpleFileWriterAbility {
         // Format content based on file type
         processedContent = this.formatContent(processedContent, extension);
 
-        // Add to FileStore
+        // Write to actual file system using FileOperationsService
+        const fileResult = await fileOperationsService.writeFile(finalFileName, processedContent, true);
+        
+        if (!fileResult.success) {
+          return {
+            success: false,
+            error: fileResult.error || 'Failed to write file to file system',
+            operation: 'create'
+          };
+        }
+
+        // Add to FileStore for UI tracking
         const newFileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         addFile({
           id: newFileId,
@@ -297,8 +329,7 @@ export class SimpleFileWriterAbility {
   }
 }
 
-// Create and register the ability
+// Create the ability instance
 const fileWriterAbility = new SimpleFileWriterAbility();
-abilityManager.registerAbility(fileWriterAbility);
 
 export { fileWriterAbility as simpleFileWriterAbility }; 

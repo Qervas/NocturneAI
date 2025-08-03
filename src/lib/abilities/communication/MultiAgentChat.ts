@@ -1,4 +1,4 @@
-import { abilityManager } from '../../services/AbilityManager';
+import { abilityManager } from '../../services/core/AbilityManager';
 
 // Chat message interface
 export interface ChatMessage {
@@ -464,8 +464,7 @@ export class MultiAgentChatAbility {
   }
 }
 
-// Create and register the ability
+// Create the ability instance
 const multiAgentChatAbility = new MultiAgentChatAbility();
-abilityManager.registerAbility(multiAgentChatAbility);
 
 export { multiAgentChatAbility }; 

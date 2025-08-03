@@ -1,4 +1,4 @@
-import { abilityManager } from '../../services/AbilityManager';
+import { abilityManager } from '../../services/core/AbilityManager';
 
 // File type definitions
 export interface FileTypeConfig {
@@ -333,8 +333,7 @@ export class FileReaderAbility {
 	}
 }
 
-// Create and register the ability
+// Create the ability instance
 const fileReaderAbility = new FileReaderAbility();
-abilityManager.registerAbility(fileReaderAbility);
 
 export { fileReaderAbility }; 

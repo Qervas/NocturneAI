@@ -1,4 +1,4 @@
-import { abilityManager } from "../../services/AbilityManager";
+import { abilityManager } from "../../services/core/AbilityManager";
 
 export interface WorkspaceFileInfo {
   path: string;
@@ -663,8 +663,7 @@ The actual file system operations are only available in the Tauri desktop app.`;
   }
 }
 
-// Create and register the ability
+// Create the ability instance
 const workspaceAbility = new WorkspaceDirectoryAbility();
-abilityManager.registerAbility(workspaceAbility);
 
 export { workspaceAbility as workspaceDirectoryAbility };

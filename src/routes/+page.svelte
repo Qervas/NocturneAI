@@ -1,13 +1,13 @@
 <script lang="ts">
 	import "../lib/styles/ui-framework.css";
-	import SimulationControls from "../lib/components/SimulationControls.svelte";
-	import FloatingFileExplorer from "../lib/components/FloatingFileExplorer.svelte";
-	import TilingLayoutContainer from "../lib/components/TilingLayoutContainer.svelte";
+	import SimulationControls from "../lib/components/game/SimulationControls.svelte";
+	import FloatingFileExplorer from "../lib/components/layout/FloatingFileExplorer.svelte";
+	import TilingLayoutContainer from "../lib/components/layout/TilingLayoutContainer.svelte";
 
 
-	import { selectedAgent, characterManager, characters } from "../lib/services/CharacterManager";
-	import { tilingLayoutManager, tilingLayoutStore } from "../lib/services/TilingLayoutManager";
-	import { uploadedFiles } from "../lib/services/FileStore";
+	import { selectedAgent, characterManager, characters } from "../lib/services/agents/CharacterManager";
+	import { tilingLayoutManager, tilingLayoutStore } from "../lib/services/ui/TilingLayoutManager";
+	import { uploadedFiles } from "../lib/services/data/FileStore";
 	import { onMount } from "svelte";
 
 	// Initialize character data on mount
@@ -44,6 +44,14 @@
 
 	function toggleTerminal() {
 		tilingLayoutManager.togglePanel('terminal-area');
+	}
+
+	function toggleSettings() {
+		tilingLayoutManager.togglePanel('settings-panel');
+	}
+
+	function toggleHelp() {
+		tilingLayoutManager.togglePanel('help-panel');
 	}
 </script>
 
@@ -90,8 +98,22 @@
 				>
 					📟
 				</button>
-				<button class="game-btn">Settings</button>
-				<button class="game-btn">Help</button>
+				<button 
+					class="game-btn" 
+					class:active={isPanelVisible('settings-panel')}
+					on:click={toggleSettings} 
+					title="Toggle Settings"
+				>
+					⚙️
+				</button>
+				<button 
+					class="game-btn" 
+					class:active={isPanelVisible('help-panel')}
+					on:click={toggleHelp} 
+					title="Toggle Help"
+				>
+					❓
+				</button>
 			</div>
 		</div>
 	</header>

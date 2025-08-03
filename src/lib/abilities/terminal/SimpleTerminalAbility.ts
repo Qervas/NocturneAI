@@ -1,4 +1,4 @@
-import { abilityManager } from "../../services/AbilityManager";
+import { abilityManager } from "../../services/core/AbilityManager";
 
 export interface TerminalCommandResult {
   success: boolean;
@@ -310,8 +310,7 @@ export class SimpleTerminalAbility {
   }
 }
 
-// Create and register the ability
+// Create the ability instance
 const terminalAbility = new SimpleTerminalAbility();
-abilityManager.registerAbility(terminalAbility);
 
 export { terminalAbility as simpleTerminalAbility };

@@ -1,4 +1,4 @@
-import { abilityManager } from '../../services/AbilityManager';
+import { abilityManager } from '../../services/core/AbilityManager';
 
 // Search result interface
 export interface SearchResult {
@@ -274,8 +274,7 @@ export class WebSearchAbility {
   }
 }
 
-// Create and register the ability
+// Create the ability instance
 const webSearchAbility = new WebSearchAbility();
-abilityManager.registerAbility(webSearchAbility);
 
 export { webSearchAbility }; 

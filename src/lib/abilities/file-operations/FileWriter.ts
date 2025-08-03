@@ -1,4 +1,5 @@
-import { abilityManager } from '../../services/AbilityManager';
+import { abilityManager } from '../../services/core/AbilityManager';
+import { fileOperationsService } from '../../services/data/FileOperationsService';
 
 // File writing result interface
 export interface FileWriteResult {
@@ -225,14 +226,12 @@ export class FileWriterAbility {
   }
 
   private async writeFile(filePath: string, content: string): Promise<void> {
-    // This would be implemented with actual file system access
-    // For now, simulate file writing
-    console.log(`Writing file: ${filePath}`);
-    console.log(`Content length: ${content.length} characters`);
+    // Use the actual file operations service to write the file
+    const result = await fileOperationsService.writeFile(filePath, content, this.config.createBackup);
     
-    // In a real implementation, this would use:
-    // import { writeFile } from 'fs/promises';
-    // await writeFile(filePath, content, this.config.encoding);
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to write file');
+    }
   }
 
   // Configuration methods
@@ -265,8 +264,7 @@ export class FileWriterAbility {
   }
 }
 
-// Create and register the ability
+// Create the ability instance
 const fileWriterAbility = new FileWriterAbility();
-abilityManager.registerAbility(fileWriterAbility);
 
 export { fileWriterAbility }; 

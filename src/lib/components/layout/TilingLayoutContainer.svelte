@@ -1,16 +1,18 @@
 <script lang="ts">
-  import { tilingLayoutStore, tilingCalculations, tilingLayoutManager } from '../services/TilingLayoutManager';
-  import { characters } from '../services/CharacterManager';
-  import TilingPanel from './layout/TilingPanel.svelte';
+  import { tilingLayoutStore, tilingCalculations, tilingLayoutManager } from '../../services/ui/TilingLayoutManager';
+  import { characters } from '../../services/agents/CharacterManager';
+  import TilingPanel from './TilingPanel.svelte';
   
   // Import components
-  import InteractionPanel from './panels/InteractionPanel.svelte';
-  import GamingCanvas from './game/GamingCanvas.svelte';
-  import ConversationConnections from './communication/ConversationConnections.svelte';
-  import MultiAgentPropertiesPanel from './panels/MultiAgentPropertiesPanel.svelte';
-  import WorldResources from './panels/WorldResources.svelte';
-  import CharacterPanel from './panels/CharacterPanel.svelte';
-  import MultiTabTerminal from './panels/MultiTabTerminal.svelte';
+  import InteractionPanel from '../panels/InteractionPanel.svelte';
+  import GamingCanvas from '../game/GamingCanvas.svelte';
+  import ConversationConnections from '../communication/ConversationConnections.svelte';
+  import MultiAgentPropertiesPanel from '../panels/MultiAgentPropertiesPanel.svelte';
+  import WorldResources from '../panels/WorldResources.svelte';
+  import CharacterPanel from '../panels/CharacterPanel.svelte';
+  import MultiTabTerminal from '../panels/MultiTabTerminal.svelte';
+  import SettingsPanel from '../panels/SettingsPanel.svelte';
+  import HelpPanel from '../panels/HelpPanel.svelte';
 
   $: layout = $tilingLayoutStore;
   $: panels = $tilingCalculations;
@@ -20,7 +22,9 @@
     'GameChat': InteractionPanel,
     'GamingCanvas': GamingCanvas,
     'ConversationConnections': ConversationConnections,
-    'MultiTabTerminal': MultiTabTerminal
+    'MultiTabTerminal': MultiTabTerminal,
+    'SettingsPanel': SettingsPanel,
+    'HelpPanel': HelpPanel
   };
 
   // Properties panel state for tabs
@@ -80,6 +84,8 @@
     top: 0;
     left: 0;
     box-sizing: border-box;
+    min-width: 320px;
+    min-height: 240px;
   }
 
 
