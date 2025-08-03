@@ -20,6 +20,16 @@ export interface AgentSelectionState {
 // Mock agent data - replace with real data from your system
 const mockAgents: Agent[] = [
   {
+    id: 'user',
+    name: 'User',
+    type: 'User',
+    avatar: '👤',
+    color: '#00bfff',
+    position: { x: 500, y: 420 },
+    isActive: true,
+    capabilities: ['file-reader', 'file-writer', 'directory-master', 'system-commander', 'code-analyzer', 'data-processor', 'terminal', 'workspace', 'web_search', 'communication']
+  },
+  {
     id: 'agent_alpha',
     name: 'Alpha',
     type: 'General Assistant',
@@ -53,8 +63,8 @@ const mockAgents: Agent[] = [
 
 const initialState: AgentSelectionState = {
   availableAgents: mockAgents,
-  selectedAgents: { 'agent_alpha': true }, // Smart boolean table - default to first agent selected
-  focusedAgent: 'agent_alpha'
+  selectedAgents: { 'user': true }, // Default to user selected
+  focusedAgent: 'user'
 };
 
 export const agentSelectionStore = writable<AgentSelectionState>(initialState);

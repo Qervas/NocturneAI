@@ -47,14 +47,18 @@ class AbilityManager {
 	
 	// Check if agent has ability
 	hasAbility(agentId: string, abilityId: string): boolean {
+		console.log(`🔍 AbilityManager: Checking if agent ${agentId} has ability ${abilityId}`);
 		const agentData = this.getAgentAbilities(agentId);
+		console.log(`🔍 AbilityManager: Agent ${agentId} has ability ${abilityId}:`, agentData.abilities.has(abilityId));
 		return agentData.abilities.has(abilityId);
 	}
 	
 	// Grant ability to agent
 	grantAbility(agentId: string, abilityId: string): void {
+		console.log(`🔍 AbilityManager: Granting ${abilityId} to agent ${agentId}`);
 		this.agentAbilities.update(agents => {
 			if (!agents[agentId]) {
+				console.log(`🔍 AbilityManager: Creating new agent entry for ${agentId}`);
 				agents[agentId] = {
 					agentId,
 					abilities: new Set(),
@@ -63,6 +67,8 @@ class AbilityManager {
 				};
 			}
 			agents[agentId].abilities.add(abilityId);
+			console.log(`🔍 AbilityManager: Added ${abilityId} to agent ${agentId}`);
+			console.log(`🔍 AbilityManager: Agent ${agentId} now has abilities:`, Array.from(agents[agentId].abilities));
 			return agents;
 		});
 	}

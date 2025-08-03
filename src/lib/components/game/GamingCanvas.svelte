@@ -236,14 +236,16 @@
 
         // Create agent characters from AgentSelectionManager
         availableAgents.forEach(agent => {
-            const gameChar = new GameCharacter({
-                id: agent.id,
-                name: agent.name,
-                type: 'agent',
-                color: agent.color || '#00ff88',
-                status: agent.isActive ? 'active' : 'inactive'
-            });
-            gameCharacters.push(gameChar);
+            if (agent.id !== 'user') { // Skip user as it's already created
+                const gameChar = new GameCharacter({
+                    id: agent.id,
+                    name: agent.name,
+                    type: 'agent',
+                    color: agent.color || '#00ff88',
+                    status: agent.isActive ? 'active' : 'inactive'
+                });
+                gameCharacters.push(gameChar);
+            }
         });
 
         // Position characters intelligently within viewport bounds
@@ -539,12 +541,18 @@
             const dy = worldY - character.position.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
             
-            if (distance <= character.size && character.type === 'agent') {
-                // Check if agent is active before allowing selection
-                const agent = availableAgents.find(a => a.id === character.id);
-                if (agent && agent.isActive) {
-                    // Toggle selection using the manager
-                    agentSelectionManager.toggleAgentSelection(character.id);
+            if (distance <= character.size) {
+                // Allow selection of both agents and user
+                if (character.type === 'agent') {
+                    // Check if agent is active before allowing selection
+                    const agent = availableAgents.find(a => a.id === character.id);
+                    if (agent && agent.isActive) {
+                        // Toggle selection using the manager
+                        agentSelectionManager.toggleAgentSelection(character.id);
+                    }
+                } else if (character.type === 'user') {
+                    // User gets special privileges - select directly
+                    agentSelectionManager.selectAgent('user');
                 }
                 break;
             }

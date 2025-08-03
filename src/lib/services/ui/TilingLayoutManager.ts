@@ -129,12 +129,42 @@ class TilingLayoutManager {
   };
 
   constructor() {
+    this.initializeLayout();
+    
+    // Add window resize listener for responsive layout
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', this.handleWindowResize.bind(this));
+    }
+  }
+
+  private initializeLayout() {
     this.setupEventListeners();
   }
 
   private setupEventListeners() {
     document.addEventListener('mousemove', this.handleMouseMove.bind(this));
     document.addEventListener('mouseup', this.handleMouseUp.bind(this));
+  }
+
+  private handleWindowResize() {
+    console.log('🔄 Window resized, recalculating layout...');
+    this.recalculateLayout();
+  }
+
+  private recalculateLayout() {
+    const container = document.querySelector('.tiling-layout-container') as HTMLElement;
+    if (!container) {
+      console.warn('⚠️ Tiling layout container not found');
+      return;
+    }
+
+    const viewportWidth = container.clientWidth;
+    const viewportHeight = container.clientHeight;
+    
+    console.log('📏 New viewport dimensions:', { viewportWidth, viewportHeight });
+    
+    // Trigger layout recalculation by updating the store
+    tilingLayoutStore.update(state => ({ ...state }));
   }
 
   private handleMouseMove(e: MouseEvent) {
