@@ -1,0 +1,36 @@
+import { defineConfig } from "tsup";
+
+export default defineConfig({
+  entry: {
+    index: "src/index.ts",
+    cli: "src/cli.ts",
+  },
+  format: ["esm"],
+  dts: true,
+  splitting: false,
+  sourcemap: true,
+  clean: true,
+  minify: false,
+  target: "node20",
+  outDir: "dist",
+  external: [
+    "react",
+    "ink",
+    "chalk",
+    "commander",
+    "better-sqlite3",
+    "tiktoken",
+    "winston",
+    "dotenv",
+    "execa",
+    "fast-glob",
+    "node-fetch",
+    "zod",
+    "zustand",
+    "@anthropic-ai/sdk",
+    "typescript",
+  ],
+  noExternal: [],
+  treeshake: true,
+  platform: "node",
+});
