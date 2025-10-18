@@ -95,8 +95,11 @@ export class AskModeHandler implements IModeHandler {
    */
   async handleNaturalLanguage(
     input: string,
-    context: Record<string, unknown>
+    _context: Record<string, unknown>
   ): Promise<void> {
+    // Note: _context parameter prefixed with _ to indicate intentionally unused
+    // Reserved for future enhancements (e.g., conversation history, project info)
+
     // Safety check
     if (!input || typeof input !== 'string') {
       this.log('warn', 'Invalid input passed to handleNaturalLanguage');
@@ -176,11 +179,10 @@ Examples:
         if (typeof response === 'string') {
           responseContent = response;
         } else if (response && typeof response === 'object') {
-          // Try different possible response structures
+          // Try different possible response structures (ChatResponse type)
           responseContent =
             response.content ||
             response.message?.content ||
-            response.text ||
             '';
         }
 

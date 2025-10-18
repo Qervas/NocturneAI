@@ -210,68 +210,106 @@ export class ChatOrchestrator {
   }
 
   /**
-   * Process natural language input using ReAct agent
+   * Process natural language input using current mode handler
    */
   private async processNaturalLanguage(input: string): Promise<void> {
-    // Check if ReAct agent is available
-    if (!this.reactAgent) {
+    // Get current mode handler
+    const currentHandler = this.modeManager.getCurrentHandler();
+
+    if (!currentHandler) {
+      this.log('error', 'No mode handler available');
       this.addMessage(this.createMessage(
-        'assistant',
-        `Natural language processing is not available. Please use slash commands (e.g., /help, /model list). Type /help to see available commands.`
+        'error',
+        `No interaction mode is available. This is a system error. Please restart or use slash commands.`
       ));
       return;
     }
 
-    // Get context
+    // Check if handler can process this input
+    if (!currentHandler.canHandleInput(input)) {
+      this.log('warn', `Current mode handler (${currentHandler.mode}) cannot handle input`);
+      this.addMessage(this.createMessage(
+        'error',
+        `The current mode (${currentHandler.displayName}) cannot process this input. Try using slash commands or switching modes.`
+      ));
+      return;
+    }
+
+    // Gather context
     const context = this.gatherContext();
 
-    // Process with ReAct agent
-    const thought = await this.reactAgent.processInput(input, context);
-
-    // Add to agent history
-    this.reactAgent.addToHistory(this.messages[this.messages.length - 1]);
-
-    if (thought.proposedActions.length === 0) {
-      // No actions to take, just a conversational response
-      // Generate a proper response based on understanding
-      let response = thought.understanding;
-
-      // If understanding is empty or just metadata, generate a basic response
-      if (!response || response.startsWith('The user is')) {
-        // This is metadata, not a response - we need to generate one
-        response = await this.generateConversationalResponse(input, thought);
-      }
+    try {
+      // Delegate to mode handler
+      this.log('info', `Processing input in ${currentHandler.mode} mode`);
+      await currentHandler.handleNaturalLanguage(input, context);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.log('error', `Mode handler failed: ${errorMessage}`);
 
       this.addMessage(this.createMessage(
-        'assistant',
-        response,
-        undefined,
-        thought.reasoning
+        'error',
+        `Failed to process your input in ${currentHandler.displayName}. Error: ${errorMessage}`
       ));
-      return;
+    }
+  }
+
+  /**
+   * Handle mode switch
+   */
+  private handleModeSwitch(newMode: InteractionMode): void {
+    const success = this.modeManager.switchMode(newMode, 'User requested mode change');
+
+    if (success) {
+      const modeInfo = this.modeManager.getModeInfo(newMode);
+      if (modeInfo) {
+        let modeMessage = `✅ Switched to **${modeInfo.displayName}**\n\n`;
+        modeMessage += `${modeInfo.description}\n\n`;
+        modeMessage += `**Capabilities:**\n`;
+        modeMessage += `- Uses Tools: ${modeInfo.capabilities.usesTools ? 'Yes' : 'No'}\n`;
+        modeMessage += `- Requires Confirmation: ${modeInfo.capabilities.requiresConfirmation ? 'Yes' : 'No'}\n`;
+        modeMessage += `- Autonomous: ${modeInfo.capabilities.autonomous ? 'Yes' : 'No'}\n`;
+        modeMessage += `- Uses Router LLM: ${modeInfo.capabilities.usesRouter ? 'Yes' : 'No'}\n`;
+        modeMessage += `- Uses ReAct Agent: ${modeInfo.capabilities.usesReAct ? 'Yes' : 'No'}`;
+
+        this.addMessage(this.createMessage('assistant', modeMessage));
+      }
+    } else {
+      this.addMessage(this.createMessage(
+        'error',
+        `Failed to switch to ${newMode} mode. Mode may not be available.`
+      ));
+    }
+  }
+
+  /**
+   * Show current mode information
+   */
+  private showCurrentMode(): void {
+    const currentMode = this.modeManager.getCurrentMode();
+    const modeInfo = this.modeManager.getModeInfo(currentMode);
+    const allModes = this.modeManager.getAllModesInfo();
+
+    let output = `📋 **Current Mode: ${modeInfo?.displayName || currentMode}**\n\n`;
+
+    if (modeInfo) {
+      output += `${modeInfo.description}\n\n`;
+      output += `**Capabilities:**\n`;
+      output += `- Uses Tools: ${modeInfo.capabilities.usesTools ? '✅' : '❌'}\n`;
+      output += `- Requires Confirmation: ${modeInfo.capabilities.requiresConfirmation ? '✅' : '❌'}\n`;
+      output += `- Autonomous: ${modeInfo.capabilities.autonomous ? '✅' : '❌'}\n`;
+      output += `- Uses Router LLM: ${modeInfo.capabilities.usesRouter ? '✅' : '❌'}\n`;
+      output += `- Uses ReAct Agent: ${modeInfo.capabilities.usesReAct ? '✅' : '❌'}\n\n`;
     }
 
-    // Create confirmation message
-    const confirmationId = this.generateConfirmationId();
-    this.pendingConfirmations.set(confirmationId, thought.proposedActions);
-
-    const confirmationMessage = this.createMessage(
-      'confirmation',
-      `I understand you want to: ${thought.understanding}`,
-      undefined,
-      thought.reasoning,
-      thought.proposedActions,
-      confirmationId,
-      'pending'
-    );
-
-    this.addMessage(confirmationMessage);
-
-    // Emit confirmation request event
-    this.eventBus.emit('chat:confirmation:requested', {
-      confirmationId,
-      message: confirmationMessage
+    output += `**Available Modes:**\n`;
+    allModes.forEach(mode => {
+      const marker = mode.isCurrent ? '👉' : '  ';
+      output += `${marker} **${mode.displayName}** - ${mode.description}\n`;
     });
+
+    output += `\nUse \`/mode <ask|edit|agent>\` to switch modes.`;
+
+    this.addMessage(this.createMessage('assistant', output));
   }
 
   /**
@@ -450,7 +488,8 @@ Respond naturally in the user's language. Keep responses concise (2-3 sentences 
           if (typeof response === 'string') {
             content = response;
           } else if (response && typeof response === 'object') {
-            content = response.content || response.message?.content || response.text || '';
+            // ChatResponse type has content and message.content
+            content = response.content || response.message?.content || '';
           }
 
           // Clean and validate the content
@@ -490,7 +529,7 @@ Respond naturally in the user's language. Keep responses concise (2-3 sentences 
   /**
    * Create a chat message
    */
-  private createMessage(
+  public createMessage(
     type: ChatMessage['type'],
     content: string,
     results?: ExecutionResult[],
@@ -515,7 +554,7 @@ Respond naturally in the user's language. Keep responses concise (2-3 sentences 
   /**
    * Add message to history
    */
-  private addMessage(message: ChatMessage): void {
+  public addMessage(message: ChatMessage): void {
     this.messages.push(message);
 
     // Keep message history limited
