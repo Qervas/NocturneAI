@@ -25,6 +25,7 @@ import { AgentModeHandler } from './modes/AgentModeHandler.js';
 import type { InteractionMode } from '../../core/interfaces/IModeHandler.js';
 import { AgentFactory } from '../factories/AgentFactory.js';
 import type { AgentFactoryConfig } from '../factories/AgentFactory.js';
+import { sanitizeError } from '../../infrastructure/utils/ErrorSanitizer.js';
 
 /**
  * Chat Orchestrator Options
@@ -179,7 +180,7 @@ export class ChatOrchestrator {
         await this.processNaturalLanguage(input);
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = sanitizeError(error);
       this.addMessage(this.createMessage('error', `Error: ${errorMessage}`));
       this.log('error', `Failed to process input: ${errorMessage}`);
     }
@@ -243,7 +244,7 @@ export class ChatOrchestrator {
         ]));
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = sanitizeError(error);
       this.addMessage(this.createMessage('error', `Failed to execute command: ${errorMessage}`));
     }
   }
@@ -282,7 +283,7 @@ export class ChatOrchestrator {
       this.log('info', `Processing input in ${currentHandler.mode} mode`);
       await currentHandler.handleNaturalLanguage(input, context);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = sanitizeError(error);
       this.log('error', `Mode handler failed: ${errorMessage}`);
 
       this.addMessage(this.createMessage(
@@ -578,7 +579,56 @@ Respond naturally in the user's language. Keep responses concise (2-3 sentences 
   }
 
   /**
-   * Create a chat message
+   * NEW: Create a chat message from structured blocks
+   *
+   * This is the preferred way to create messages going forward.
+   * Automatically extracts structured data from blocks and generates text content.
+   *
+   * @param type Message type
+   * @param blocks Content blocks
+   * @param options Additional message options
+   * @returns Chat message
+   */
+  public createMessageWithBlocks(
+    type: ChatMessage['type'],
+    blocks: import('../../presentation/ui/content-model.js').MessageContentBlock[],
+    options?: {
+      thought?: string;
+      confirmationId?: string;
+      status?: ConfirmationStatus;
+      metadata?: Record<string, unknown>;
+    }
+  ): ChatMessage {
+    // Import BlockUtils dynamically
+    const { BlockUtils } = require('../../presentation/ui/content-model.js');
+
+    // Extract structured data from blocks
+    const proposedActions = BlockUtils.extractActions(blocks);
+    const results = BlockUtils.extractResults(blocks);
+
+    // Generate text content from blocks
+    const textContent = BlockUtils.blocksToText(blocks);
+
+    return {
+      id: this.generateMessageId(),
+      type,
+      timestamp: new Date(),
+      blocks,  // NEW: Structured blocks
+      content: textContent,  // Auto-generated from blocks
+      proposedActions: proposedActions.length > 0 ? proposedActions : undefined,
+      results: results.length > 0 ? results : undefined,
+      thought: options?.thought,
+      confirmationId: options?.confirmationId,
+      status: options?.status,
+      metadata: options?.metadata
+    };
+  }
+
+  /**
+   * Create a chat message (LEGACY)
+   *
+   * This method is kept for backward compatibility.
+   * Use createMessageWithBlocks() for new code.
    */
   public createMessage(
     type: ChatMessage['type'],
@@ -615,6 +665,28 @@ Respond naturally in the user's language. Keep responses concise (2-3 sentences 
 
     // Emit message event
     this.eventBus.emit('chat:message', message);
+  }
+
+  /**
+   * Remove a specific message from history (for temporary/animated messages)
+   */
+  public removeMessage(messageId: string): void {
+    const index = this.messages.findIndex(m => m.id === messageId);
+    if (index !== -1) {
+      this.messages.splice(index, 1);
+      this.eventBus.emit('chat:message:removed', messageId);
+    }
+  }
+
+  /**
+   * Update an existing message (for replacing temporary messages)
+   */
+  public updateMessage(messageId: string, updates: Partial<ChatMessage>): void {
+    const message = this.messages.find(m => m.id === messageId);
+    if (message) {
+      Object.assign(message, updates);
+      this.eventBus.emit('chat:message:updated', message);
+    }
   }
 
   /**

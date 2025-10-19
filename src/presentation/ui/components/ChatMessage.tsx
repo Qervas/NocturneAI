@@ -8,6 +8,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { ChatMessage } from '../types.js';
+import { BlockRenderer } from '../renderers/index.js';
 
 interface ChatMessageProps {
   message: ChatMessage;
@@ -23,9 +24,11 @@ export const ChatMessageComponent: React.FC<ChatMessageProps> = ({
       case 'user':
         return theme.colors.foreground;
       case 'assistant':
-        return theme.colors.info;
+        return theme.colors.foreground; // Changed from info (blue) to white like user messages
       case 'confirmation':
         return theme.colors.warning;
+      case 'executing':
+        return theme.colors.warning; // Orange/yellow for "in progress"
       case 'execution':
         return theme.colors.success;
       case 'error':
@@ -51,8 +54,10 @@ export const ChatMessageComponent: React.FC<ChatMessageProps> = ({
         return '🤖 AI: ';
       case 'confirmation':
         return '⚠️ Confirm: ';
+      case 'executing':
+        return ''; // No prefix - the ⏺ is in the content itself
       case 'execution':
-        return '✓ Executed: ';
+        return ''; // Remove "✓ Executed:" prefix to keep it clean
       case 'error':
         return '✗ Error: ';
       case 'agent_list':
@@ -102,23 +107,42 @@ export const ChatMessageComponent: React.FC<ChatMessageProps> = ({
 
   const isRichMessage = ['agent_list', 'workflow_list', 'model_list', 'dashboard', 'logs'].includes(message.type);
 
-  return (
-    <Box flexDirection="column" marginBottom={1} paddingY={1}>
-      {/* Message Header */}
-      <Box marginBottom={1}>
-        <Text color={getMessageColor()} bold>
-          {getMessagePrefix()}
-        </Text>
-        <Text color={theme.colors.muted} dimColor>
-          {' '}[{formatTimestamp(message.timestamp)}]
-        </Text>
-      </Box>
+  // Hide ALL confirmation messages - they're ephemeral UI shown only in ConfirmationDialog
+  // Approved/cancelled confirmations should disappear from chat history (Claude Code style)
+  if (message.type === 'confirmation') {
+    return null;
+  }
 
-      {/* Message Content */}
-      {isRichMessage ? (
+  return (
+    <Box flexDirection="column" marginBottom={0}>
+      {/* Message Header - Skip for execution messages (Claude Code style: inline results only) */}
+      {message.type !== 'executing' && message.type !== 'execution' && (
+        <Box>
+          <Text color={getMessageColor()} bold>
+            {getMessagePrefix()}
+          </Text>
+          <Text color={theme.colors.muted} dimColor>
+            {' '}[{formatTimestamp(message.timestamp)}]
+          </Text>
+        </Box>
+      )}
+
+      {/* Message Content - NEW: Support both content AND blocks (Claude Code style) */}
+      {message.blocks ? (
+        <Box marginLeft={2} flexDirection="column">
+          {/* Show text content first (natural language interpretation) */}
+          {message.content && (
+            <Box marginBottom={0}>
+              <Text color={getMessageColor()}>{message.content}</Text>
+            </Box>
+          )}
+          {/* Then show structured blocks (execution results) */}
+          <BlockRenderer blocks={message.blocks} theme={theme} />
+        </Box>
+      ) : isRichMessage ? (
         renderRichContent()
       ) : (
-        <Box marginLeft={2}>
+        <Box marginLeft={2} flexDirection="column">
           <Text color={getMessageColor()}>{message.content}</Text>
         </Box>
       )}
@@ -132,8 +156,8 @@ export const ChatMessageComponent: React.FC<ChatMessageProps> = ({
         </Box>
       )}
 
-      {/* Proposed Actions (for assistant messages) */}
-      {message.proposedActions && message.proposedActions.length > 0 && (
+      {/* Proposed Actions (for assistant messages, but NOT for confirmation type as ConfirmationDialog handles that) */}
+      {message.proposedActions && message.proposedActions.length > 0 && message.type !== 'confirmation' && (
         <Box flexDirection="column" marginLeft={2} marginTop={1}>
           <Text bold color={theme.colors.secondary}>
             Proposed Actions:
@@ -163,23 +187,6 @@ export const ChatMessageComponent: React.FC<ChatMessageProps> = ({
               </Text>
             </Box>
           ))}
-        </Box>
-      )}
-
-      {/* Confirmation Status */}
-      {message.type === 'confirmation' && message.status && (
-        <Box marginLeft={2} marginTop={1}>
-          <Text
-            color={
-              message.status === 'approved'
-                ? theme.colors.success
-                : message.status === 'cancelled'
-                ? theme.colors.error
-                : theme.colors.warning
-            }
-          >
-            Status: {message.status.toUpperCase()}
-          </Text>
         </Box>
       )}
     </Box>

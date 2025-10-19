@@ -30,9 +30,9 @@ export class OutputFormatter {
 
     let output = '';
 
-    // Summary
+    // Compact summary (no icons - ResultsRenderer adds them)
     if (failureCount === 0) {
-      output += `✓ Executed ${results.length} action(s) successfully\n\n`;
+      output += `Executed ${results.length} action(s) successfully\n\n`;
     } else {
       output += `Executed ${results.length} action(s): ${successCount} succeeded, ${failureCount} failed\n\n`;
     }
@@ -59,8 +59,9 @@ export class OutputFormatter {
    * @returns Formatted string
    */
   private static formatSingleResult(result: ExecutionResult, _index: number): string {
-    const icon = result.success ? '✓' : '✗';
-    let output = `${icon} ${result.action?.description || result.message}\n`;
+    // Note: Don't add ✓/✗ icons here - ResultsRenderer adds them
+    // This avoids duplicate icons (✓ ✓)
+    let output = `${result.action?.description || result.message}\n`;
 
     if (result.output) {
       // Try to parse as JSON and format beautifully
@@ -454,35 +455,27 @@ export class OutputFormatter {
   }
 
   /**
-   * Format command execution output
+   * Format command execution output (simplified for Claude Code style)
    */
   private static formatCommandExecute(data: any): string {
-    let output = '\n  Command Execution:\n\n';
+    let output = '';
 
+    // Compact format: just show the command and output, no verbose details
     if (data.command) {
-      output += `  Command: ${data.command}\n`;
-    }
-
-    if (data.cwd) {
-      output += `  Directory: ${data.cwd}\n`;
-    }
-
-    if (data.exitCode !== undefined) {
-      output += `  Exit Code: ${data.exitCode}\n`;
+      output += `\n  → ${data.command}\n`;
     }
 
     if (data.stdout) {
-      output += '\n  Output:\n';
-      const lines = data.stdout.split('\n');
-      if (lines.length <= 30) {
-        lines.forEach((line: string) => {
-          output += `    ${line}\n`;
-        });
-      } else {
-        lines.slice(0, 30).forEach((line: string) => {
-          output += `    ${line}\n`;
-        });
-        output += `    ... and ${lines.length - 30} more lines\n`;
+      const lines = data.stdout.split('\n').filter((l: string) => l.trim());
+
+      // Show only first 3 lines by default (collapsed output)
+      const previewLines = lines.slice(0, 3);
+      previewLines.forEach((line: string) => {
+        output += `    ${line}\n`;
+      });
+
+      if (lines.length > 3) {
+        output += `    ... and ${lines.length - 3} more lines → View in logs\n`;
       }
     }
 

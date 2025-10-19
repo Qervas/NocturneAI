@@ -155,17 +155,7 @@ export const UnifiedChat: React.FC<UnifiedChatProps> = ({
         <Box ref={messagesEndRef} />
       </Box>
 
-      {/* Status Bar - Always visible above input */}
-      <Box paddingX={1} borderStyle="single" borderColor={theme.colors.muted}>
-        <Text dimColor color={theme.colors.muted}>
-          {showAutocomplete && (
-            <Text>Tab: autocomplete • </Text>
-          )}
-          ↑↓: history • Enter: send • /: commands • @: mentions
-        </Text>
-      </Box>
-
-      {/* Input Area - Pinned to bottom */}
+      {/* Input Area - Pinned to bottom (hint bar removed, info integrated into placeholder) */}
       {showInput && !pendingConfirmation && (
         <ChatInput
           value={inputValue}

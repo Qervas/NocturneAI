@@ -17,6 +17,7 @@ interface ChatMessagesProps {
   theme: any;
   showHeader?: boolean;
   isProcessing?: boolean;
+  shouldAutoScroll?: boolean;
 }
 
 export const ChatMessages: React.FC<ChatMessagesProps> = ({
@@ -24,9 +25,11 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
   onConfirm,
   theme,
   showHeader = true,
-  isProcessing = false
+  isProcessing = false,
+  shouldAutoScroll = true
 }) => {
   const [maxVisibleMessages, setMaxVisibleMessages] = useState(20);
+  const [scrollOffset, setScrollOffset] = useState(0);
   const messagesEndRef = useRef<any>();
 
   // Calculate how many messages we can show based on terminal height
@@ -35,6 +38,14 @@ export const ChatMessages: React.FC<ChatMessagesProps> = ({
     const availableLines = Math.max(10, terminalHeight - 10);
     setMaxVisibleMessages(availableLines);
   }, []);
+
+  // Auto-scroll to bottom only when shouldAutoScroll is true
+  useEffect(() => {
+    if (shouldAutoScroll && messages.length > 0) {
+      // Reset scroll offset to show latest messages
+      setScrollOffset(0);
+    }
+  }, [shouldAutoScroll, messages.length]);
 
   // Get the last confirmation message that's pending
   const pendingConfirmation = messages

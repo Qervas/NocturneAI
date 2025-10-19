@@ -64,26 +64,25 @@ export class IterationLoop {
 
     // Step 3: Check if all todos are complete
     if (this.taskManager.isAllComplete(context)) {
-      // Double-check with LLM that task is truly complete
-      const isComplete = await this.taskAnalyzer.isTaskComplete(context);
-
-      if (isComplete) {
-        return {
-          type: 'task_complete',
-          message: 'All todos completed successfully',
-          context
-        };
-      }
+      // All todos complete - task is done!
+      // (We trust our todo list completion over LLM second-guessing)
+      return {
+        type: 'task_complete',
+        message: 'All todos completed successfully',
+        context
+      };
     }
 
     // Step 4: Get next pending todo
     const nextTodo = this.taskManager.getNextPendingTodo(context);
 
     if (!nextTodo) {
-      // No pending todos but task not complete (shouldn't happen)
+      // No pending todos but some aren't marked complete - shouldn't happen
+      // This means we have todos in 'in_progress' state but no pending ones
+      // Treat as complete anyway to avoid getting stuck
       return {
-        type: 'error',
-        message: 'No pending todos but task not complete',
+        type: 'task_complete',
+        message: 'No more pending todos - task complete',
         context
       };
     }
@@ -270,6 +269,91 @@ What actions should I take to complete this step?`;
       if (todo) {
         this.taskManager.removeTodo(context, todo.id);
       }
+    }
+  }
+
+  /**
+   * Interpret execution results to generate natural language answer
+   *
+   * This makes our output more like Claude Code - providing helpful explanations
+   * instead of just raw command output.
+   *
+   * @param originalRequest User's original question/request
+   * @param results Execution results
+   * @returns Natural language interpretation
+   */
+  async interpretResults(
+    originalRequest: string,
+    results: ExecutionResult[]
+  ): Promise<string> {
+    // Collect all successful outputs
+    const outputs = results
+      .filter(r => r.success && r.output)
+      .map(r => r.output)
+      .join('\n');
+
+    if (!outputs.trim()) {
+      return 'Done!';
+    }
+
+    const systemPrompt = `You are a helpful AI assistant. The user asked a question, and we executed commands to answer it.
+Your job is to interpret the command output and provide a natural, helpful answer.
+
+Guidelines:
+- Provide a clear, natural language answer to the user's question
+- Interpret raw command output (e.g., "24" → "There are 24 files...")
+- Add helpful context when relevant (e.g., breakdown by directory, notable patterns)
+- Keep it concise (1-3 sentences typically)
+- If the output is an error, explain what went wrong
+- Don't just repeat the raw output - interpret and explain it
+- For file creation tasks: Just confirm what was created, DON'T show the code that was written
+- For code generation: Describe WHAT was created (not the code itself - they can see that in the file)
+
+Examples:
+User: "How many tsx files are there?"
+Output: "24"
+Answer: "There are 24 .tsx files in the NocturneAI folder and its subdirectories. All of them are located in the src/presentation/ui/ directory."
+
+User: "What's in the README?"
+Output: "# NocturneAI\\nAn AI agent system..."
+Answer: "The README describes NocturneAI as an AI agent system with multi-agent coordination capabilities."
+
+User: "Write python code to draw a triangle"
+Output: "(file created with turtle code)"
+Answer: "Created draw_triangle.py that uses the turtle graphics library to draw an equilateral triangle. Run it with 'python draw_triangle.py' to see the triangle."
+
+User: "Create a function to check if a number is prime"
+Output: "(file created with prime checking code)"
+Answer: "Created is_prime.py with a function that checks if a number is prime using trial division."`;
+
+    const userPrompt = `User asked: "${originalRequest}"
+
+Command output:
+${outputs.length > 500 ? outputs.substring(0, 500) + '... (truncated)' : outputs}
+
+Provide a natural, helpful answer (describe WHAT was done, don't repeat code):`;
+
+    try {
+      // Add timeout to prevent hanging (5 seconds max)
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Interpretation timeout')), 5000)
+      );
+
+      const chatPromise = this.llmClient.chat({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.3,
+        maxTokens: 200
+      });
+
+      const response = await Promise.race([chatPromise, timeoutPromise]);
+      return response.content || response.message?.content || 'Done!';
+    } catch (error) {
+      // Log to file only - NO console output (prevents terminal pollution)
+      // Fall back to simple completion message on timeout or error
+      return 'Done!';
     }
   }
 

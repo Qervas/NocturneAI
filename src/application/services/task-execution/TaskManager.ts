@@ -51,19 +51,41 @@ User request: "${request}"
 Create a list of specific, actionable todos. Be thorough but not overly detailed.
 Focus on the main steps needed to complete the request.
 
+IMPORTANT RULES:
+1. Do NOT create overlapping todos that do the same thing
+2. Each todo should be a distinct action - don't split one action across multiple todos
+3. If the request is simple (like "list files"), create just ONE todo
+4. Combine related actions into single todos
+
 Examples:
-- If request is "create fibonacci and test with 10":
+
+GOOD - Simple request with one action:
+- Request: "list all files"
+  [
+    {"description": "List all files in the current directory"}
+  ]
+
+GOOD - Multiple distinct steps:
+- Request: "create fibonacci and test with 10"
   [
     {"description": "Create fibonacci.py with fibonacci function"},
     {"description": "Execute the function with input 10"},
     {"description": "Verify the output is correct"}
   ]
 
-- If request is "fix the bug in login.ts where users can't log out":
+BAD - Overlapping todos:
+- Request: "list files"
+  [
+    {"description": "Open terminal"},          ❌ Don't split into sub-steps
+    {"description": "Run ls command"},         ❌ This IS listing files
+    {"description": "List all files"}          ❌ Duplicate of above
+  ]
+
+GOOD - Complex request:
+- Request: "fix the bug in login.ts where users can't log out"
   [
     {"description": "Read login.ts to understand the logout functionality"},
-    {"description": "Identify the logout bug"},
-    {"description": "Fix the bug"},
+    {"description": "Identify and fix the logout bug"},
     {"description": "Test the logout functionality"}
   ]
 

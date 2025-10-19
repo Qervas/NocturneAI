@@ -9,6 +9,8 @@
 
 import type { TaskContext, TaskTodo } from './types.js';
 import type { ProposedAction } from '../../../presentation/ui/types.js';
+import type { MessageContentBlock } from '../../../presentation/ui/content-model.js';
+import { BlockUtils } from '../../../presentation/ui/content-model.js';
 
 /**
  * Task Formatter
@@ -18,7 +20,84 @@ import type { ProposedAction } from '../../../presentation/ui/types.js';
  */
 export class TaskFormatter {
   /**
+   * NEW: Create structured confirmation blocks
+   *
+   * Returns blocks that can be rendered as text OR interactive UI.
+   * This is the primary method for creating confirmation content.
+   *
+   * @param todo Current todo being executed
+   * @param actions Proposed actions
+   * @param context Task context
+   * @returns Array of content blocks
+   */
+  createConfirmationBlocks(
+    todo: TaskTodo,
+    actions: ProposedAction[],
+    context: TaskContext
+  ): MessageContentBlock[] {
+    const currentIndex = context.todos.findIndex(t => t.status === 'in_progress');
+
+    return [
+      {
+        type: 'text',
+        content: `📋 Task Progress (Step ${context.iterations}):`,
+        style: 'bold'
+      },
+      {
+        type: 'todo_list',
+        todos: context.todos.map(t => ({
+          description: t.description,
+          status: t.status,
+          result: t.result
+        })),
+        currentIndex: currentIndex >= 0 ? currentIndex : undefined
+      },
+      {
+        type: 'action_list',
+        actions: actions,
+        title: `I'll perform ${actions.length} action(s):`,
+        showCommands: true
+      },
+      {
+        type: 'text',
+        content: 'Do you want to proceed?'
+      }
+    ];
+  }
+
+  /**
+   * NEW: Create task progress blocks for AI responses
+   *
+   * Shows colored todo list progress in AI messages.
+   * Uses the same colored rendering as confirmations (✓ green, ⟳ orange, ○ gray).
+   *
+   * @param context Task context
+   * @returns Array of content blocks
+   */
+  createTaskProgressBlocks(context: TaskContext): MessageContentBlock[] {
+    return [
+      {
+        type: 'text',
+        content: `📋 Task Progress (Step ${context.iterations}):`,
+        style: 'bold'
+      },
+      {
+        type: 'todo_list',
+        todos: context.todos.map(t => ({
+          description: `${t.description}${t.result ? ` (${t.result})` : ''}`,
+          status: t.status,
+          result: undefined  // Result already in description
+        })),
+        currentIndex: context.todos.findIndex(t => t.status === 'in_progress')
+      }
+    ];
+  }
+
+  /**
    * Format confirmation message with todo list and action details
+   *
+   * LEGACY: This method is kept for backward compatibility.
+   * Use createConfirmationBlocks() for new code.
    *
    * @param todo Current todo being executed
    * @param actions Proposed actions
@@ -26,6 +105,20 @@ export class TaskFormatter {
    * @returns Formatted confirmation message
    */
   formatConfirmationWithTodos(
+    todo: TaskTodo,
+    actions: ProposedAction[],
+    context: TaskContext
+  ): string {
+    // Generate blocks and convert to text
+    const blocks = this.createConfirmationBlocks(todo, actions, context);
+    return BlockUtils.blocksToText(blocks);
+  }
+
+  /**
+   * DEPRECATED: Old implementation kept temporarily
+   * Remove after migration complete
+   */
+  formatConfirmationWithTodosLegacy(
     todo: TaskTodo,
     actions: ProposedAction[],
     context: TaskContext
@@ -90,15 +183,14 @@ export class TaskFormatter {
   }
 
   /**
-   * Format task complete message
+   * Format task complete message (ultra-minimal for Claude Code style)
    *
    * @param context Task context
    * @returns Formatted completion message
    */
   formatTaskComplete(context: TaskContext): string {
-    let message = '✓ Task complete!\n\n';
-    message += this.formatCompletedSummary(context);
-    return message;
+    // Just "Done!" - timing info is not essential
+    return 'Done!';
   }
 
   /**

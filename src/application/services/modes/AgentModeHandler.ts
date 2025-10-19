@@ -29,6 +29,7 @@ import type { ReActAgent } from '../ReActAgent.js';
 import type { ProposedAction } from '../../../presentation/ui/types.js';
 import { ToolExecutor } from '../ToolExecutor.js';
 import { OutputFormatter } from '../OutputFormatter.js';
+import { sanitizeError } from '../../../infrastructure/utils/ErrorSanitizer.js';
 
 /**
  * Agent Mode Handler Configuration
@@ -221,7 +222,7 @@ export class AgentModeHandler implements IModeHandler {
       await this.executeActionsAutonomously(proposedActions);
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = sanitizeError(error);
       this.log('error', `Failed to process input: ${errorMessage}`);
 
       this.chatOrchestrator.addMessage(
@@ -571,7 +572,7 @@ If no tools needed, return empty array: []`;
       this.log('info', `Execution complete: ${successCount} succeeded, ${failureCount} failed`);
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = sanitizeError(error);
       this.log('error', `Action execution failed: ${errorMessage}`);
 
       this.chatOrchestrator.addMessage(
@@ -616,7 +617,10 @@ If no tools needed, return empty array: []`;
       return;
     }
 
+    // Log to file only - NO console output (prevents terminal pollution)
+    // User can view logs via /logs command
     const prefix = `[AgentModeHandler]`;
-    console.log(`${prefix} ${level.toUpperCase()}: ${message}`);
+    // TODO: Write to log file instead of console
+    // For now, just skip logging to avoid terminal output
   }
 }

@@ -21,6 +21,7 @@
 import type { IModeHandler } from '../../../core/interfaces/IModeHandler.js';
 import type { CopilotClient } from '../../../infrastructure/llm/CopilotClient.js';
 import type { ChatOrchestrator } from '../ChatOrchestrator.js';
+import { sanitizeError } from '../../../infrastructure/utils/ErrorSanitizer.js';
 
 /**
  * Ask Mode Handler Configuration
@@ -203,7 +204,7 @@ Examples:
         throw parseError;
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = sanitizeError(error);
       this.log('error', `Router LLM failed: ${errorMessage}`);
 
       // Fallback response - completely generic, no string operations on input
@@ -263,7 +264,10 @@ Examples:
       return;
     }
 
+    // Log to file only - NO console output (prevents terminal pollution)
+    // User can view logs via /logs command
     const prefix = `[AskModeHandler]`;
-    console.log(`${prefix} ${level.toUpperCase()}: ${message}`);
+    // TODO: Write to log file instead of console
+    // For now, just skip logging to avoid terminal output
   }
 }

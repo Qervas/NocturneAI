@@ -3,11 +3,14 @@
  *
  * Interactive dialog for confirming proposed actions before execution.
  * Allows users to proceed, modify, or cancel operations.
+ *
+ * NOW USES: BlockRenderer for clean, unified content rendering!
  */
 
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { ChatMessage, ConfirmationStatus } from '../types.js';
+import { BlockRenderer } from '../renderers/index.js';
 
 interface ConfirmationDialogProps {
   message: ChatMessage;
@@ -74,35 +77,39 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
         </Text>
       </Box>
 
-      {/* Message Content */}
-      {message.content && (
+      {/* Claude Code style: Show ONLY action summary, not full task progress */}
+      {message.blocks ? (
         <Box marginBottom={1}>
-          <Text>{message.content}</Text>
+          {/* Filter to show only action_list blocks, skip task progress */}
+          {message.blocks
+            .filter(block => block.type === 'action_list')
+            .map((block, index) => (
+              <Box key={index} flexDirection="column">
+                {block.type === 'action_list' && block.actions.map((action, i) => (
+                  <Box key={action.id}>
+                    <Text color={theme.colors.info}>→</Text>
+                    <Text color={theme.colors.foreground}> {action.description}</Text>
+                    {action.command === 'command_execute' && action.parameters && (
+                      <Text color={theme.colors.muted}>
+                        {' '}({(action.parameters as any).command}{(action.parameters as any).args ? ' ' + (action.parameters as any).args.join(' ') : ''})
+                      </Text>
+                    )}
+                  </Box>
+                ))}
+              </Box>
+            ))}
         </Box>
-      )}
-
-      {/* Proposed Actions */}
-      {message.proposedActions && message.proposedActions.length > 0 && (
-        <Box flexDirection="column" marginBottom={1}>
-          <Text bold color={theme.colors.secondary}>
-            Actions to be executed:
-          </Text>
-          {message.proposedActions.map((action, index) => (
-            <Box key={index} marginLeft={2}>
-              <Text color={theme.colors.foreground}>
-                {index + 1}. {action.description}
-              </Text>
-            </Box>
-          ))}
-        </Box>
-      )}
-
-      {/* Reasoning */}
-      {message.thought && (
+      ) : (
+        /* LEGACY: Fallback */
         <Box marginBottom={1}>
-          <Text color={theme.colors.info}>
-            💭 {message.thought}
-          </Text>
+          {message.proposedActions && message.proposedActions.length > 0 && (
+            message.proposedActions.map((action, index) => (
+              <Box key={index}>
+                <Text color={theme.colors.info}>→</Text>
+                <Text color={theme.colors.foreground}> {action.description}</Text>
+              </Box>
+            ))
+          )}
         </Box>
       )}
 

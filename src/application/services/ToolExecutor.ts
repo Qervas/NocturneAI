@@ -310,16 +310,30 @@ export class ToolExecutor {
       ]);
 
       if (result.success) {
+        // Extract clean output from tool result
+        let output = '';
+        if (typeof result.data === 'string') {
+          output = result.data;
+        } else if (result.data && typeof result.data === 'object') {
+          // For command_execute: extract stdout (clean text output, not JSON)
+          if ('stdout' in result.data) {
+            output = result.data.stdout as string;
+          } else {
+            // For other tools: JSON stringify
+            output = JSON.stringify(result.data, null, 2);
+          }
+        }
+
         return {
           success: true,
-          message: `✓ ${action.description}`,
-          output: typeof result.data === 'string' ? result.data : JSON.stringify(result.data),
+          message: action.description, // No icon - ResultsRenderer adds it
+          output,
           action
         };
       } else {
         return {
           success: false,
-          message: `✗ ${action.description}`,
+          message: action.description, // No icon - ResultsRenderer adds it
           error: result.error || 'Tool execution failed',
           action
         };
@@ -331,7 +345,7 @@ export class ToolExecutor {
 
       return {
         success: false,
-        message: `✗ ${action.description}`,
+        message: action.description, // No icon - ResultsRenderer adds it
         error: errorMessage,
         action
       };

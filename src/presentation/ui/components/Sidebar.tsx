@@ -99,13 +99,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {errorCount}
         </Text>
       </Box>
-
-      {/* Footer Info */}
-      <Box borderStyle="single" borderColor={theme.colors.muted} paddingX={1}>
-        <Text color={theme.colors.muted} dimColor>
-          /help
-        </Text>
-      </Box>
     </Box>
   );
 };

@@ -24,7 +24,6 @@ import type { ChatOrchestrator } from '../ChatOrchestrator.js';
 import type { ReActAgent } from '../ReActAgent.js';
 import type { ProposedAction, ConfirmationStatus, ExecutionResult } from '../../../presentation/ui/types.js';
 import { ToolExecutor } from '../ToolExecutor.js';
-import { OutputFormatter } from '../OutputFormatter.js';
 import {
   TaskManager,
   TaskAnalyzer,
@@ -33,6 +32,7 @@ import {
   type TaskContext,
   type TaskTodo
 } from '../task-execution/index.js';
+import { sanitizeError } from '../../../infrastructure/utils/ErrorSanitizer.js';
 
 /**
  * Edit Mode Handler Configuration
@@ -163,11 +163,8 @@ export class EditModeHandler implements IModeHandler {
       // Create task context with initial todos using TaskManager
       this.currentContext = await this.taskManager.createInitialTask(trimmedInput);
 
-      // Show initial plan with todo list
-      const initialPlan = this.taskFormatter.formatInitialPlan(this.currentContext);
-      this.chatOrchestrator.addMessage(
-        this.chatOrchestrator.createMessage('assistant', initialPlan)
-      );
+      // Initial plan will be shown in confirmation dialog (ephemeral)
+      // No need to add it to chat history - keeps output clean like Claude Code
 
       this.log('info', `Created task with ${this.currentContext.todos.length} todos`);
 
@@ -175,7 +172,7 @@ export class EditModeHandler implements IModeHandler {
       await this.executeNextIteration();
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = sanitizeError(error);
       this.log('error', `Failed to process input: ${errorMessage}`);
 
       this.chatOrchestrator.addMessage(
@@ -229,22 +226,22 @@ export class EditModeHandler implements IModeHandler {
 
           const confirmationId = this.generateConfirmationId();
 
-          // Format confirmation message with todo list (includes actions in formatted text)
-          const confirmationMessage = this.taskFormatter.formatConfirmationWithTodos(
+          // NEW: Create confirmation using structured blocks (single source of truth!)
+          const confirmationBlocks = this.taskFormatter.createConfirmationBlocks(
             todo,
             actions,
             this.currentContext
           );
 
           this.chatOrchestrator.addMessage(
-            this.chatOrchestrator.createMessage(
+            this.chatOrchestrator.createMessageWithBlocks(
               'confirmation',
-              confirmationMessage,
-              undefined, // results
-              `Next: ${todo.activeForm || todo.description}`, // thought
-              undefined, // proposedActions (already in confirmationMessage!)
-              confirmationId, // confirmationId
-              'pending' as ConfirmationStatus // status
+              confirmationBlocks,
+              {
+                confirmationId,
+                status: 'pending' as ConfirmationStatus,
+                thought: `Next: ${todo.activeForm || todo.description}`
+              }
             )
           );
 
@@ -257,13 +254,8 @@ export class EditModeHandler implements IModeHandler {
 
         case 'task_complete': {
           // All todos completed!
-          const completionMessage = this.taskFormatter.formatTaskComplete(this.currentContext);
-
-          this.chatOrchestrator.addMessage(
-            this.chatOrchestrator.createMessage('assistant', completionMessage)
-          );
-
-          this.log('info', 'Task completed successfully');
+          // Claude Code style: NO separate completion message
+          // The natural language answer is already shown with the execution results
           this.currentContext = null; // Reset context
           break;
         }
@@ -298,7 +290,7 @@ export class EditModeHandler implements IModeHandler {
       }
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = sanitizeError(error);
       this.log('error', `Failed to execute iteration: ${errorMessage}`);
 
       this.chatOrchestrator.addMessage(
@@ -408,6 +400,12 @@ export class EditModeHandler implements IModeHandler {
     try {
       this.log('info', `Executing ${actions.length} actions using IterationLoop`);
 
+      // Show animated "executing" indicator (Claude Code style)
+      const executingMessageId = `executing-${Date.now()}`;
+      const executingMessage = this.chatOrchestrator.createMessage('executing', `⏺ Executing${actions.length > 1 ? ` ${actions.length} actions` : ''}...`);
+      executingMessage.id = executingMessageId; // Override with custom ID for updates
+      this.chatOrchestrator.addMessage(executingMessage);
+
       // Execute actions and update context using IterationLoop
       const results = await this.iterationLoop.executeAndUpdateContext(
         actions,
@@ -415,28 +413,38 @@ export class EditModeHandler implements IModeHandler {
         this.currentContext
       );
 
-      // Format and display execution results
-      const formattedOutput = OutputFormatter.formatResults(results);
+      // Update the executing message in-place (⏺ yellow → ✓ green)
+      // This prevents console logging and creates smooth transition
 
-      this.chatOrchestrator.addMessage(
-        this.chatOrchestrator.createMessage('execution', formattedOutput, results)
-      );
+      // Claude Code style: Just show results directly, no LLM interpretation
+      // (Interpretation was causing 5+ second delays - not worth it for simple commands)
+      const executionBlocks = [
+        {
+          type: 'results' as const,
+          summary: undefined, // Remove summary - keep it clean!
+          results: results,
+          showDetails: true
+        }
+      ];
+
+      this.chatOrchestrator.updateMessage(executingMessageId, {
+        type: 'execution',
+        content: '', // Clear the "⏺ Executing..." text
+        blocks: executionBlocks
+      });
 
       const successCount = results.filter(r => r.success).length;
       const failureCount = results.filter(r => !r.success).length;
       this.log('info', `Execution complete: ${successCount} succeeded, ${failureCount} failed`);
 
-      // Show updated progress
-      const progressMessage = this.taskFormatter.formatTaskProgress(this.currentContext);
-      this.chatOrchestrator.addMessage(
-        this.chatOrchestrator.createMessage('assistant', progressMessage)
-      );
+      // Don't show separate progress message - keeps output clean
+      // Progress is already visible in execution results and will be in next confirmation
 
       // Continue to next iteration
       await this.executeNextIteration();
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = sanitizeError(error);
       this.log('error', `Action execution failed: ${errorMessage}`);
 
       this.chatOrchestrator.addMessage(
@@ -489,22 +497,38 @@ export class EditModeHandler implements IModeHandler {
     this.log('info', `Executing ${actions.length} approved actions using ToolExecutor`);
 
     try {
+      // Show animated "executing" indicator (Claude Code style)
+      const executingMessageId = `executing-${Date.now()}`;
+      const executingMessage = this.chatOrchestrator.createMessage('executing', `⏺ Executing${actions.length > 1 ? ` ${actions.length} actions` : ''}...`);
+      executingMessage.id = executingMessageId;
+      this.chatOrchestrator.addMessage(executingMessage);
+
       // Execute actions using ToolExecutor (with real tools!)
       const results = await this.toolExecutor.executeActions(actions);
 
-      // Format results beautifully (Claude Code style!)
-      const formattedOutput = OutputFormatter.formatResults(results);
+      // Update the executing message in-place (⏺ yellow → ✓ green)
+      // This prevents console logging and creates smooth transition
+      const executionBlocks = [
+        {
+          type: 'results' as const,
+          summary: undefined, // Remove summary - keep it clean!
+          results: results,
+          showDetails: true
+        }
+      ];
 
-      this.chatOrchestrator.addMessage(
-        this.chatOrchestrator.createMessage('execution', formattedOutput, results)
-      );
+      this.chatOrchestrator.updateMessage(executingMessageId, {
+        type: 'execution',
+        content: '', // Clear the "⏺ Executing..." text
+        blocks: executionBlocks
+      });
 
       const successCount = results.filter(r => r.success).length;
       const failureCount = results.filter(r => !r.success).length;
       this.log('info', `Execution complete: ${successCount} succeeded, ${failureCount} failed`);
 
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage = sanitizeError(error);
       this.log('error', `Action execution failed: ${errorMessage}`);
 
       this.chatOrchestrator.addMessage(
@@ -536,7 +560,10 @@ export class EditModeHandler implements IModeHandler {
       return;
     }
 
+    // Log to file only - NO console output (prevents terminal pollution)
+    // User can view logs via /logs command
     const prefix = `[EditModeHandler]`;
-    console.log(`${prefix} ${level.toUpperCase()}: ${message}`);
+    // TODO: Write to log file instead of console
+    // For now, just skip logging to avoid terminal output
   }
 }

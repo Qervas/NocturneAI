@@ -319,6 +319,7 @@ export type ChatMessageType =
   | 'user'
   | 'assistant'
   | 'confirmation'
+  | 'executing' // Animated "in progress" state (temporary message)
   | 'execution'
   | 'error'
   | 'agent_list'
@@ -362,19 +363,26 @@ export interface ExecutionResult {
 export interface ChatMessage {
   id: string;
   type: ChatMessageType;
-  content: string;
   timestamp: Date;
+
+  // NEW: Structured content blocks (primary content representation)
+  // When blocks are present, they are the source of truth
+  blocks?: import('./content-model.js').MessageContentBlock[];
+
+  // Legacy: Plain text content (auto-generated from blocks or set manually)
+  // Kept for backward compatibility and text-based rendering
+  content: string;
 
   // For assistant messages
   thought?: string;
-  proposedActions?: ProposedAction[];
+  proposedActions?: ProposedAction[];  // Auto-populated from blocks when using createMessageWithBlocks
 
   // For confirmation messages
   confirmationId?: string;
   status?: ConfirmationStatus;
 
   // For execution messages
-  results?: ExecutionResult[];
+  results?: ExecutionResult[];  // Auto-populated from blocks when using createMessageWithBlocks
 
   // Metadata
   metadata?: Record<string, unknown>;

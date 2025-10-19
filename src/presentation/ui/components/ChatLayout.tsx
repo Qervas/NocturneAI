@@ -46,11 +46,25 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 
   // Subscribe to chat messages
   useEffect(() => {
     const handleMessage = (message: ChatMessage) => {
-      setMessages(prev => [...prev, message]);
+      setMessages(prev => {
+        // Check if this is an update to an existing message
+        const existingIndex = prev.findIndex(m => m.id === message.id);
+        if (existingIndex >= 0) {
+          // Update existing message - don't auto-scroll
+          setShouldAutoScroll(false);
+          const updated = [...prev];
+          updated[existingIndex] = message;
+          return updated;
+        }
+        // New message - only auto-scroll if it's from user or assistant response
+        setShouldAutoScroll(message.type === 'user' || message.type === 'assistant');
+        return [...prev, message];
+      });
     };
 
     const handleChatCleared = () => {
@@ -202,6 +216,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
             theme={DEFAULT_THEME}
             showHeader={false}
             isProcessing={isProcessing}
+            shouldAutoScroll={shouldAutoScroll}
           />
         </Box>
 
