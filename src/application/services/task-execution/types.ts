@@ -42,6 +42,9 @@ export interface TaskContext {
   /** Original user request */
   originalRequest: string;
 
+  /** Is this a simple query that should complete after first success? */
+  isSimpleQuery?: boolean;
+
   /** Dynamic todo list (can grow/shrink during execution) */
   todos: TaskTodo[];
 

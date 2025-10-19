@@ -416,16 +416,30 @@ export class EditModeHandler implements IModeHandler {
       // Update the executing message in-place (⏺ yellow → ✓ green)
       // This prevents console logging and creates smooth transition
 
-      // Claude Code style: Just show results directly, no LLM interpretation
-      // (Interpretation was causing 5+ second delays - not worth it for simple commands)
+      // Get natural language interpretation for simple queries or completed tasks
+      let interpretation = '';
+      const allTodosComplete = this.currentContext.todos.every(t => t.status === 'completed');
+
+      if (this.currentContext.isSimpleQuery || allTodosComplete) {
+        interpretation = await this.taskAnalyzer.interpretResults(this.currentContext);
+      }
+
       const executionBlocks = [
         {
           type: 'results' as const,
-          summary: undefined, // Remove summary - keep it clean!
+          summary: undefined,
           results: results,
           showDetails: true
         }
       ];
+
+      // Add interpretation as text block if available
+      if (interpretation) {
+        executionBlocks.push({
+          type: 'text' as const,
+          content: interpretation
+        } as any);
+      }
 
       this.chatOrchestrator.updateMessage(executingMessageId, {
         type: 'execution',
@@ -563,7 +577,6 @@ export class EditModeHandler implements IModeHandler {
     // Log to file only - NO console output (prevents terminal pollution)
     // User can view logs via /logs command
     const prefix = `[EditModeHandler]`;
-    // TODO: Write to log file instead of console
-    // For now, just skip logging to avoid terminal output
+    // Logging disabled to prevent terminal pollution
   }
 }

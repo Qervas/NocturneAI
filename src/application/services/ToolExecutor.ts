@@ -324,6 +324,19 @@ export class ToolExecutor {
           }
         }
 
+        // Truncate output if too large (prevent >10MB errors)
+        const MAX_OUTPUT_SIZE = 50000; // 50KB max
+        if (output.length > MAX_OUTPUT_SIZE) {
+          const lines = output.split('\n');
+          const truncated = output.substring(0, MAX_OUTPUT_SIZE);
+          const truncatedLines = truncated.split('\n');
+          const hiddenLines = lines.length - truncatedLines.length;
+          const hiddenBytes = output.length - MAX_OUTPUT_SIZE;
+          const hiddenKB = Math.round(hiddenBytes / 1024);
+
+          output = truncated + `\n\n... output truncated (${hiddenLines} more lines, ${hiddenKB}KB hidden) → View full output in logs`;
+        }
+
         return {
           success: true,
           message: action.description, // No icon - ResultsRenderer adds it

@@ -267,7 +267,6 @@ Examples:
     // Log to file only - NO console output (prevents terminal pollution)
     // User can view logs via /logs command
     const prefix = `[AskModeHandler]`;
-    // TODO: Write to log file instead of console
-    // For now, just skip logging to avoid terminal output
+    // Logging disabled to prevent terminal pollution
   }
 }

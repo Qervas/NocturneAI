@@ -226,6 +226,64 @@ Respond with JSON array of next steps:
   }
 
   /**
+   * Interpret execution results in natural language
+   *
+   * @param context Task context with execution history
+   * @returns Natural language interpretation of results
+   */
+  async interpretResults(context: TaskContext): Promise<string> {
+    if (context.executionHistory.length === 0) {
+      return '';
+    }
+
+    const lastExecution = context.executionHistory[context.executionHistory.length - 1];
+
+    // Extract command output from results
+    const outputs = lastExecution.results
+      .filter(r => r.success && r.output)
+      .map(r => r.output)
+      .join('\n');
+
+    if (!outputs) {
+      return '';
+    }
+
+    const prompt = `Interpret these command results in natural language.
+
+User's request: "${context.originalRequest}"
+Command executed: ${lastExecution.todo}
+
+Output:
+${outputs}
+
+Provide a brief, conversational interpretation (1-2 sentences). Focus on what the user would care about.
+Examples:
+- "The current directory contains 984 items, including 36 subdirectories."
+- "Found 3 TypeScript files matching the pattern."
+- "The build completed successfully with no errors."
+
+Respond with ONLY the interpretation text (no JSON, no markdown):`;
+
+    try {
+      const response = await this.llmClient.chat({
+        messages: [
+          { role: 'system', content: 'You interpret command results in natural language.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+        maxTokens: 150
+      });
+
+      const content = response.content || response.message?.content || '';
+      return content.trim();
+
+    } catch (error) {
+      console.error('[TaskAnalyzer] Failed to interpret results:', error);
+      return '';
+    }
+  }
+
+  /**
    * Get default analysis when LLM fails
    */
   private getDefaultAnalysis(): AnalysisResult {

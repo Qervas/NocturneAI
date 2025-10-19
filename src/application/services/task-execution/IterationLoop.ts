@@ -244,6 +244,17 @@ What actions should I take to complete this step?`;
 
     this.taskManager.markComplete(context, todo.id, result);
 
+    // Auto-complete simple queries after first successful execution
+    // This prevents infinite loops where LLM keeps adding more todos
+    if (context.isSimpleQuery && results.some(r => r.success)) {
+      // Simple query succeeded - mark all remaining todos as complete
+      context.todos.forEach(t => {
+        if (t.status !== 'completed') {
+          this.taskManager.markComplete(context, t.id, 'Query answered');
+        }
+      });
+    }
+
     return results;
   }
 
@@ -254,9 +265,12 @@ What actions should I take to complete this step?`;
    * @param analysis Analysis result
    */
   private updateTodosFromAnalysis(context: TaskContext, analysis: any): void {
-    // Add new todos
-    for (const todoDesc of analysis.newTodosNeeded || []) {
-      this.taskManager.addTodo(context, todoDesc);
+    // NEVER add new todos for simple queries (prevents infinite loops)
+    if (!context.isSimpleQuery) {
+      // Add new todos
+      for (const todoDesc of analysis.newTodosNeeded || []) {
+        this.taskManager.addTodo(context, todoDesc);
+      }
     }
 
     // Remove unnecessary todos (only if pending)

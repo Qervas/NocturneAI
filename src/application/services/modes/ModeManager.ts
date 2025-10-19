@@ -257,8 +257,7 @@ export class ModeManager {
     // Log to file only - NO console output (prevents terminal pollution)
     // User can view logs via /logs command
     const prefix = `[ModeManager]`;
-    // TODO: Write to log file instead of console
-    // For now, just skip logging to avoid terminal output
+    // Logging disabled to prevent terminal pollution
   }
 
   /**

@@ -685,7 +685,8 @@ Respond naturally in the user's language. Keep responses concise (2-3 sentences 
     const message = this.messages.find(m => m.id === messageId);
     if (message) {
       Object.assign(message, updates);
-      this.eventBus.emit('chat:message:updated', message);
+      // Emit same event as addMessage() - UI will detect update by message.id
+      this.eventBus.emit('chat:message', message);
     }
   }
 

@@ -19,6 +19,22 @@ export class TaskManager {
   constructor(private llmClient: CopilotClient) {}
 
   /**
+   * Detect if this is a simple query that doesn't need complex planning
+   */
+  private isSimpleQuery(request: string): boolean {
+    const simplePatterns = [
+      /^(check|list|show|display|view|what'?s in|look at)\s/i,
+      /^how many/i,
+      /^count/i,
+      /^find\s+(all|the)\s/i,
+      /^get\s/i,
+      /^where\s+is/i
+    ];
+
+    return simplePatterns.some(pattern => pattern.test(request.trim()));
+  }
+
+  /**
    * Create initial task context with todos from user request
    *
    * @param userRequest Original user request
@@ -26,9 +42,11 @@ export class TaskManager {
    */
   async createInitialTask(userRequest: string): Promise<TaskContext> {
     const initialTodos = await this.createInitialTodos(userRequest);
+    const isSimple = this.isSimpleQuery(userRequest);
 
     return {
       originalRequest: userRequest,
+      isSimpleQuery: isSimple,
       todos: initialTodos,
       executionHistory: [],
       startTime: new Date(),
