@@ -10,6 +10,7 @@ import { Box, Text } from 'ink';
 import { UITheme } from '../types.js';
 
 interface SidebarProps {
+  currentMode: string;
   currentModel: string;
   agentCount: number;
   activeAgentCount: number;
@@ -20,6 +21,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
+  currentMode,
   currentModel,
   agentCount,
   activeAgentCount,
@@ -47,6 +49,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Spacer - pushes metrics to bottom */}
       <Box flexGrow={1} />
+
+      {/* Current Mode */}
+      <Box flexDirection="column" marginBottom={1}>
+        <Text bold color={theme.colors.secondary} dimColor>
+          Mode
+        </Text>
+        <Text color={theme.colors.primary}>
+          {currentMode.charAt(0).toUpperCase() + currentMode.slice(1)}
+        </Text>
+      </Box>
 
       {/* Current Model */}
       <Box flexDirection="column" marginBottom={1}>

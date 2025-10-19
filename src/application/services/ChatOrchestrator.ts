@@ -20,7 +20,11 @@ import { Logger } from '../../infrastructure/logging/Logger.js';
 import type { ILLMClient } from '../../core/interfaces/ILLMClient.js';
 import { ModeManager } from './modes/ModeManager.js';
 import { AskModeHandler } from './modes/AskModeHandler.js';
+import { EditModeHandler } from './modes/EditModeHandler.js';
+import { AgentModeHandler } from './modes/AgentModeHandler.js';
 import type { InteractionMode } from '../../core/interfaces/IModeHandler.js';
+import { AgentFactory } from '../factories/AgentFactory.js';
+import type { AgentFactoryConfig } from '../factories/AgentFactory.js';
 
 /**
  * Chat Orchestrator Options
@@ -31,6 +35,7 @@ interface ChatOrchestratorOptions {
   commandRegistry?: CommandRegistry;
   eventBus?: EventEmitter;
   logger?: Logger;
+  agentFactory?: AgentFactory;
 }
 
 /**
@@ -43,8 +48,9 @@ export class ChatOrchestrator {
   private eventBus: EventEmitter;
   private logger?: Logger;
   private messages: ChatMessage[] = [];
-  private pendingConfirmations: Map<string, ProposedAction[]> = new Map();
+  private pendingConfirmations: Map<string, { actions: ProposedAction[]; currentTodo?: any }> = new Map();
   private modeManager: ModeManager;
+  private agentFactory: AgentFactory;
 
   constructor(options: ChatOrchestratorOptions) {
     this.eventBus = options.eventBus || new EventEmitter();
@@ -66,6 +72,12 @@ export class ChatOrchestrator {
       });
     }
 
+    // Initialize Agent Factory (for proper tool execution in Edit/Agent modes)
+    this.agentFactory = options.agentFactory || new AgentFactory({
+      enableMemoryByDefault: false, // Disable memory for mode handlers
+      validateConfigs: false, // Skip validation for dynamic configs
+    });
+
     // Initialize Mode Manager with ASK mode as default
     this.modeManager = new ModeManager({
       defaultMode: 'ask',
@@ -86,7 +98,34 @@ export class ChatOrchestrator {
       this.log('warn', 'Router client not available - Ask mode will have limited functionality');
     }
 
-    // TODO: Register EditModeHandler and AgentModeHandler when implemented
+    // Register Edit mode handler (human-approved actions)
+    if (this.routerClient && this.reactAgent) {
+      const editHandler = new EditModeHandler({
+        routerClient: this.routerClient,
+        reactAgent: this.reactAgent,
+        chatOrchestrator: this,
+        enableLogging: true
+      });
+      this.modeManager.registerHandler(editHandler);
+      this.log('info', 'Registered EditModeHandler - human-approved actions available');
+    } else {
+      this.log('warn', 'Edit mode not available - missing router client or ReAct agent');
+    }
+
+    // Register Agent mode handler (autonomous execution)
+    if (this.routerClient && this.reactAgent) {
+      const agentHandler = new AgentModeHandler({
+        routerClient: this.routerClient,
+        reactAgent: this.reactAgent,
+        chatOrchestrator: this,
+        enableLogging: true,
+        enableSafetyChecks: true // Enable safety checks by default
+      });
+      this.modeManager.registerHandler(agentHandler);
+      this.log('info', 'Registered AgentModeHandler - autonomous execution available');
+    } else {
+      this.log('warn', 'Agent mode not available - missing router client or ReAct agent');
+    }
 
     this.setupEventHandlers();
   }
@@ -314,13 +353,10 @@ export class ChatOrchestrator {
 
   /**
    * Handle confirmation response
+   * Delegates to the current mode handler if it supports confirmations
    */
-  async handleConfirmation(confirmationId: string, response: ConfirmationStatus): Promise<void> {
-    const actions = this.pendingConfirmations.get(confirmationId);
-    if (!actions) {
-      this.log('warn', `No pending confirmation found: ${confirmationId}`);
-      return;
-    }
+  async handleConfirmation(confirmationId: string, response: ConfirmationStatus, modifiedInput?: string): Promise<void> {
+    const currentHandler = this.modeManager.getCurrentHandler();
 
     // Update confirmation message status
     const confirmationMessage = this.messages.find(
@@ -329,6 +365,21 @@ export class ChatOrchestrator {
     if (confirmationMessage) {
       confirmationMessage.status = response;
     }
+
+    // Delegate to mode handler if it supports confirmations
+    if (currentHandler && currentHandler.handleConfirmation) {
+      await currentHandler.handleConfirmation(confirmationId, response, modifiedInput);
+      return;
+    }
+
+    // Fallback: old confirmation handling for backward compatibility
+    const confirmation = this.pendingConfirmations.get(confirmationId);
+    if (!confirmation) {
+      this.log('warn', `No pending confirmation found: ${confirmationId}`);
+      return;
+    }
+
+    const { actions } = confirmation;
 
     switch (response) {
       case 'approved':
@@ -589,6 +640,74 @@ Respond naturally in the user's language. Keep responses concise (2-3 sentences 
    */
   getCommandRegistry(): CommandRegistry {
     return this.commandRegistry;
+  }
+
+  /**
+   * Add pending confirmation
+   *
+   * @param confirmationId Confirmation ID
+   * @param actions Proposed actions
+   * @param currentTodo Current todo being executed (optional)
+   */
+  addPendingConfirmation(confirmationId: string, actions: ProposedAction[], currentTodo?: any): void {
+    this.pendingConfirmations.set(confirmationId, { actions, currentTodo });
+    this.log('info', `Added pending confirmation ${confirmationId} with ${actions.length} actions`);
+  }
+
+  /**
+   * Get pending confirmation
+   *
+   * @param confirmationId Confirmation ID
+   * @returns Confirmation data or undefined
+   */
+  getPendingConfirmation(confirmationId: string): { actions: ProposedAction[]; currentTodo?: any } | undefined {
+    return this.pendingConfirmations.get(confirmationId);
+  }
+
+  /**
+   * Remove pending confirmation
+   *
+   * @param confirmationId Confirmation ID
+   */
+  removePendingConfirmation(confirmationId: string): void {
+    this.pendingConfirmations.delete(confirmationId);
+    this.log('info', `Removed pending confirmation ${confirmationId}`);
+  }
+
+  /**
+   * Get agent factory (for mode handlers)
+   *
+   * @returns Agent factory instance
+   */
+  getAgentFactory(): AgentFactory {
+    return this.agentFactory;
+  }
+
+  /**
+   * Get current mode
+   *
+   * @returns Current mode name
+   */
+  getCurrentMode(): string {
+    return this.modeManager.getCurrentMode();
+  }
+
+  /**
+   * Cycle to next mode (ask → edit → agent → ask)
+   */
+  cycleMode(): void {
+    const modes: Array<'ask' | 'edit' | 'agent'> = ['ask', 'edit', 'agent'];
+    const currentMode = this.getCurrentMode();
+    const currentIndex = modes.indexOf(currentMode as any);
+    const nextIndex = (currentIndex + 1) % modes.length;
+    const nextMode = modes[nextIndex];
+
+    this.modeManager.switchMode(nextMode, 'User cycled mode with Shift+Tab');
+    this.log('info', `Cycled mode from ${currentMode} to ${nextMode}`);
+
+    // Emit mode change event for UI
+    const modeInfo = this.modeManager.getModeInfo(nextMode);
+    this.eventBus.emit('mode:changed', { mode: nextMode, info: modeInfo });
   }
 
   /**

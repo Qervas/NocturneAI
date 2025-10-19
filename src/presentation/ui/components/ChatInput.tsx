@@ -20,6 +20,7 @@ interface ChatInputProps {
   theme: any;
   onHistoryUp?: () => void;
   onHistoryDown?: () => void;
+  onCycleMode?: () => void;  // Shift+Enter to cycle modes
   commandEntries?: Array<{ id: string; command: Command }>;  // Command entries from CommandRegistry (includes aliases)
 }
 
@@ -40,6 +41,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   theme,
   onHistoryUp,
   onHistoryDown,
+  onCycleMode,
   commandEntries = []
 }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -164,6 +166,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   // Handle keyboard navigation for autocomplete and history
   useInput((input, key) => {
     if (disabled) return;
+
+    // Shift+Tab: Cycle modes (check FIRST before autocomplete)
+    if (key.tab && key.shift && onCycleMode) {
+      onCycleMode();
+      return;
+    }
 
     // If autocomplete is showing, arrow keys navigate suggestions
     if (showAutocomplete && autocompleteItems.length > 0) {

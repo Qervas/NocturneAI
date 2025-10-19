@@ -8,7 +8,7 @@
  * - AGENT mode: Autonomous execution (auto-execute, no confirmations)
  */
 
-import type { ChatMessage } from '../../presentation/ui/types.js';
+import type { ChatMessage, ConfirmationStatus } from '../../presentation/ui/types.js';
 
 /**
  * Mode types
@@ -62,6 +62,20 @@ export interface IModeHandler {
    * @returns True if mode shows confirmation dialogs
    */
   supportsConfirmations(): boolean;
+
+  /**
+   * Handle confirmation response (optional - only for modes that support confirmations)
+   *
+   * @param confirmationId Confirmation ID
+   * @param response User response (approved, modified, cancelled)
+   * @param modifiedInput Modified input if response is 'modified'
+   * @returns Promise that resolves when confirmation is handled
+   */
+  handleConfirmation?(
+    confirmationId: string,
+    response: ConfirmationStatus,
+    modifiedInput?: string
+  ): Promise<void>;
 
   /**
    * Get mode capabilities

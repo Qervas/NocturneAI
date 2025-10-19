@@ -352,9 +352,15 @@ Format your response as JSON.`;
 
     try {
       for (const cmd of allCommands) {
+        // Safety check for command object
+        if (!cmd || typeof cmd !== 'object') {
+          continue;
+        }
+
         // Simple keyword matching (can be enhanced with better NLP)
         const keywords = cmd.keywords || [];
-        const descWords = (cmd.description || '').toLowerCase().split(' ');
+        const description = cmd.description || '';
+        const descWords = description.toLowerCase().split(' ');
         const inputWords = input.toLowerCase().split(' ');
 
         let score = 0;
@@ -384,13 +390,23 @@ Format your response as JSON.`;
   private extractParameters(command: any, entities: Record<string, unknown>): Record<string, unknown> {
     const params: Record<string, unknown> = {};
 
+    // Safety check for command and entities
+    if (!command || !entities) {
+      return params;
+    }
+
     // Map entities to command parameters
-    if (command.parameters) {
+    if (command.parameters && Array.isArray(command.parameters)) {
       for (const param of command.parameters) {
+        // Safety check for param object
+        if (!param || !param.name) {
+          continue;
+        }
+
         // Try to find matching entity
         if (entities[param.name]) {
           params[param.name] = entities[param.name];
-        } else if (entities.values && entities.values[0]) {
+        } else if (entities.values && Array.isArray(entities.values) && entities.values[0]) {
           // Use first value as fallback
           params[param.name] = entities.values[0];
         }

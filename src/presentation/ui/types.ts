@@ -347,10 +347,12 @@ export interface ProposedAction {
  * Execution result
  */
 export interface ExecutionResult {
-  actionId: string;
+  actionId?: string; // Optional for backward compatibility
+  action?: ProposedAction; // Reference to the original action
   success: boolean;
   message: string;
   data?: unknown;
+  output?: string; // Tool execution output (text)
   error?: string;
 }
 

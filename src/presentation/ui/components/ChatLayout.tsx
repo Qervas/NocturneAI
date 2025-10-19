@@ -33,6 +33,9 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
   const [currentModel, setCurrentModel] = useState<string>(
     modelService.getCurrentModel().id
   );
+  const [currentMode, setCurrentMode] = useState<string>(
+    chatOrchestrator.getCurrentMode()
+  );
 
   // Initialize UI state for metrics calculation
   const { state: uiState } = useUIState({});
@@ -58,6 +61,10 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
       setCurrentModel(model.id);
     };
 
+    const handleModeChanged = (data: any) => {
+      setCurrentMode(data.mode);
+    };
+
     const handleExit = () => {
       exit();
     };
@@ -65,12 +72,14 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     eventBus.on('chat:message', handleMessage);
     eventBus.on('chat:cleared', handleChatCleared);
     eventBus.on('model:changed', handleModelChanged);
+    eventBus.on('mode:changed', handleModeChanged);
     eventBus.on('app:exit', handleExit);
 
     return () => {
       eventBus.off('chat:message', handleMessage);
       eventBus.off('chat:cleared', handleChatCleared);
       eventBus.off('model:changed', handleModelChanged);
+      eventBus.off('mode:changed', handleModeChanged);
       eventBus.off('app:exit', handleExit);
     };
   }, [eventBus, exit]);
@@ -138,6 +147,11 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     chatOrchestrator.handleConfirmation(confirmationId, response);
   }, [chatOrchestrator]);
 
+  // Handle mode cycling (Shift+Enter)
+  const handleCycleMode = useCallback(() => {
+    chatOrchestrator.cycleMode();
+  }, [chatOrchestrator]);
+
   // Calculate metrics for sidebar
   const agentCount = uiState.agents.length;
   const activeAgentCount = uiState.agents.filter(a => a.status === 'busy').length;
@@ -149,6 +163,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
     <Box flexDirection="row" flexGrow={1}>
       {/* Sidebar */}
       <Sidebar
+        currentMode={currentMode}
         currentModel={currentModel}
         agentCount={agentCount}
         activeAgentCount={activeAgentCount}
@@ -196,7 +211,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
             {showAutocomplete && (
               <Text>Tab: autocomplete • </Text>
             )}
-            ↑↓: history • Enter: send • /: commands • @: mentions
+            ↑↓: history • Enter: send • Shift+Tab: switch mode • /: commands • @: mentions
           </Text>
         </Box>
 
@@ -206,6 +221,7 @@ export const ChatLayout: React.FC<ChatLayoutProps> = ({
           onSubmit={handleSubmit}
           onHistoryUp={handleHistoryUp}
           onHistoryDown={handleHistoryDown}
+          onCycleMode={handleCycleMode}
           placeholder={
             isProcessing
               ? "Processing..."

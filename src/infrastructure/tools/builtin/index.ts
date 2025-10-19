@@ -6,6 +6,7 @@
  * File Operations:
  * - FileReadTool: Read file contents
  * - FileWriteTool: Write content to files
+ * - FileEditTool: Edit files with search-replace pattern
  * - FileListTool: List directory contents
  * - FileDeleteTool: Delete files and directories
  * - FileMoveTool: Move/rename files and directories
@@ -29,6 +30,7 @@
 // File Tools
 export { FileReadTool } from "./FileReadTool.js";
 export { FileWriteTool } from "./FileWriteTool.js";
+export { FileEditTool } from "./FileEditTool.js";
 export { FileListTool } from "./FileListTool.js";
 export { FileDeleteTool } from "./FileDeleteTool.js";
 export { FileMoveTool } from "./FileMoveTool.js";
@@ -59,6 +61,11 @@ export type {
   FileWriteArgs,
   FileWriteResult,
 } from "./FileWriteTool.js";
+export type {
+  FileEditToolConfig,
+  FileEditArgs,
+  FileEditResult,
+} from "./FileEditTool.js";
 export type {
   FileListToolConfig,
   FileListArgs,
